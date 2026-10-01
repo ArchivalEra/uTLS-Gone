@@ -311,6 +311,34 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 - `REFLECT_HISTORY_SECS`（append-only 历史章节）为空 —— 本仓还没有历史章节。
   第一次把某节标记为「当时如此」时再配，不要提前豁免。
 
+## REALITY 等价物（issue #1，独立 crate）
+
+`crates/reality` 是 XTLS/REALITY 的 Rust 等价实现（**权威参照 = XTLS/REALITY 与
+Xray-core 的薄壳，不引二手移植**）。规模与判据条数见台账
+[[reality_files]] / [[reality_lines]] / [[reality_tests]]，结案记录在
+`questions/11-reality-rust-port.md`。
+
+四类判据（全部可复跑）：
+
+- **离线三测**：CH 解析（含 `X25519MLKEM768` 必须在 `X25519` 之前的形状与线序）、
+  密钥派生、fallback 判定（每条失败路径一个独立断言）。
+- **KDF 对拍**：向量由 `tests/fixtures/gen-reality/main.go` 生成 —— 它逐行复刻
+  `tls.go:241-260`（服务端开启）与 Xray `reality.go` 的 `UClient`（客户端封装），
+  hello 用**上游 uTLS 的真实指纹**（`HelloChrome_100`）+ 确定性 rand 产出。
+  双向逐字节：Go 封 ⇒ Rust 开、Rust 封 ⇒ 与 Go 密文相同。
+- **真栈**：**stock Xray-core**（官方 release）指向本仓服务端 ⇒ 鉴权成功并承载
+  流量（VLESS 请求到达上层、short_id 解出、回显往返）；未鉴权客户端拿到与直连
+  真站**逐字节相同**的证书链。
+- **P-256-only dest**：鉴权与镜像计划成立。
+
+三条实测发现（都进了代码注释与工单）：rustls 严格协商签名算法而浏览器指纹不报
+Ed25519（REALITY 证书必须是 ed25519）⇒ fork 新增 `(j)` 开关；HMAC 的输入是
+**裸 32 字节** ed25519 公钥而非 SPKI；`split_dest_flight` 的坏形状要逐条查。
+
+**已知边界**：HRR 不处理（Go 参照同样如此）、ML-DSA-65 扩展签名未实现、
+ServerHello 由 rustls 生成（不与真站同形 —— 参照拿真站的当模板，那需要给 fork
+加服务端侧的 ClientHello 缝）。
+
 ## 已知缺口（写明的，不是忘掉的）
 
 - 悬案闸门对 `Settling:` 的路径存在性**只查第一个词**（当它像路径时）。所以
@@ -696,16 +724,19 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
 | `md_files` | **23** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **3016** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_lines` | **3044** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `py_lines` | **1933** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `py_lines` | **1977** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `question_count` | **11** | `ls questions/*.md | wc -l` |
+| `reality_files` | **6** | `find crates/reality/src -name '*.rs' | wc -l` |
+| `reality_lines` | **1220** | `find crates/reality/src -name '*.rs' -exec cat {} + | wc -l` |
+| `reality_tests` | **29** | `grep -rc '#\[test\]' crates/reality/tests --include='*.rs' | awk -F: '{s+=$2} END {print s}'` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
 | `rs_files` | **63** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **23799** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_lines` | **23805** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 
-328 条事实。
+331 条事实。
 <!-- /AUTO:FACTS -->

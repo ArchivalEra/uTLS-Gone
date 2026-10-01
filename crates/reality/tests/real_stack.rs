@@ -295,7 +295,13 @@ fn spawn_xray(server: SocketAddr) -> (Child, u16) {
 }
 
 /// **判据 1**：stock Xray 客户端 → 本仓服务端，鉴权路径握手 + 往返数据。
+///
+/// ⚠️ `#[ignore]`：这条**需要 stock Xray 二进制**（真栈判据的核心一格）。默认不跑，
+/// 是为了让 `cargo test --workspace` 在没装 Xray 的机器上仍然全绿；CI 的
+/// `reality-stack` job 与本地都显式跑它（`--include-ignored`）。其余两条
+/// （未鉴权透传 / P-256-only）不需要 Xray，照常随 workspace 跑。
 #[test]
+#[ignore = "需要 stock Xray-core 客户端（取法见 xray_bin()）"]
 fn the_stock_xray_client_authenticates_and_moves_traffic() {
     let dest_port = spawn_local_dest();
     let (server_addr, stats) = spawn_reality_server(dest_port);

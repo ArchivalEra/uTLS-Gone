@@ -200,7 +200,7 @@ jobs:
           chmod +x /tmp/xray-bin/xray
           /tmp/xray-bin/xray version
       - name: 真栈判据（测试自己找 /tmp/xray-bin/xray）
-        run: cargo test -p reality --test real_stack -- --nocapture
+        run: cargo test -p reality --test real_stack -- --include-ignored --nocapture
 
   # 与上面那个 job 互补 —— 两个都别删，它们判的不是同一件事：
   #   * `upstream`         ：**未改一字节**的上游树，代价是把那两条外网测试 `-skip` 掉

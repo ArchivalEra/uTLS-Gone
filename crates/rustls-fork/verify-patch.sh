@@ -66,16 +66,35 @@ fi
 # ── 判据①′：**只有带 FORK 标记的文件**允许与原始树不同 ──
 # 这一条是 2026-10-01 用血换来的：`cargo fmt --all`（或在 vendored 目录里跑 rustfmt）
 # 会把**没改过的**上游文件也重排，实测一次污染 68 个文件，而当时两条判据都看不出来
-# —— 因为重新生成的补丁会把这些差异一起收进去（文件数变成了 80）。
-# 断言写成「每个差异文件都必须含 `FORK(utls-rs)`」，与判据①互为里外。
-stray=$(diff -rq "$PRISTINE_SRC" "$VENDORED/src" 2>/dev/null | while read -r line; do
-    case "$line" in
-        "Files "*" differ") f=$(printf '%s' "$line" | sed 's/^Files \(.*\) and .* differ$/\1/') ;;
-        "Only in $VENDORED/src"*": "*) f="$VENDORED/src/${line##*: }" ;;
-        *) continue ;;
-    esac
-    grep -q 'FORK(utls-rs)' "$f" 2>/dev/null || printf '%s\n' "$f"
-done)
+# —— 因为重新生成的补丁会把这些差异一起收进去（文件数 9→80、hunks 39→174，
+# 而「文件数==标记数」照样成立：标记数也跟着涨了）。
+#
+# ⚠️ 必须在 `git apply` **之前**跑：打完补丁两边就一样了，这条判据会失去意义。
+# 实现交给 python（shell 版在 subshell 里会丢变量与退出码；第一版就是这个 bug ——
+# 人为污染一个文件它照样绿，靠「污染了必须能红」验出来的）。
+stray=$(python3 /dev/stdin "$PRISTINE_SRC" "$VENDORED/src" <<'PYEOF'
+import os, sys
+pristine, ours = sys.argv[1], sys.argv[2]
+bad = []
+for root, _dirs, files in os.walk(ours):
+    for name in files:
+        p = os.path.join(root, name)
+        rel = os.path.relpath(p, ours)
+        q = os.path.join(pristine, rel)
+        try:
+            same = open(p, "rb").read() == open(q, "rb").read()
+        except FileNotFoundError:
+            same = False
+        if same:
+            continue
+        try:
+            if b"FORK(utls-rs)" not in open(p, "rb").read():
+                bad.append(rel)
+        except OSError:
+            pass
+print("\n".join(sorted(bad)))
+PYEOF
+)
 if [ -n "$stray" ]; then
     echo "⚠️ 判据①′不过：下面这些文件与原始树不同、却**没有** FORK(utls-rs) 标记：" >&2
     printf '%s\n' "$stray" >&2

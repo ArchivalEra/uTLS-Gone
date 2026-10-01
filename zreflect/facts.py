@@ -170,6 +170,14 @@ def _modified_by_us():
     return out
 
 
+def _iter_files_of(root):
+    """遍历**任意**目录下的文件（`_iter_files` 是按仓库相对路径设计的）。"""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            yield os.path.join(dirpath, name)
+
+
 def _find_under(rel_suffix):
     """在仓库里找以 `rel_suffix` 结尾的文件（跳过 .git/target/缓存目录）。
 
@@ -299,6 +307,42 @@ def measure_facts():
                 "crates/rustls-fork/",
                 "不变式：patch.diff 的文件数 == 带 FORK(utls-rs) 标记的文件数"
                 "（不等 ⇒ 补丁漏了文件，或漏了标记）")
+
+    # ── REALITY 等价实现（crates/reality）──
+    # 它有自己的对外承诺，所以值得自己的事实。三条都**从代码/测试里量**，
+    # 不手抄（手抄的数字会腐烂 —— 本仓的规矩）。
+    r_src = repo("crates/reality/src")
+    r_tests = repo("crates/reality/tests")
+    if os.path.isdir(r_src):
+        n, lines = 0, 0
+        for p in _iter_files_of(r_src):
+            if p.endswith(".rs"):
+                n += 1
+                try:
+                    lines += sum(1 for _ in open(p, encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
+        facts["reality_files"] = fact(
+            n, "find crates/reality/src -name '*.rs' | wc -l", "crates/reality/",
+            "REALITY 等价实现的规模（我们写的）")
+        facts["reality_lines"] = fact(
+            lines, "find crates/reality/src -name '*.rs' -exec cat {} + | wc -l",
+            "crates/reality/", "同上")
+    if os.path.isdir(r_tests):
+        # 判据条数：数 `#[test]`，**包含被 `#[ignore]` 的那条**（它也是判据，
+        # 只是需要外部二进制；不数进来会让「一共几条」这件事对不上测试输出）。
+        n = 0
+        for p in _iter_files_of(r_tests):
+            if not p.endswith(".rs"):
+                continue
+            try:
+                n += open(p, encoding="utf-8", errors="replace").read().count("#[test]")
+            except OSError:
+                pass
+        facts["reality_tests"] = fact(
+            n, "grep -rc '#\\[test\\]' crates/reality/tests --include='*.rs' "
+            "| awk -F: '{s+=$2} END {print s}'", "crates/reality/",
+            "判据条数（含 1 条需要 stock Xray 的 #[ignore]）")
 
     # ── 闸门与台账的健康度（**发现式**计数，与 gates-selftest.sh 同一口径）──
     gates = _count_named("zreflect", "check_", ".py")
