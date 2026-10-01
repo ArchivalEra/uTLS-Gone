@@ -33,7 +33,7 @@
 | `u_common_test.go`（`isGREASEUint16`） | 已判 | `crates/utls/src/ja3.rs`、`src/hello/stream.rs` 的 GREASE 判据 |
 | `u_ech_test.go`（`TestGREASEECHWrite`，对 inline raw vector） | **已判** | `src/hello/tests.rs` 的 `grease_ech_matches_the_upstream_inline_vector_fields`：把上游那条 254 字节向量**逐字段**移植（先判向量自洽，再判我们编出来的体长度与每个结构字段相同）。上游那条判据本身也不比载荷字节（它是每连接的随机量），所以这就是它的等价形式 |
 | `u_parrots_test.go` 的 `ReuseHybridAndClassicalKeyShares`（`:63` + 互补 `:96`） | **本轮已补** | `crates/utls-engine/tests/key_share_reuse.rs`（4 条）：Firefox 148 线上末 32 字节相同 + 只认经典组时 `Full`、Chrome 133 必须独立、声明后选混合组仍 `Full`、`from_bytes` 不凭空补这个声明。实现：`KeyShare::reuse` + 引擎按 `hybrid_component()` 只交一把 |
-| `u_fingerprinter_test.go` 的**解析**半边（4 个 golden spec、内联的真实捕获） | **部分** | `real_world_client_hello_round_trips`（Google 捕获逐字节）；另两条捕获（Slack 的 KeepPSK、curl 的 dump-larger-than-extensions）**未判**。见「三」 |
+| `u_fingerprinter_test.go` 的**解析**半边（4 个 golden spec、内联的真实捕获） | **已判**（三条捕获；JSON 除外） | 三条内联捕获全部逐字节回放：Google（`utls_testdata.rs`）、Slack 的 KeepPSK 与 curl 的 dump-larger-than-extensions（`real_world_captures.rs`）。BluntMimicry 的口径差异见下 |
 
 ## 二、握手行为（引擎那半边，但判据必须是「服务端给的结论」）
 
@@ -61,13 +61,13 @@
 2. **`ClientHelloSpec` 的 JSON 格式**（`u_clienthello_json_test.go` + 4 个 golden：
    Chrome102 / Firefox105 / iOS14 / Edge106）。其中 3 个预设我们有，**`Ios(14)` 没有**
    （`preset.rs` 返回 `PresetUnavailable`）—— 要 4/4 就得顺手实现 iOS 14。
-3. **Fingerprinter 的三件事**：
-   - `KeepPSK`（上游内联的 Slack `edgeapi.slack.com` 捕获，`u_fingerprinter_test.go:403`）；
-   - dump-larger-than-extensions（curl/7.74.0 转储，`:713` —— ClientHello 之后还有帧，
-     判「只吃到扩展为止」）；
-   - `AllowBluntMimicry`：**我们恒 blunt**（`crates/utls/src/hello/parse.rs:20` 把未知扩展
-     一律留成 `Opaque`，字节原样保留），与上游默认（`false`）不同 —— 要么补开关，
-     要么把这条差异写死在表里（**不允许默默不同**）。
+3. **`AllowBluntMimicry` 的口径差异（已写死在案，不是默默不同）**：
+   上游 `FromRaw` 默认（blunt=false）会**丢掉**不认识的扩展；我们是**恒 blunt**
+   （`crates/utls/src/hello/parse.rs:20`，未知扩展一律留成 `Opaque`、字节原样保留）。
+   理由：本仓的逐字节回放判据（Google / Slack / curl 三条捕获）只有在「什么都不丢」时
+   才可能成立；上游自己的 curl 那条判据也是显式开 `AllowBluntMimicry: true` 才吃下的。
+   若日后要补 blunt=false 那个开关，判据就是「反解-回放**不再**逐字节」—— 那是与本仓
+   全部回放判据相斥的另一条路，做之前要想清楚。
 4. **一条被 `from_bytes` 挡住的等价性**：`parse.rs` 把 `key_share` 归成 `Opaque`
    （这正是回放能逐字节相同的原因），代价是**反解出来的 spec 没有「组」**，
    于是它走不了引擎 —— 而 uTLS 那边可以：它在写出时**总是**用引擎新生成的密钥覆盖
