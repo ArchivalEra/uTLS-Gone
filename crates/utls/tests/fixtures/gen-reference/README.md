@@ -43,6 +43,37 @@ cp crates/utls/tests/fixtures/gen-reference/probes/ech_*_test.go /tmp/utls-ref/u
 `ech_server_live_test.go` 由 `cargo test -p utls-engine --test ech_utls_server -- --ignored`
 自动驱动（它自己复制探针、起服务端、连上去、断言两端都说「接受」）。
 
+## 跑上游**全套**（无代理 · 不 `-skip`）
+
+```sh
+sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
+# ⇒ 上游套件（无代理 · 不 -skip）：顶层 222 PASS / 0 FAIL / 1 SKIP
+#       skip：TestUTLSHandshakeClientParrotGolang（上游自己 t.Skip 的那条）
+```
+
+上游有两条测试带 `testenv.MustHaveExternalNetwork(t)`：`TestVerifyHostname`（拨
+`www.google.com`）与 `TestRealResumption`（拨 `yahoo.com`）。本机直连不到这两个域名，
+所以此前要么经 SOCKS5h 代理跑、要么把这两条 `-skip` 掉 —— 后者不是「无跳过」。
+
+脚本的做法是**只换目标域名**：换成国内直连可达、且两条判据都满足的 `www.baidu.com`
+（`TestVerifyHostname` 要「证书 SAN 与自身主机名一致」；`TestRealResumption` 要
+「支持 TLS 1.3 会话票据」）。**上游树在磁盘上一个字节都不动** —— 改写稿只存在于
+临时目录，靠 Go 自带的 `-overlay` 在**构建期**替换 `tls_test.go`。
+`VerifyHostname("www.yahoo.com")` 那句**故意留着不换**：它是断言失败的那一半。
+
+为什么这不是「放宽判据」：这两条测的机制（主机名校验 / 真实会话复用）与对端是谁无关，
+换域名不改变任何一个断言。**但边界要说清楚**：它是**另一个**判据，不是那条「完全未改动
+的上游套件」的替代 —— 后者只能在有代理的环境里跑（配方见
+`questions/09-full-suite-oracle.md`，记录值也是 222 PASS / 0 FAIL / 1 SKIP）。
+两条路径结论一致，但它们**不是同一条判据**，所以 `ci.yml` 里两个 job 都保留。
+
+候选域名是**实测**选的，不是拍的：`probes/egress_candidates_test.go` 就是那次选择
+（要联网，所以**不进 CI**，只在重选时手工跑）。实测里 `www.jd.com` 在 4 次中出现过
+**一次**「不复用」，所以没选它 —— 单次观测不足以支持「它能复用」这句话。
+
+脚本还会**断言「除上游自己跳的那条之外没有别的跳过」**：安静地少跑东西会被当成通过，
+那是这套系统里已经出现过两次的失败形状。
+
 ## 速度 / CPU 对比（两个基准，同层同工作量）
 
 | 侧 | 程序 | 动作 | 对应参照实现 |

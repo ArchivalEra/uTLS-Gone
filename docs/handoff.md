@@ -8,9 +8,11 @@
 
 判据全绿，而且没有一条靠跳过：
 
-- 原版 `go test` 全量（**不带 `-skip`**）在干净检出上通过：222 PASS / 0 FAIL / 1 SKIP
-  （唯一那条 SKIP 是上游自己 `t.Skip` 的）。那两条要真外网的测试靠本机一个 SOCKS5h 代理跑通，
-  配方见下面「环境」。
+- 原版 `go test` 全量（**不带 `-skip`**）通过：222 PASS / 0 FAIL / 1 SKIP
+  （唯一那条 SKIP 是上游自己 `t.Skip` 的）。**两条路都能跑到这个数**：一条经本机
+  SOCKS5h 代理跑**未改动**的上游树，另一条**无代理**——只把那两条测试拨号的目标域名
+  换成直连可达者（`run-upstream-suite.sh`，上游树磁盘不动）。配方见下面「环境」，
+  两条路的区别（为什么它们是**两个**判据）见 `gen-reference/README.md`。
 - 原版 `testdata/` 夹具 39 条逐字节一致；原版参照产出（预设指纹、随机化族）逐字段对账。
 - **真实 ECH 的接受那一半通了**：Cloudflare、defo.ie、test.defo.ie 三族服务器都报 `Accepted`；
   另有一条离线判据（我们的客户端 ↔ uTLS 自己的 ECH 服务端）。
@@ -58,8 +60,22 @@
   只复制 `ech_*_test.go`：同目录还有 `main.go`（`package main`），整个目录拷进去会让
   `go test` 直接 `setup failed`。`ech_utls_server` 那条测试会自己复制它需要的那个探针。
 - **那两条要真外网的原版测试**（`TestVerifyHostname` 拨 `www.google.com`、`TestRealResumption`
-  拨 `yahoo.com`）：本机直连不通（DNS 对 google 返回的是 Meta 段的地址，且无路由），
-  但经一个 SOCKS5h/HTTP 代理可达。**Go 的 `net.Dial` 不认代理环境变量**，所以要自己做端口转发：
+  拨 `yahoo.com`）有**两条路**，先看第 ①条：
+
+  **① 无代理（推荐，一条命令）** —— 把目标域名换成直连可达、判据等价的 `www.baidu.com`：
+
+  ```bash
+  sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
+  # ⇒ 上游套件（无代理 · 不 -skip）：顶层 222 PASS / 0 FAIL / 1 SKIP
+  ```
+
+  它**不改上游树**：改写稿只在临时目录里，靠 `go -overlay` 在**构建期**替换 `tls_test.go`。
+  为什么换域名不算放宽判据、以及为什么 `www.jd.com` 没被选中（实测 4 次里 1 次不复用），
+  见脚本与 `gen-reference/README.md` 的文件头。**注意它是另一条判据**，不是 ② 的替代。
+
+  **② 经代理跑未改动的那条**（要有一个 SOCKS5h/HTTP 代理；本机直连不通那两个域名 ——
+  DNS 对 google 返回的是 Meta 段的地址，且无路由）。**Go 的 `net.Dial` 不认代理环境变量**，
+  所以要自己做端口转发：
 
   ```bash
   # ① 两个名字指到两个回环地址（443 是特权端口 ⇒ sudo）
@@ -92,9 +108,9 @@ cargo test -p utls-engine --test ech_e2e -- --ignored              # 真实 ECH 
 cargo test -p utls-engine --test end_to_end -- --ignored           # 指纹层联网对账
 ```
 
-CI（[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)）跑五组：`rust`、`gates`、
-`patch-repro`、`ech-offline`、`upstream`。**联网判据、那两条 ECH/egress 测试、以及基准**
-不在 CI 里，理由与本地跑法写在那个文件头上。
+CI（[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)）跑六组：`rust`、`gates`、
+`patch-repro`、`ech-offline`、`upstream`、`upstream-no-skip`。**联网判据、那两条 ECH/egress
+测试、以及基准**不在 CI 里，理由与本地跑法写在那个文件头上。
 
 ## ECH 那条线：三处修复（现在是绿的，但别再犯）
 

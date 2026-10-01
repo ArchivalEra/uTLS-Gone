@@ -130,7 +130,7 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
 
 ## 判据与 CI
 
-CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑五组判据，每一组都能单独变红：
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑六组判据，每一组都能单独变红：
 
 | job | 判什么 |
 |---|---|
@@ -138,16 +138,26 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑五组判据，
 | `gates` | 五道闸门 + `gates-selftest.sh`（每个闸门先证明自己会红）+ 文档机器块与台账一致 |
 | `patch-repro` | 把 `patch.diff` 打到**原始** rustls 0.23.45 上，得到的树要与 `crates/rustls` **逐文件相同** |
 | `ech-offline` | 内层与 uTLS 的产出逐字节相同；我们的客户端能过 uTLS 自己的 ECH 服务端 |
-| `upstream` | 原版 `refraction-networking/utls` 自己的测试套件 |
+| `upstream` | 原版 `refraction-networking/utls` 自己的测试套件（不联网那两条 `-skip`） |
+| `upstream-no-skip` | 同上，但**一条都不跳** —— 那两条的目标域名由 `go -overlay` 在构建期换成直连可达者（上游树磁盘不动） |
 
 **不在 CI 里跑的，以及为什么**（不是忘了）：
 
 - **联网判据**（`end_to_end`、`ech_e2e`）：要打 browserleaks / Cloudflare / defo.ie 的 443。
   本地跑：`cargo test -p utls-engine --test end_to_end -- --ignored`（同理 `ech_e2e`）。
-- **原版那两条要真外网的测试**：本机是经一个 SOCKS5h 代理加 `/etc/hosts` 才通的
-  （配方在 `questions/09-full-suite-oracle.md`），GitHub runner 上跑不了那套转发，
-  所以 `upstream` 那个 job 显式 `-skip` 它们；其余一条都不跳。
 - **基准** `plan-cost`：只打数字给人看，不做门禁（换台机器数值就变）。
+
+**原版那两条要真外网的测试**（`TestVerifyHostname` / `TestRealResumption`）有两条路，
+`ci.yml` 里两个 job 各走一条，**都不是「跳过」**：
+
+- `upstream` —— 上游树**一字节不改**，代价是把那两条 `-skip` 掉；
+- `upstream-no-skip` —— **不跳**，代价是那两条拨号的目标域名从 `www.google.com` /
+  `yahoo.com` 换成直连可达、且判据等价的 `www.baidu.com`（用 `go -overlay` 在**构建期**
+  替换测试文件，上游树磁盘上仍然没动）。这两条测的机制（主机名校验 / 真实 TLS 1.3 复用）
+  与对端无关，换域名不动任何断言 —— 但它是**另一条**判据，不是未改动那条的替代。
+  本地跑一条命令：`sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>`
+  ⇒ 顶层 **222 PASS / 0 FAIL / 1 SKIP**（唯一的 skip 是上游自己 `t.Skip` 的那条）。
+  有代理时跑**未改动**那条全量的配方在 `questions/09-full-suite-oracle.md`。
 
 ## 跑一遍
 
@@ -163,6 +173,9 @@ cargo test -p utls-engine --test ech_e2e -- --ignored
 # ECH 的离线判据（要 Go 与一份 uTLS 源码树，取回命令见 crates/utls/tests/fixtures/gen-reference/README.md）
 cargo test -p utls-engine --test ech_inner_utls
 cargo test -p utls-engine --test ech_utls_server -- --ignored
+
+# 原版全套**不 -skip 也不走代理**（同样要那份源码树）⇒ 222 PASS / 0 FAIL / 1 SKIP
+sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
 ```
 
 ## 明确的非目标

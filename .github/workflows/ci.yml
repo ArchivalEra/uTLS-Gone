@@ -1,17 +1,16 @@
 # 每次 push / PR 都跑一遍本仓**自己的判据** —— 不是「能编译就算过」。
 #
 # 五个 job 对应五类判据，每一类都能单独变红：
-#   rust        编译期与运行期：fmt / clippy -D warnings / 全部测试
-#   gates       事实系统：五道闸门 + 自证 + 文档里的机器块与台账一致
-#   patch-repro 补丁可重现：打到**原始** rustls 上应得到与 vendored 目录逐文件相同的树
-#   ech-offline ECH 的离线判据：内层与 uTLS 逐字节相同 + uTLS 自家服务端接受我们的提议
-#   upstream    原版套件：跑 refraction-networking/utls 自己的测试
+#   rust            编译期与运行期：fmt / clippy -D warnings / 全部测试
+#   gates           事实系统：五道闸门 + 自证 + 文档里的机器块与台账一致
+#   patch-repro     补丁可重现：打到**原始** rustls 上应得到与 vendored 目录逐文件相同的树
+#   ech-offline     ECH 的离线判据：内层与 uTLS 逐字节相同 + uTLS 自家服务端接受我们的提议
+#   upstream        原版套件：跑 refraction-networking/utls 自己的测试（不联网那两条 `-skip`）
+#   upstream-no-skip 原版套件**全量**：一条都不跳，见文件末尾那个 job 的说明
 #
 # 不在 CI 里跑的，以及为什么（别把这几条当成「忘了」）：
 #   * 联网判据（`end_to_end` / `ech_e2e`）：要打 browserleaks / Cloudflare / defo.ie 的 443。
 #     它们在本地用 `cargo test -- --ignored` 跑，判据本身仍在仓库里。
-#   * 原版那两条要真外网的测试：本机是**经一个 SOCKS5h 代理 + /etc/hosts** 才通的
-#     （配方见 questions/09）；GitHub runner 上跑不了那套转发，所以这里显式 `-skip`。
 #   * 基准 `plan-cost`：只是打数字给人看，不做门禁（换机器数值就变）。
 
 name: ci
@@ -149,3 +148,33 @@ jobs:
           # 除它们之外**一条都不跳**，唯一被 skip 的是上游自己 t.Skip 的那条。
           go test -count=1 -timeout 480s \
             -skip 'TestVerifyHostname|TestRealResumption' ./...
+
+  # 与上面那个 job 互补 —— 两个都别删，它们判的不是同一件事：
+  #   * `upstream`         ：**未改一字节**的上游树，代价是把那两条外网测试 `-skip` 掉
+  #                          ⇒ 「上游那棵树自己没问题」的基线。
+  #   * `upstream-no-skip` ：**一条都不跳**，代价是那两条的目标域名由 `-overlay` 在
+  #                          **构建期**换成国内直连可达、且判据等价的 `www.baidu.com`
+  #                          （上游树在磁盘上仍是一字节没动）
+  #                          ⇒ 「全量无跳过」这句话在无代理环境下也成立。
+  upstream-no-skip:
+    name: 原版套件（无代理 · 不 -skip）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: 取原版源码
+        run: |
+          set -eu
+          mkdir -p /tmp/utls-ref/utls-master
+          curl -sSL -o /tmp/master.tar.gz \
+            https://codeload.github.com/refraction-networking/utls/tar.gz/refs/heads/master
+          # --strip-components=1：同上，codeload 的顶层目录名随 ref 而变。
+          tar xzf /tmp/master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
+      - name: 跑全量（不 -skip；上游树靠 go -overlay 在构建期替换，磁盘不动）
+        env:
+          # runner 的 module cache 是冷的（脚本默认 `GOPROXY=off`，本地用它证明不联网取模块）。
+          GOPROXY: https://proxy.golang.org,direct
+        run: sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
