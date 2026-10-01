@@ -144,7 +144,7 @@ jobs:
           # --strip-components=1：codeload 给的顶层目录名随 ref 而变
           # （分支 ref 是 `utls-master/`，tag 是 `utls-1.8.2/`），写死 mv 会踩空。
           tar xzf /tmp/master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
-          cd utls-master
+          cd /tmp/utls-ref/utls-master   # 绝对路径：上面没再 cd 过，相对路径会落到 checkout 目录
           # 那两条要 www.google.com / yahoo.com 的 egress（见文件头说明），这里跳过；
           # 除它们之外**一条都不跳**，唯一被 skip 的是上游自己 t.Skip 的那条。
           go test -count=1 -timeout 480s \
