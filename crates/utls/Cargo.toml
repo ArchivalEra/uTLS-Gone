@@ -11,6 +11,13 @@ getrandom.workspace = true
 md-5.workspace = true
 sha3.workspace = true
 hkdf.workspace = true
+# 只在 `json` feature 下进依赖树：上游 ClientHelloSpec 的 JSON 格式。
+serde_json = { version = "1", optional = true }
+
+[features]
+# 上游 ClientHelloSpec 的 JSON 格式（u_clienthello_json_test.go 那一族）。
+# 默认关：指纹层默认依赖树里不该有 JSON 解析器；CI 用 --all-features 跑它的判据。
+json = ["dep:serde_json"]
 
 [[example]]
 name = "reflect-facts"
@@ -18,3 +25,7 @@ name = "reflect-facts"
 [dev-dependencies]
 # 只为读 tests/fixtures/utls-reference.json —— 参照实现产出的对账夹具。
 serde_json = "1"
+
+[[test]]
+name = "utls_json_golden"
+required-features = ["json"]

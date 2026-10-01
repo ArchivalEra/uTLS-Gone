@@ -35,7 +35,7 @@ var presets = map[string]tls.ClientHelloID{
 	"firefox_99": tls.HelloFirefox_99, "firefox_102": tls.HelloFirefox_102,
 	"firefox_105": tls.HelloFirefox_105, "firefox_120": tls.HelloFirefox_120,
 	"firefox_148": tls.HelloFirefox_148,
-	"ios_11": tls.HelloIOS_11_1, "ios_12": tls.HelloIOS_12_1, "ios_13": tls.HelloIOS_13,
+	"ios_11": tls.HelloIOS_11_1, "ios_12": tls.HelloIOS_12_1, "ios_13": tls.HelloIOS_13, "ios_14": tls.HelloIOS_14,
 	"android_11": tls.HelloAndroid_11_OkHttp,
 	"edge_85": tls.HelloEdge_85, "edge_106": tls.HelloEdge_106,
 	"safari_16": tls.HelloSafari_16_0, "safari_26": tls.HelloSafari_26_3,

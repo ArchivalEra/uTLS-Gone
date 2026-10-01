@@ -45,10 +45,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo fmt --check
         run: cargo fmt --all --check
-      - name: cargo clippy（-D warnings）
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: cargo test --workspace
-        run: cargo test --workspace
+      # --all-features：`json` feature（上游 ClientHelloSpec 的 JSON 格式）默认关，
+      # 它的判据（utls_json_golden）挂着 required-features —— 不开就是**安静地少跑一个目标**。
+      - name: cargo clippy（-D warnings，全 feature）
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: cargo test --workspace（全 feature）
+        run: cargo test --workspace --all-features
       - name: 速度与 CPU（只看数字，不做门禁）
         run: |
           cargo build --release --example plan-cost

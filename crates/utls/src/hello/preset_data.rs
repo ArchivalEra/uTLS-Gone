@@ -1899,6 +1899,100 @@ pub(crate) fn ios_13() -> ClientHelloSpec {
     }
 }
 
+/// iOS 14。
+///
+/// 逐条对应 uTLS `u_parrots.go` 的 `case HelloIOS_14`（上游该 case 无逐行注释，
+/// 差别都对照 `HelloIOS_13` 标注）。与 13 相比多了四处 **GREASE**：
+/// 密码套件表头、`supported_groups` 表头、`key_share` 表头、`supported_versions` 表头，
+/// 外加首尾两个 GREASE **扩展**；并且 signature_algorithms 里 `PSS_WITH_SHA384`
+/// **出现了两次** —— 上游原样，这里也原样（抄预设不是修预设）。
+pub(crate) fn ios_14() -> ClientHelloSpec {
+    ClientHelloSpec {
+        legacy_version: v::LEGACY_VERSION,
+        cipher_suites: vec![
+            CodePoint::Grease,
+            v::TLS_AES_128_GCM_SHA256.into(),
+            v::TLS_AES_256_GCM_SHA384.into(),
+            v::TLS_CHACHA20_POLY1305_SHA256.into(),
+            v::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384.into(),
+            v::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.into(),
+            v::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305.into(),
+            v::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384.into(),
+            v::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.into(),
+            v::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305.into(),
+            v::DISABLED_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384.into(),
+            v::TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256.into(),
+            v::TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA.into(),
+            v::TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA.into(),
+            v::DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384.into(),
+            v::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256.into(),
+            v::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA.into(),
+            v::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA.into(),
+            v::TLS_RSA_WITH_AES_256_GCM_SHA384.into(),
+            v::TLS_RSA_WITH_AES_128_GCM_SHA256.into(),
+            v::DISABLED_TLS_RSA_WITH_AES_256_CBC_SHA256.into(),
+            v::TLS_RSA_WITH_AES_128_CBC_SHA256.into(),
+            v::TLS_RSA_WITH_AES_256_CBC_SHA.into(),
+            v::TLS_RSA_WITH_AES_128_CBC_SHA.into(),
+            // 上游写的是裸值 0xc008 —— 名字表里它是 ECDHE_ECDSA_WITH_3DES
+            // （FAKE_ 前缀是我们对「Go 已禁用」套件的记法）。
+            v::FAKE_TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA.into(),
+            v::TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA.into(),
+            v::TLS_RSA_WITH_3DES_EDE_CBC_SHA.into(),
+        ],
+        compression_methods: vec![v::COMPRESSION_NONE],
+        extensions: vec![
+            Extension::Grease,
+            Extension::ServerName,
+            Extension::ExtendedMasterSecret,
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
+            Extension::SupportedGroups(vec![
+                CodePoint::Grease,
+                v::X25519.into(),
+                v::CURVE_P256.into(),
+                v::CURVE_P384.into(),
+                v::CURVE_P521.into(),
+            ]),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
+            Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
+            Extension::StatusRequest,
+            Extension::SignatureAlgorithms(vec![
+                v::ECDSA_WITH_P256_AND_SHA256.into(),
+                v::PSS_WITH_SHA256.into(),
+                v::PKCS1_WITH_SHA256.into(),
+                v::ECDSA_WITH_P384_AND_SHA384.into(),
+                v::ECDSA_WITH_SHA1.into(),
+                v::PSS_WITH_SHA384.into(),
+                v::PSS_WITH_SHA384.into(),
+                v::PKCS1_WITH_SHA384.into(),
+                v::PSS_WITH_SHA512.into(),
+                v::PKCS1_WITH_SHA512.into(),
+                v::PKCS1_WITH_SHA1.into(),
+            ]),
+            Extension::SignedCertificateTimestamp,
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
+            Extension::SupportedVersions(vec![
+                CodePoint::Grease,
+                v::VERSION_TLS13.into(),
+                v::VERSION_TLS12.into(),
+                v::VERSION_TLS11.into(),
+                v::VERSION_TLS10.into(),
+            ]),
+            Extension::Grease,
+            Extension::Padding(Padding::BoringStyle),
+        ],
+        session_id: SessionId::Random(32),
+        variability: Variability::Stable,
+    }
+}
+
 /// Android 11 OkHttp。
 ///
 /// 逐条对应 uTLS `u_parrots.go:1875-1920` 的 `case HelloAndroid_11_OkHttp`。

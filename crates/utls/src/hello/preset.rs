@@ -34,7 +34,7 @@
 //! - `HelloGolang`：uTLS 里它是「用 Go stdlib 的 ClientHello」。在 Rust 里对应
 //!   「用 rustls 自己的 ClientHello」——那正好是**不使用本 crate** 时得到的东西，
 //!   所以这里不可能有它的 spec；
-//! - 未列出的版本号（例如 `Chrome(999)` / `Ios(14)`）：uTLS 里没有对应版本串，
+//! - 未列出的版本号（例如 `Chrome(999)`；`Ios(14)` **已实现**）：uTLS 里没有对应版本串，
 //!   而**猜一个最近邻**会让调用方以为自己在模仿 Chrome 120，实际发出去的是别的版本 ——
 //!   这种错在指纹上看得见、在代码里看不见。
 //!
@@ -167,6 +167,7 @@ impl ClientHelloId {
             ClientHelloId::Ios(11),
             ClientHelloId::Ios(12),
             ClientHelloId::Ios(13),
+            ClientHelloId::Ios(14),
             ClientHelloId::Android(11),
             ClientHelloId::Edge(85),
             ClientHelloId::Edge(106),
@@ -257,6 +258,8 @@ pub(crate) fn spec_of(id: ClientHelloId) -> Result<ClientHelloSpec, SpecError> {
         ClientHelloId::Ios(11) => Ok(pd::ios_11_1()),
         ClientHelloId::Ios(12) => Ok(pd::ios_12_1()),
         ClientHelloId::Ios(13) => Ok(pd::ios_13()),
+        // 上游 `HelloIOS_14` 在 `u_parrots.go` 里没有逐行注释；差别对照 `HelloIOS_13` 标注。
+        ClientHelloId::Ios(14) => Ok(pd::ios_14()),
         ClientHelloId::Android(11) => Ok(pd::android_11_okhttp()),
         // ── 其它 ──────────────────────────────────────────────────────────────
         ClientHelloId::Edge(85) => Ok(pd::edge_85()),
@@ -688,10 +691,9 @@ mod tests {
             e,
             SpecError::PresetUnavailable(ClientHelloId::Chrome(999))
         ));
-        assert!(matches!(
-            spec_of(ClientHelloId::Ios(14)).unwrap_err(),
-            SpecError::PresetUnavailable(ClientHelloId::Ios(14))
-        ));
+        // `Ios(14)` **已实现**（为 ClientHello-JSON-iOS14.json 那条 golden 而补），
+        // 不再进这份名单 —— 它现在有自己的正向断言（见 `utls_json_golden`）。
+        assert!(spec_of(ClientHelloId::Ios(14)).is_ok());
         // `Golang` 不是「未实现」，是「在本架构里不适用」—— 结论已写进错误变体。
         assert!(matches!(
             spec_of(ClientHelloId::Golang).unwrap_err(),
@@ -711,11 +713,7 @@ mod tests {
             );
         }
         // 清单里**没有**的相邻版本必须报错（不许静默降级）。
-        for id in [
-            ClientHelloId::Chrome(999),
-            ClientHelloId::Firefox(999),
-            ClientHelloId::Ios(14),
-        ] {
+        for id in [ClientHelloId::Chrome(999), ClientHelloId::Firefox(999)] {
             assert!(!ClientHelloId::implemented().contains(&id));
             assert!(spec_of(id).is_err(), "{id} 不在清单里，却产出了 spec");
         }

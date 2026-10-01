@@ -29,7 +29,7 @@
 |---|---|---|
 | `u_parrots_test.go` 全族的 spec 深拷贝、每家族扩展序列 | 已判 | `crates/utls/src/hello/preset.rs`（36 条自测：每家族的扩展类型、PSK 位置、填充带、无重复、只有 Chrome 是乱序） |
 | `u_conn_test.go` 的 parrot 握手族 + `testdata/Client-TLSv*-UTLS-*`（55 个） | 已判 | `crates/utls/tests/utls_testdata.rs`：**39 个逐字节对账**（含 `Flow 1` 与 HRR 的 `Flow 3`）；16 个有理由地跳过，逐条写在 `fixtures/utls-testdata/README.md` |
-| `u_clienthello_json_test.go` + `testdata/ClientHello-JSON-*.json`（4 个） | **未做** | 我们连 uTLS 的 `ClientHelloSpec` JSON **格式**都还没有（`serde_json` 只是 dev-dep，用来读自己的夹具）。见「三」 |
+| `u_clienthello_json_test.go` + `testdata/ClientHello-JSON-*.json`（4 个） | **已判** | `crates/utls/src/json.rs`（feature `json`，默认关；serde_json 变 optional）+ `tests/utls_json_golden.rs`：四份 golden 反解出的 spec 与 `from_preset` **逐字段相同**（模型级 PartialEq，GREASE 两边都是占位符）。为这份 golden 补了 **`Ios(14)` 预设**，其指纹事实（`fp_ios_14_*`）已入台账，且 conformance 那条对账判它对着上游**实时输出**逐字段一致 |
 | `u_common_test.go`（`isGREASEUint16`） | 已判 | `crates/utls/src/ja3.rs`、`src/hello/stream.rs` 的 GREASE 判据 |
 | `u_ech_test.go`（`TestGREASEECHWrite`，对 inline raw vector） | **已判** | `src/hello/tests.rs` 的 `grease_ech_matches_the_upstream_inline_vector_fields`：把上游那条 254 字节向量**逐字段**移植（先判向量自洽，再判我们编出来的体长度与每个结构字段相同）。上游那条判据本身也不比载荷字节（它是每连接的随机量），所以这就是它的等价形式 |
 | `u_parrots_test.go` 的 `ReuseHybridAndClassicalKeyShares`（`:63` + 互补 `:96`） | **本轮已补** | `crates/utls-engine/tests/key_share_reuse.rs`（4 条）：Firefox 148 线上末 32 字节相同 + 只认经典组时 `Full`、Chrome 133 必须独立、声明后选混合组仍 `Full`、`from_bytes` 不凭空补这个声明。实现：`KeyShare::reuse` + 引擎按 `hybrid_component()` 只交一把 |
@@ -58,24 +58,21 @@
    **仍缺**：(a) `u_quic.go` 的 `UQUICConn` 那层接缝（rustls 有 `pub mod quic`，
    但我们的外供 ClientHello 还没接上 QUIC 连接）；(b) 真握手判据
    （服务端看到的传输参数扩展与我们算的一致）。
-2. **`ClientHelloSpec` 的 JSON 格式**（`u_clienthello_json_test.go` + 4 个 golden：
-   Chrome102 / Firefox105 / iOS14 / Edge106）。其中 3 个预设我们有，**`Ios(14)` 没有**
-   （`preset.rs` 返回 `PresetUnavailable`）—— 要 4/4 就得顺手实现 iOS 14。
-3. **`AllowBluntMimicry` 的口径差异（已写死在案，不是默默不同）**：
+2. **`AllowBluntMimicry` 的口径差异（已写死在案，不是默默不同）**：
    上游 `FromRaw` 默认（blunt=false）会**丢掉**不认识的扩展；我们是**恒 blunt**
    （`crates/utls/src/hello/parse.rs:20`，未知扩展一律留成 `Opaque`、字节原样保留）。
    理由：本仓的逐字节回放判据（Google / Slack / curl 三条捕获）只有在「什么都不丢」时
    才可能成立；上游自己的 curl 那条判据也是显式开 `AllowBluntMimicry: true` 才吃下的。
    若日后要补 blunt=false 那个开关，判据就是「反解-回放**不再**逐字节」—— 那是与本仓
    全部回放判据相斥的另一条路，做之前要想清楚。
-4. **一条被 `from_bytes` 挡住的等价性**：`parse.rs` 把 `key_share` 归成 `Opaque`
+3. **一条被 `from_bytes` 挡住的等价性**：`parse.rs` 把 `key_share` 归成 `Opaque`
    （这正是回放能逐字节相同的原因），代价是**反解出来的 spec 没有「组」**，
    于是它走不了引擎 —— 而 uTLS 那边可以：它在写出时**总是**用引擎新生成的密钥覆盖
    spec 里的 keyshare 数据（`handshake_client_tls13.go:391`，
    `// new ks seems to be generated either way`），所以一份 `Fingerprinter` 出的 spec
    照样能握手。这是「Fingerprinter 一族」的根，见 `tests/key_share_reuse.rs` 第四条里
    钉住的那条已知边界。
-5. **early data（0-RTT）**：上游 `quic_test.go` 里有 declined-early-data 的判据；
+4. **early data（0-RTT）**：上游 `quic_test.go` 里有 declined-early-data 的判据；
    我们一行没有。uTLS 的早期实现同样不支持（`u_conn.go` 的注释），但这属于「未做」，
    不写成「上游也没有」。
 

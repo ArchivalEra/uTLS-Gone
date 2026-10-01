@@ -15,6 +15,8 @@
 
 pub mod hello;
 pub mod ja3;
+#[cfg(feature = "json")]
+pub mod json;
 pub mod quic;
 pub mod values;
 
