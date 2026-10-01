@@ -46,18 +46,23 @@
 | `TestVerifyHostname`（真外网 `www.google.com`） | 已判（换域名） | 同上 |
 | `TestECH` / `TestTLS13ECHRejectionCallbacks` / `TestUTLSECH` | 已判 | `tests/ech.rs`、`tests/ech_offer.rs`、`tests/ech_inner_utls.rs`（内层与 uTLS 逐字节）、`tests/ech_e2e.rs`（三族真服务器 `Accepted`）、`tests/ech_utls_server.rs`（过 uTLS 自己的服务端）；证据链在 `questions/10` |
 
-## 三、**未做**（真缺口，逐条）
+## 三、**未做 / 已写明的语义差异**
 
-1. **QUIC 指纹层 —— 编码层已移植，连接那半边未接**。
+1. **QUIC 指纹层 —— 已移植并接上（见上）**。
    `u_quic_transport_parameters.go` 已移植为 `crates/utls/src/quic.rs`，上游三条判据
    都有了 Rust 版：`TestMarshal`（Firefox 参数集 **golden bytes 逐字节**）、
    `TestGetGREASEVersion`（4096 次抽样全是 `0x?a?a?a?a` 且高位不全同）、
    `TestVersionInformationGREASESubstitution`（哨兵逐次替换、非哨兵原样、结构里仍是哨兵）。
    **一处刻意的差别**（写在模块头）：上游每次 `Value()` 从系统熵新抽，我们由**每连接的
    seed** 驱动（与 hello 分域）—— 跨连接照样每条不同，**同连接可复现**（HRR 第二飞需要）。
-   **仍缺**：(a) `u_quic.go` 的 `UQUICConn` 那层接缝（rustls 有 `pub mod quic`，
-   但我们的外供 ClientHello 还没接上 QUIC 连接）；(b) 真握手判据
-   （服务端看到的传输参数扩展与我们算的一致）。
+   **接缝也已打通**（`tests/quic_handshake.rs`）：真实 QUIC-TLS 握手（rustls 的
+   `quic::ClientConnection` ↔ `quic::ServerConnection` 互相泵 CRYPTO 帧）跑通，
+   且服务端 `quic_transport_parameters()` 读到的是**我们嵌进外供 hello 的那份字节** ——
+   判别器设计：传给 `ClientConnection::new` 的 `params` 是**故意不同**的占位字节，
+   服务端读到哪份就证明哪个 hello 上了线（rustls 自建 hello 会带占位字节）。
+   为此给模型加了 `Extension::QuicTransportParameters`（原始字节；编码层归
+   [`crate::quic`]）。rustls 的 QUIC 模块只有 QUIC-TLS 那一半（打包/ACK/拥塞控制
+   是 quinn 的活），但指纹住在 ClientHello 里，恰好全在 rustls 有的那一半内。
 2. **`AllowBluntMimicry` 的口径差异（已写死在案，不是默默不同）**：
    上游 `FromRaw` 默认（blunt=false）会**丢掉**不认识的扩展；我们是**恒 blunt**
    （`crates/utls/src/hello/parse.rs:20`，未知扩展一律留成 `Opaque`、字节原样保留）。

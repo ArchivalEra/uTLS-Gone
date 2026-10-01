@@ -296,6 +296,15 @@ pub enum Extension {
     ///
     /// 除了组列表，它还带一个「哪一对共用密钥材料」的声明 —— 见 [`KeyShare`]。
     KeyShare(KeyShare),
+    /// `quic_transport_parameters`（码点 39）：TLS over QUIC 时**客户端的传输参数**。
+    ///
+    /// 上游的 `QUICTransportParametersExtension` 由 preset 路径填这个扩展
+    /// （`u_quic.go` 注释：用 preset 时 `SetTransportParameters` 不走
+    /// `quic.transportParams`）—— 所以它属于指纹的一部分。这里存**原始字节**
+    /// （编码交给 [`crate::quic`] 的 `TransportParameters::marshal`，bytes 由调用方给）。
+    /// rustls 的 QUIC 服务端要求 ClientHello 必须带它，否则握手直接失败 ——
+    /// 这就是「指纹化 QUIC 客户端」必须走本扩展的原因。
+    QuicTransportParameters(Vec<u8>),
     /// uTLS 的 GREASE ECH（`0xfe0d`）：GREASE 用的假 ECH。
     ///
     /// 候选集**随预设不同**：Chrome 列 1 个候选套件与 4 个载荷长度（⇒ 总长每连接会变），
@@ -435,6 +444,7 @@ impl Extension {
             Extension::KeyShare(_) => v::EXT_KEY_SHARE,
             Extension::GreaseEch(_) => v::EXT_ENCRYPTED_CLIENT_HELLO,
             Extension::PreSharedKey(_) => v::EXT_PRE_SHARED_KEY,
+            Extension::QuicTransportParameters(_) => v::EXT_QUIC_TRANSPORT_PARAMETERS,
             Extension::StatusRequest => v::EXT_STATUS_REQUEST,
             Extension::ExtendedMasterSecret => v::EXT_EXTENDED_MASTER_SECRET,
             Extension::RenegotiationInfo(_) => v::EXT_RENEGOTIATION_INFO,

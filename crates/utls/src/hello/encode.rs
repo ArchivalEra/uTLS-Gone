@@ -243,6 +243,14 @@ pub(crate) fn marshal(
                     emit: true,
                 });
             }
+            Extension::QuicTransportParameters(bytes) => {
+                resolved.push(Resolved {
+                    ty: v::EXT_QUIC_TRANSPORT_PARAMETERS,
+                    body: bytes.clone(),
+                    pinned: false,
+                    emit: true,
+                });
+            }
             Extension::PreSharedKey(psk) => {
                 // 留在列表里（乱序抽取要用它的位置）；**发不发**由 `is_emitted` 决定 ——
                 // 没有会话时它零字节，与 uTLS 的 `pskExtLen() == 0` 同义。

@@ -174,6 +174,7 @@ pub const EXT_CHANNEL_ID_OLD: u16 = 30031;
 pub const EXT_CHANNEL_ID: u16 = 30032;
 /// draft-ietf-tls-esni-17（uTLS `u_common.go`）。
 pub const EXT_ENCRYPTED_CLIENT_HELLO: u16 = 0xfe0d;
+/// QUIC 传输参数（RFC 9000 §18.2 的标准码点；草案码点 0xffa5 本仓不支持）。
 pub const EXT_ECH_OUTER_EXTENSIONS: u16 = 0xfd00;
 
 // ── 其它 ───────────────────────────────────────────────────────────────────
