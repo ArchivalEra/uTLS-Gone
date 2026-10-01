@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T15:06:10+0800",
+ "generated": "2026-10-01T19:00:02+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -14,13 +14,13 @@
    "source": "toolchain"
   },
   "rs_files": {
-   "value": 50,
+   "value": 56,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
   },
   "rs_lines": {
-   "value": 20929,
+   "value": 22005,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
@@ -38,13 +38,13 @@
    "note": "闸门/采集器"
   },
   "md_files": {
-   "value": 22,
+   "value": 23,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
    "source": "repo",
    "note": "文档"
   },
   "md_lines": {
-   "value": 2875,
+   "value": 2950,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
    "source": "repo",
    "note": "文档"
@@ -104,13 +104,13 @@
    "note": "闸门数：登记是被发现的，不是被记得的"
   },
   "question_count": {
-   "value": 10,
+   "value": 11,
    "cmd": "ls questions/*.md | wc -l",
    "source": "questions/",
    "note": "悬案总数"
   },
   "open_questions": {
-   "value": 0,
+   "value": 1,
    "cmd": "python3 -c \"import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))\"",
    "source": "questions/",
    "note": "未结案的悬案 —— 读法与闸门同源（别改成子串匹配）"

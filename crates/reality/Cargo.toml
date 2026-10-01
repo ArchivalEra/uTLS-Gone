@@ -1,0 +1,17 @@
+[package]
+name = "reality"
+description = "XTLS/REALITY 的 Rust 等价实现：鉴权 / 密钥派生 / 镜像与 fallback（权威参照 XTLS/REALITY）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+x25519-dalek.workspace = true
+aes-gcm.workspace = true
+sha2.workspace = true
+hkdf.workspace = true
+
+[dev-dependencies]
+utls = { path = "../utls" }
+serde_json = "1"

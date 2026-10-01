@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/utls", "crates/utls-engine"]
+members = ["crates/utls", "crates/utls-engine", "crates/reality"]
 # 引擎 fork 是**被 patch 的依赖**，不是本 workspace 的成员 —— 否则 `cargo test --workspace`
 # 会去跑 rustls 自己那套庞大的测试。它由下面的 `[patch.crates-io]` 引入。
 exclude = ["crates/rustls"]
@@ -25,6 +25,10 @@ md-5 = "0.10"
 # 纯 Rust，无 FFI。
 sha3 = "0.10"
 hkdf = "0.12"
+sha2 = "0.10"
+aes-gcm = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+
 
 [patch.crates-io]
 # fork 的 rustls：新增的 ClientHello 外供接缝（见 crates/rustls-fork/README.md）。
