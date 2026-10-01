@@ -42,6 +42,11 @@ fork 掉 TLS 引擎、在上面搭 `u_*` 层；唯一的区别是引擎从 Go �
   ⇒ `ok`，**222 PASS / 0 FAIL / 1 SKIP**（那条 SKIP 是上游自己跳的）；两条要真外网的测试
   靠本机 SOCKS5h 代理跑通，配方与脚本见 `questions/09-*.md` 与
   `crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py`。
+- **CI 在跑本仓自己的判据**（`.github/workflows/ci.yml`，五个 job）：
+  `rust`（fmt / clippy -D warnings / 全部测试）、`gates`（五道闸门 + 自证 + 机器块一致）、
+  `patch-repro`（补丁打到原始 rustls 上要与 vendored 树逐文件相同）、
+  `ech-offline`（内层逐字节 + 过 uTLS 自己的 ECH 服务端）、`upstream`（原版套件）。
+  联网判据与那两条要真外网的原版测试**不在 CI 里**，理由与本地跑法写在 workflow 文件头。
 - **事实系统**：[[gate_count]] 个闸门（**发现式**名录，见 `gates-selftest.sh`），
   [[question_count]] 条悬案（未结案 [[open_questions]] 条），[[retraction_count]] 条翻案，
   台账 [[rs_files]] 个 `.rs` 文件 / [[rs_lines]] 行的规模。
@@ -662,7 +667,7 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
 | `md_files` | **20** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **2356** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_lines` | **2361** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **16** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
 | `py_lines` | **1991** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
