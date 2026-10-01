@@ -465,8 +465,8 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 
 补丁的能力设计是对的（编译期就通过了对它的静态检查，`git apply` 也干净）。
 但把它接进 workspace、真的连一台服务器之后，连炸三处；后来把**第二飞**也跑起来，
-又炸第四处。四次都不是「设计想错了」，而是「**没运行过**」。四条现在都修了，
-并且各自在代码里留了说明。
+又炸第四处；再往后接**真实 ECH** 与 **TLS 1.2 时代的指纹**，又炸第五、六、七处。
+七次都不是「设计想错了」，而是「**没运行过**」。七条现在都修了，并且各自在代码里留了说明。
 
 | # | 症状 | 根因 | 修法 |
 |---|---|---|---|
@@ -476,11 +476,17 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 
 | 4 | `PeerMisbehaved(IllegalHelloRetryRequestWithWrongSessionId)`，来自把一条真实的 HRR 喂进第二飞路径时 | 引擎自己为每条连接生成一个 `legacy_session_id`（RFC 8446 §4.1.2 的兼容措施），并在收到 HRR 时**要求服务器回显它**。但外供 hello 的 session id 是**调用方写进字节里的**（uTLS 的预设也是自己生成的），引擎那个值从来没上过线 —— 于是每一次重试都判「回显不对」 | 外供路径里从**将要发出的字节**里读 `legacy_session_id`，覆盖引擎自己那个值（与它已经在做的「从字节里学 offered cipher suites / ALPN」同一件事） |
 
-**这四条的共同形状值得记住**：补丁把「ClientHello 的字节由谁写」这件事处理对了，
-但**引擎在字节之外还维护着一堆状态**（`Debug` 契约、`kx_state` 状态机、`EchStatus`），
-那些状态原本是由「引擎自己构建 ClientHello」这条路径顺手设置的。
-外供路径绕过了设置它们的地方，于是每一样都要显式补上 —— 而**只有真的跑起来才会知道
-漏了哪几样**。静态审查看不出第三条，因为它的触发条件是「服务器回不回 ECH ack」。
+| 5 | 真实 ECH 里判成 `Rejected` + `cannot decrypt peer's message`（服务器明明接受了） | `EchState::from_supplied` 重建内层转录时，session id 用的是**引擎自己**生成的那个，而服务器重建内层时插的是**外层线上**那个 —— 两边哈希的内层差 32 字节 | 外供路径里先把要发出的消息解析出来，把 `outer_session_id` 从字节里取出来交给 `from_supplied`（细节见 `questions/10`） |
+| 6 | **TLS 1.2** 握手：服务端回 `BadRecordMac`（TLS 1.3 全绿，所以一直没暴露） | `ConnectionRandoms::new(self.input.random, …)` 是 TLS 1.2 主密钥 PRF 的输入，而 `input.random` 是**引擎自己**生成的值，不是调用方写进字节里的那个 ⇒ 客户端与服务端算出两个主密钥 | 外供路径里把 `input.random` 也从字节里读入（与第 4 条同一件事：**线上的是事实**） |
+| 7 | TLS 1.2 时代的指纹（没有 `key_share`）里，引擎**背着调用方造了一把**共享密钥 | `supplied.is_empty()` 原来一律回落到 `OfferedKeyShares::single(tls13::initial_key_share(...))` —— 那条回落是给「引擎自建 hello」写的 | 只有调用方的字节里**确实有** `key_share` 扩展时才回落（判据取自 `ClientHelloPlan::sent_extensions`，也就是调用方自己那份扩展清单） |
+
+**这七条的共同形状值得记住**：补丁把「ClientHello 的字节由谁写」这件事处理对了，
+但**引擎在字节之外还维护着一堆状态**（`Debug` 契约、`kx_state` 状态机、`EchStatus`、
+内层转录的 session id、TLS 1.2 的主密钥随机数），那些状态原本是由「引擎自己构建
+ClientHello」这条路径顺手设置的。外供路径绕过了设置它们的地方，于是每一样都要显式补上 ——
+而**只有真的跑起来才会知道漏了哪几样**。静态审查看不出第三条（触发条件是「服务器回不回
+ECH ack」），也看不出第五条（要一台真接受 ECH 的服务器）与第六条
+（要跑 TLS 1.2 的指纹 —— 前六条修完之前，那几档连字节都发不出去）。
 
 ## 现在的规模
 

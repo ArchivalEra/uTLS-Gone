@@ -310,12 +310,33 @@ impl ClientHelloInput {
                 .as_ref()
                 .map(|plan| plan.key_exchanges.clone())
                 .unwrap_or_default();
-            match supplied.is_empty() {
-                true => Some(OfferedKeyShares::single(tls13::initial_key_share(
-                    &self.config,
-                    &self.server_name,
-                    &mut cx.common.kx_state,
-                )?)),
+            // FORK(utls-rs): a supplied hello that carries **no** `key_share` extension
+            // must not get one behind its back. That is the shape of every TLS 1.2-era
+            // fingerprint (Chrome 58, Firefox 55, iOS 11, Android 11…): there is nothing
+            // in the caller's bytes to back such an entry, and the TLS 1.2 handshake this
+            // leads to does its own ECDHE in `ClientKeyExchange`. Making one up here made
+            // this state machine believe it had offered a share the wire never carried.
+            //
+            // "Did the bytes offer it" comes from the caller's own extension list
+            // (`ClientHelloPlan::sent_extensions`) — the same list this function's sibling
+            // uses for the "server sent an extension we did not offer" check. When the
+            // caller supplied no list we cannot tell, so we keep the upstream behaviour
+            // (assume it did) rather than guess in the other direction.
+            let caller_offered_key_share = self
+                .fork
+                .as_ref()
+                .and_then(|plan| plan.sent_extensions.as_ref())
+                .map(|exts| exts.contains(&u16::from(ExtensionType::KeyShare)))
+                .unwrap_or(true);
+            match supplied.is_empty() && !caller_offered_key_share {
+                true => None,
+                false if supplied.is_empty() => Some(OfferedKeyShares::single(
+                    tls13::initial_key_share(
+                        &self.config,
+                        &self.server_name,
+                        &mut cx.common.kx_state,
+                    )?,
+                )),
                 false => {
                     // FORK(utls-rs): `kx_state` is a state machine, not just a resumption
                     // hint — `KxState::complete()` asserts on it later in the handshake.
@@ -902,12 +923,26 @@ fn emit_external_client_hello(
     // inner transcripts. The symptom is specific and easy to misread: the server confirms
     // acceptance, the client computes a different confirmation value, judges the offer
     // *rejected*, and the handshake dies with `cannot decrypt peer's message`.
+    // FORK(utls-rs): and the **client random**, for the same reason — but its symptom is
+    // in the other direction (TLS 1.2 only). `ConnectionRandoms::new(self.input.random, …)`
+    // is what the TLS 1.2 master-secret PRF consumes, and `input.random` is the value this
+    // engine generated in `ClientHelloInput::new`, not the one the caller put in the bytes.
+    // With a supplied hello the two differ, so the client derived one master secret while
+    // the server derived another from the random *it read off the wire* — every TLS 1.2
+    // handshake died with `BadRecordMac` on the server's first decryption of our Finished.
+    // TLS 1.3 never showed it: its key schedule is driven by the transcript, and this field
+    // only ends up in the key log. Found by running the TLS 1.2-era fingerprints end to end.
     let payload = MessagePayload::new(ContentType::Handshake, ProtocolVersion::TLSv1_2, &bytes)?;
     let outer_session_id = match &payload {
-        MessagePayload::Handshake { parsed, .. } => match &parsed.0 {
-            HandshakePayload::ClientHello(chp) => chp.session_id.clone(),
-            _ => input.session_id.clone(),
-        },
+        MessagePayload::Handshake { parsed, .. } => {
+            match &parsed.0 {
+                HandshakePayload::ClientHello(chp) => {
+                    input.random = chp.random;
+                    chp.session_id.clone()
+                }
+                _ => input.session_id.clone(),
+            }
+        }
         _ => input.session_id.clone(),
     };
 

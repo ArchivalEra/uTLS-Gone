@@ -153,10 +153,23 @@ for g in zreflect/check_*.py; do python3 "$g"; done && sh gates-selftest.sh
 ② **别只跑少量条就报「µs/条」** —— 那时成本几乎全是每进程启动开销（跑 48 条时看着 700 µs/条，
 其实是 33 ms 启动 ÷ 48）。
 
-**一条写明的边界**：`plan-cost` 会打出 40 档里**能建的 28 档**与**被拒的 12 档**
-（TLS 1.2 时代没有 `key_share` 的、用了提供者不提供的组的、以及空 spec 的 `Custom`）。
-引擎要求「至少一把能完成的密钥交换」，否则那条 hello 永远握不上手。
-**指纹层不受影响** —— 那些预设的字节照样与 uTLS 逐字节相同。
+**预设覆盖**：40 档里 **39 档**能过引擎那条路（`cargo run --release --example plan-cost`
+打两份名单，被拒的带原因）。唯一被拒的 `HelloCustom` = 空 spec，理由「没有密码套件」。
+原先发不出去的两类现在都有判据：
+- **TLS 1.2 时代 8 档**（Chrome 58/62、Firefox 55/56、Ios 11/12、Android 11、360 7）：
+  `tests/tls12_presets.rs` —— 7 档真谈成 `TLSv1_2`；`360_7` 与 rustls 的 6 个 TLS 1.2 套件
+  **交集为 0**（它 20 个全是 CBC/RC4/3DES）⇒ 服务端 `HandshakeFailure`，那是套件的性质。
+  ⚠️ 这一档的 config 必须**只开 1.2**，否则降级哨兵会被判成降级攻击（Go/uTLS 同样）。
+- **PQ 3 档**（ChromePq 115/120、ChromePsk 115）：`tests/pq_key_share.rs` —— 草案组
+  `0x6399` 发**长度正确**的占位公钥（形状、总长与 uTLS 一致），真交换只交 X25519；
+  服务器认草案组并选中它时**响亮失败**，不静默换组。
+
+## 两处「只有跑起来才会知道」的补丁缺陷（本轮新增，已修）
+
+都在 `crates/rustls-fork/README.md` 的缺陷表里（第 5–7 条），这里只记教训形状：
+**外供路径绕过了「引擎自建 ClientHello」时顺手设置的那些状态**，于是每一样都要显式补上。
+本轮补的三样：内层转录的 session id（ECH）、TLS 1.2 主密钥 PRF 用的 client random、
+以及「调用方字节里没有 `key_share` 时就别造一把」。共同判据：**线上的是事实**。
 
 ## 代价高昂的坑（别重犯）
 

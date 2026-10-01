@@ -104,10 +104,22 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
   逐处出处与上游为什么拒绝写在 `crates/rustls-fork/README.md`。
 - **真实 ECH 的接受那一半已通**：Cloudflare、defo.ie、test.defo.ie 三族服务器都接受；
   另有一条**离线**判据（我们的客户端 ↔ uTLS 自己的 ECH 服务端）。
-- ⚠️ **一条写明的边界**：引擎那条路要求「至少一把能完成的密钥交换」，所以
-  `plan-cost` 打出的 40 档里有 12 档会被拒（TLS 1.2 时代没有 `key_share` 的、
-  用了提供者不提供的组的、以及空 spec 的）。**指纹层不受影响** —— 那些预设的字节照样
-  与 uTLS 逐字节相同。理由与复跑方式见 `STATE.md` 的已知缺口。
+- **40 档里 39 档都能过引擎那条路**（`cargo run --release --example plan-cost` 会打出名单）。
+  剩下的一档是 `HelloCustom` = 空 spec，被拒的理由是「没有密码套件」—— 空 spec 不是一条
+  合法的 ClientHello，那不是欠账。
+- 两处曾经「发不出去」的形态，现在的处理与边界：
+  - **TLS 1.2 时代的老预设**（Chrome 58/62、Firefox 55/56、Ios 11/12、Android 11）：spec 里
+    没有 `key_share`，它们只能谈 TLS 1.2 —— 引擎现在按这个形态产出，对着同时开 1.2/1.3 的
+    服务端真谈成 `TLSv1_2`。**调用方的 config 也要只开 1.2**：否则服务端放进 ServerHello
+    随机数里的降级哨兵会被判成降级攻击（Go/uTLS 同样如此）。
+  - **PQ 预设**（ChromePq 115/120、ChromePsk 115）：`key_share` 里的
+    `X25519Kyber768Draft00` 是草案组，rustls 的提供者没有它。引擎给这个组发一个**长度正确**
+    的占位公钥（形状与 Chrome 一致，总长对得上台账），真交换只交能完成的 X25519 ⇒
+    服务器不认草案组时照常谈成；**认它并选了它**则响亮失败（不静默换组）。
+- ⚠️ **`Browser360(7)` 谈不成**，原因在**密码套件**而不在引擎：它报的 20 个套件全是
+  CBC/RC4/3DES，而现代 TLS 栈（rustls 只实现 6 个 TLS 1.2 套件：AES-GCM 与 CHACHA20）
+  与它**交集为 0** —— uTLS 底下的 Go 默认同样不实现那些套件。它的字节仍然保真，
+  只是对面得是一台还认老套件的服务器。
 
 ## 判据与 CI
 

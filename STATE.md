@@ -334,15 +334,22 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
    05（新增第 5 个闸门 `zreflect/check_cmds.py`：321 条 `cmd` 全部产出记录值）、
    06（BoringSSL 源码证实 GREASE-ECH 载荷**也是四选一随机** ⇒ uTLS 保真、预设不动）。
 
-- ⚠️ **引擎那条路不覆盖全部预设**：引擎要求「至少一把能完成的密钥交换」（否则那条 hello
-  永远握不上手），所以 `FingerprintClient::plan` 会**拒绝**某些预设并说清是哪两组没有交集。
-  实测 40 档里 12 档会被拒：TLS 1.2 时代没有 `key_share` 的（`Chrome(58)`/`Chrome(62)`/
-  `Firefox(55)`/`Firefox(56)`/`Ios(11)`/`Ios(12)`/`Android(11)`/`Browser360(7)`）、
-  用了提供者不提供的组的（`ChromePq(115)`/`ChromePq(120)`/`ChromePsk(115)` 的
-  `X25519Kyber768Draft00`）、以及空 spec 的 `Custom`。
-  **指纹层不受影响**：这些预设的字节照样与 uTLS 逐字节相同（39 条夹具对账全过）——
-  这条边界只属于引擎那条路。复跑：`cargo run --release --example plan-cost`（它会打出
-  能建的那批与被拒的那批及理由）。
+- **引擎那条路现在覆盖 40 档里的 39 档**（复跑：`cargo run --release --example plan-cost`
+  会打能建的与被拒的两份名单，被拒的带原因）。唯一被拒的是 `HelloCustom` = 空 spec，
+  理由是「没有密码套件」—— 空 spec 不是合法的 ClientHello。
+  两处曾经发不出去的形态已在 `docs/` 的两个新测试里钉住：
+  - **TLS 1.2 时代的老预设**（8 档：Chrome 58/62、Firefox 55/56、Ios 11/12、Android 11、
+    360 7）：没有 `key_share` ⇒ 引擎允许「零交换」的 plan，fork 也不再背着调用方造一个。
+    判据在 `crates/utls-engine/tests/tls12_presets.rs`：**7 档真谈成 `TLSv1_2`**；
+    第 8 档 `360_7` 与服务端的 TLS 1.2 套件**交集为 0**（它 20 个套件全是 CBC/RC4/3DES），
+    于是服务端回 `HandshakeFailure` —— 那是密码套件的性质，不是引擎的缺陷（Go/uTLS 默认也不实现那些）。
+    ⚠️ 用这一档时 **config 的版本范围要设成 1.2**，否则降级哨兵会被判成降级攻击。
+  - **PQ 预设**（3 档：ChromePq 115/120、ChromePsk 115）：`X25519Kyber768Draft00` 是草案组，
+    提供者没有它 ⇒ 引擎给**长度正确**的占位公钥（形状与 Chrome 一致），真交换只交 X25519。
+    判据在 `crates/utls-engine/tests/pq_key_share.rs`：形状（草案组 1216 字节 + 总长对台账）、
+    真握手（服务端只认 X25519 时 `Full`）、以及「不声称能完成草案组」。
+    **与 uTLS 的语义差异**：uTLS 自己实现了那个草案组，我们只能在 X25519 上完成；
+    服务器若认它并选中它，会**响亮失败**而不是静默换组。
 
 ## 上游 issue 草稿
 
@@ -361,9 +368,9 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fork_patch_hunks` | **39** | `grep -c '^@@' crates/rustls-fork/patch.diff` |
 | `fork_patch_matches_markers` | **yes** | `[ "$(grep -c '^diff --git' crates/rustls-fork/patch.diff)" = "$(grep -rl 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | wc -l)" ] && echo yes || echo NO` |
 | `fork_patch_minus` | **39** | `grep '^-' crates/rustls-fork/patch.diff | grep -vc '^---'` |
-| `fork_patch_plus` | **1327** | `grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'` |
+| `fork_patch_plus` | **1362** | `grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'` |
 | `fork_rs_files` | **111** | `find crates/rustls -name '*.rs' | wc -l` |
-| `fork_rs_lines` | **49886** | `find crates/rustls -name '*.rs' -exec cat {} + | wc -l` |
+| `fork_rs_lines` | **49921** | `find crates/rustls -name '*.rs' -exec cat {} + | wc -l` |
 | `fork_rs_modified` | **9** | `grep -rc 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | grep -v ':0' | wc -l` |
 | `fp_360_11_cipher_count` | **16** | `cargo run --quiet --example reflect-facts | grep '^360_11_cipher_count='` |
 | `fp_360_11_ext_count` | **16** | `cargo run --quiet --example reflect-facts | grep '^360_11_ext_count='` |
@@ -667,14 +674,14 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
 | `md_files` | **21** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **2547** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_lines` | **2585** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **16** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
 | `py_lines` | **1991** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `question_count` | **10** | `ls questions/*.md | wc -l` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
-| `rs_files` | **40** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **17783** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_files` | **42** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `rs_lines` | **18341** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 

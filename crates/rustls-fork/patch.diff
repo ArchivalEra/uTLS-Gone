@@ -700,7 +700,7 @@ index 0000000..9882f93
 +    }
 +}
 diff --git a/src/client/hs.rs b/src/client/hs.rs
-index 4d22c04..71546f3 100644
+index 4d22c04..32f9863 100644
 --- a/src/client/hs.rs
 +++ b/src/client/hs.rs
 @@ -15,9 +15,13 @@ use crate::bs_debug;
@@ -905,7 +905,7 @@ index 4d22c04..71546f3 100644
              config,
          })
      }
-@@ -154,11 +299,46 @@ impl ClientHelloInput {
+@@ -154,11 +299,67 @@ impl ClientHelloInput {
          }
  
          let key_share = if self.config.needs_key_share() {
@@ -925,12 +925,33 @@ index 4d22c04..71546f3 100644
 +                .as_ref()
 +                .map(|plan| plan.key_exchanges.clone())
 +                .unwrap_or_default();
-+            match supplied.is_empty() {
-+                true => Some(OfferedKeyShares::single(tls13::initial_key_share(
-+                    &self.config,
-+                    &self.server_name,
-+                    &mut cx.common.kx_state,
-+                )?)),
++            // FORK(utls-rs): a supplied hello that carries **no** `key_share` extension
++            // must not get one behind its back. That is the shape of every TLS 1.2-era
++            // fingerprint (Chrome 58, Firefox 55, iOS 11, Android 11…): there is nothing
++            // in the caller's bytes to back such an entry, and the TLS 1.2 handshake this
++            // leads to does its own ECDHE in `ClientKeyExchange`. Making one up here made
++            // this state machine believe it had offered a share the wire never carried.
++            //
++            // "Did the bytes offer it" comes from the caller's own extension list
++            // (`ClientHelloPlan::sent_extensions`) — the same list this function's sibling
++            // uses for the "server sent an extension we did not offer" check. When the
++            // caller supplied no list we cannot tell, so we keep the upstream behaviour
++            // (assume it did) rather than guess in the other direction.
++            let caller_offered_key_share = self
++                .fork
++                .as_ref()
++                .and_then(|plan| plan.sent_extensions.as_ref())
++                .map(|exts| exts.contains(&u16::from(ExtensionType::KeyShare)))
++                .unwrap_or(true);
++            match supplied.is_empty() && !caller_offered_key_share {
++                true => None,
++                false if supplied.is_empty() => Some(OfferedKeyShares::single(
++                    tls13::initial_key_share(
++                        &self.config,
++                        &self.server_name,
++                        &mut cx.common.kx_state,
++                    )?,
++                )),
 +                false => {
 +                    // FORK(utls-rs): `kx_state` is a state machine, not just a resumption
 +                    // hint — `KxState::complete()` asserts on it later in the handshake.
@@ -957,7 +978,7 @@ index 4d22c04..71546f3 100644
          } else {
              None
          };
-@@ -191,7 +371,7 @@ impl ClientHelloInput {
+@@ -191,7 +392,7 @@ impl ClientHelloInput {
  fn emit_client_hello_for_retry(
      mut transcript_buffer: HandshakeHashBuffer,
      retryreq: Option<&HelloRetryRequest>,
@@ -966,7 +987,7 @@ index 4d22c04..71546f3 100644
      extra_exts: ClientExtensionsInput<'static>,
      suite: Option<SupportedCipherSuite>,
      mut input: ClientHelloInput,
-@@ -212,6 +392,28 @@ fn emit_client_hello_for_retry(
+@@ -212,6 +413,28 @@ fn emit_client_hello_for_retry(
      // should be unreachable thanks to config builder
      assert!(supported_versions.any(|_| true));
  
@@ -995,7 +1016,7 @@ index 4d22c04..71546f3 100644
      let mut exts = Box::new(ClientExtensions {
          // offer groups which are usable for any offered version
          named_groups: Some(
-@@ -288,7 +490,8 @@ fn emit_client_hello_for_retry(
+@@ -288,7 +511,8 @@ fn emit_client_hello_for_retry(
  
      if let Some(key_share) = &key_share {
          debug_assert!(supported_versions.tls13);
@@ -1005,7 +1026,7 @@ index 4d22c04..71546f3 100644
  
          if !retryreq
              .map(|rr| rr.key_share.is_some())
-@@ -299,7 +502,7 @@ fn emit_client_hello_for_retry(
+@@ -299,7 +523,7 @@ fn emit_client_hello_for_retry(
              // algorithm is also supported separately by our provider for this version
              // (`find_kx_group` looks that up).
              if let Some((component_group, component_share)) =
@@ -1014,7 +1035,7 @@ index 4d22c04..71546f3 100644
                      .hybrid_component()
                      .filter(|(group, _)| {
                          config
-@@ -377,6 +580,8 @@ fn emit_client_hello_for_retry(
+@@ -377,6 +601,8 @@ fn emit_client_hello_for_retry(
      // Extensions MAY be randomized
      // but they also need to keep the same order as the previous ClientHello
      exts.order_seed = input.hello.extension_order_seed;
@@ -1023,7 +1044,7 @@ index 4d22c04..71546f3 100644
  
      let mut cipher_suites: Vec<_> = config
          .provider
-@@ -388,11 +593,31 @@ fn emit_client_hello_for_retry(
+@@ -388,11 +614,31 @@ fn emit_client_hello_for_retry(
          })
          .collect();
  
@@ -1056,7 +1077,7 @@ index 4d22c04..71546f3 100644
      let mut chp_payload = ClientHelloPayload {
          client_version: ProtocolVersion::TLSv1_2,
          random: input.random,
-@@ -542,6 +767,253 @@ fn emit_client_hello_for_retry(
+@@ -542,6 +788,267 @@ fn emit_client_hello_for_retry(
      })
  }
  
@@ -1195,12 +1216,26 @@ index 4d22c04..71546f3 100644
 +    // inner transcripts. The symptom is specific and easy to misread: the server confirms
 +    // acceptance, the client computes a different confirmation value, judges the offer
 +    // *rejected*, and the handshake dies with `cannot decrypt peer's message`.
++    // FORK(utls-rs): and the **client random**, for the same reason — but its symptom is
++    // in the other direction (TLS 1.2 only). `ConnectionRandoms::new(self.input.random, …)`
++    // is what the TLS 1.2 master-secret PRF consumes, and `input.random` is the value this
++    // engine generated in `ClientHelloInput::new`, not the one the caller put in the bytes.
++    // With a supplied hello the two differ, so the client derived one master secret while
++    // the server derived another from the random *it read off the wire* — every TLS 1.2
++    // handshake died with `BadRecordMac` on the server's first decryption of our Finished.
++    // TLS 1.3 never showed it: its key schedule is driven by the transcript, and this field
++    // only ends up in the key log. Found by running the TLS 1.2-era fingerprints end to end.
 +    let payload = MessagePayload::new(ContentType::Handshake, ProtocolVersion::TLSv1_2, &bytes)?;
 +    let outer_session_id = match &payload {
-+        MessagePayload::Handshake { parsed, .. } => match &parsed.0 {
-+            HandshakePayload::ClientHello(chp) => chp.session_id.clone(),
-+            _ => input.session_id.clone(),
-+        },
++        MessagePayload::Handshake { parsed, .. } => {
++            match &parsed.0 {
++                HandshakePayload::ClientHello(chp) => {
++                    input.random = chp.random;
++                    chp.session_id.clone()
++                }
++                _ => input.session_id.clone(),
++            }
++        }
 +        _ => input.session_id.clone(),
 +    };
 +
@@ -1310,7 +1345,7 @@ index 4d22c04..71546f3 100644
  /// Prepares `exts` and `cx` with TLS 1.2 or TLS 1.3 session
  /// resumption.
  ///
-@@ -839,7 +1311,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
+@@ -839,7 +1346,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
                      transcript,
                      self.early_data_key_schedule,
                      // We always send a key share when TLS 1.3 is enabled.
@@ -1320,7 +1355,7 @@ index 4d22c04..71546f3 100644
                      &m,
                      self.ech_state,
                      self.input,
-@@ -880,21 +1353,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -880,21 +1388,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
          cx.common.check_aligned_handshake()?;
  
          // We always send a key share when TLS 1.3 is enabled.
@@ -1462,7 +1497,7 @@ index 4d22c04..71546f3 100644
                  return Err({
                      cx.common.send_fatal_alert(
                          AlertDescription::IllegalParameter,
-@@ -1022,28 +1607,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -1022,28 +1642,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
              cx.data.early_data.rejected();
          }
  

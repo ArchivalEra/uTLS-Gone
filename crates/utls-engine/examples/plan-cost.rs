@@ -13,20 +13,22 @@
 //! 所以要与它比就得跑**引擎层**。拿指纹层去比会得到一个虚高的倍数 —— 本轮实测踩到过：
 //! 指纹层 4.0 µs/次 vs uTLS 116 µs/次，看着像 29×，其实两层的东西不可比。
 //!
-//! # 一个必须说出来的边界：引擎**不为某些预设产出 hello**
+//! # 边界：引擎**不为空 spec 产出 hello**，另有两类形态要看清
 //!
-//! 引擎要求「至少一把能完成的密钥交换」，否则那条 hello 永远握不上手，所以它**拒绝**
-//! （错误信息里会说清是哪些组之间没有交集）。实测 40 档里 **12 档**会被拒：
+//! 本程序会把 40 档分成「能建的」与「被拒的（带原因）」两份名单打出来。当前是 39 / 1：
+//! 唯一被拒的是 `HelloCustom` = `ClientHelloSpec::empty()`，理由「没有密码套件」——
+//! 空 spec 不是一条合法的 ClientHello。
 //!
-//! - TLS 1.2 时代的（`Chrome(58)`/`Chrome(62)`/`Firefox(55)`/`Firefox(56)`/`Ios(11)`/
-//!   `Ios(12)`/`Android(11)`/`Browser360(7)`）——它们的 spec 里根本没有 `key_share`；
-//! - 用的是**提供者不提供的组**（`ChromePq(115)`/`ChromePq(120)`/`ChromePsk(115)` 的
-//!   `X25519Kyber768Draft00`，rustls 的 aws-lc-rs 提供者只有 `X25519MLKEM768`）；
-//! - `Custom`（空 spec）。
+//! 另外两类曾经也发不出去，现在都能建了，各自的边界写在对应的测试里：
 //!
-//! **指纹层不受影响**（那些预设的字节照样与 uTLS 逐字节相同，39 条夹具对账全过）——
-//! 这条边界只属于**引擎那条路**。与 Go 侧比时要把预设集合对齐：本程序把能建的报出来，
-//! 调用方拿它去限定 Go 侧的同名集合。
+//! - **TLS 1.2 时代的老预设**（Chrome 58/62、Firefox 55/56、Ios 11/12、Android 11、360 7）：
+//!   spec 里没有 `key_share` ⇒ 引擎产出零交换的 plan（第二飞由引擎自己做 ECDHE）。
+//!   判据在 `tests/tls12_presets.rs`：7 档真谈成 `TLSv1_2`；`360_7` 的套件与现代 TLS 栈
+//!   交集为 0 ⇒ 服务端回 `HandshakeFailure`（密码套件的性质，不是引擎缺陷）。
+//!   用它们时 config 的版本范围要设成 1.2，否则降级哨兵会被判成降级攻击。
+//! - **PQ 预设**（ChromePq 115/120、ChromePsk 115）：`X25519Kyber768Draft00` 是草案组，
+//!   提供者没有它 ⇒ 给它一个**长度正确**的占位公钥（形状与 Chrome 一致），真交换只交 X25519。
+//!   判据在 `tests/pq_key_share.rs`；服务器若认那个草案组并选中它，会响亮失败而不是静默换组。
 //!
 //! # 用法
 //!
@@ -98,14 +100,18 @@ fn main() {
         presets += 1;
         let client = FingerprintClient::new(spec, provider.clone()).with_sni("example.com");
         let mut ok = true;
+        let mut refused_reason = String::new();
         for _ in 0..runs() {
             let plan = match client.plan(&PlanRequest {
                 groups: groups.clone(),
                 resumption: None,
             }) {
                 Ok(p) => p,
-                Err(_) => {
+                Err(e) => {
                     ok = false;
+                    // 把**原因**也记下来：只看「被拒名单」会以为 12 档是一个问题，
+                    // 实际是两类（没有 key_share 的老预设 / 用了提供者不提供的组）。
+                    refused_reason = format!("{e}");
                     break;
                 }
             };
@@ -118,7 +124,7 @@ fn main() {
         if ok {
             built.push(name);
         } else {
-            refused.push(name);
+            refused.push(format!("{name} ← {refused_reason}"));
         }
     }
     println!("presets={presets} runs_each={} units={units}", runs());

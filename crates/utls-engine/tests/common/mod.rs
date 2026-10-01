@@ -497,3 +497,71 @@ pub fn ech_config_list(public_key: &[u8], config_id: u8, extensions: &[(u16, &[u
     list.extend_from_slice(&config);
     list
 }
+
+/// 与 [`server_config`] 同一台服务端，但**同时支持 TLS 1.2**。
+///
+/// 为什么需要单独的构造函数而不是改 [`server_config`]：TLS 1.2 时代那几档指纹
+/// （Chrome 58 / Firefox 55 / iOS 11 / Android 11 / 360 7）的 `key_share` 扩展**根本不存在**，
+/// 它们只能谈 TLS 1.2 —— 而现有那些测试全部建立在「只谈 TLS 1.3」的装置上。
+/// 改默认值会让它们的语义变模糊（例如「服务端选了哪个组」在 TLS 1.2 里没有意义），
+/// 所以另开一个名字显式的。
+pub fn server_config_tls12_13() -> Arc<ServerConfig> {
+    let mut config = ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+    .expect("TLS 1.2 与 1.3 都可用")
+    .with_no_client_auth()
+    .with_single_cert(vec![cert()], key())
+    .expect("证书与私钥配套");
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    Arc::new(config)
+}
+
+/// 客户端：**允许 TLS 1.2 与 1.3**，其余与 [`client_config_with_verifier`] 相同。
+///
+/// 谈成哪一版由**服务端**决定（那是判据），所以这里两个都开。
+pub fn client_config_tls12_13(
+    fingerprint: utls_engine::FingerprintClient,
+    alpn: Vec<Vec<u8>>,
+    verifier: Arc<AcceptAnySignature>,
+) -> ClientConfig {
+    let mut config = ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+    .expect("TLS 1.2 与 1.3 都可用")
+    .dangerous()
+    .with_custom_certificate_verifier(verifier)
+    .with_no_client_auth();
+    config.alpn_protocols = alpn;
+    config.fork_client_hello = Some(Arc::new(fingerprint));
+    config
+}
+
+/// 客户端：**只允许 TLS 1.2** —— TLS 1.2 时代那几档指纹的正确配置。
+///
+/// 为什么必须只开 1.2（这是实测撞出来的，不是保守）：
+/// 一条没有 `key_share`、`supported_versions` 里也没有 1.3 的 hello **只可能**谈成 1.2；
+/// 而服务端支持 1.3 时会在 ServerHello 的随机数里放**降级哨兵**（RFC 8446 §4.1.3）。
+/// 于是「config 声称支持 1.3 + 实际谈成 1.2 + 随机数里有哨兵」在客户端看来就是一次
+/// 降级攻击 ⇒ rustls 直接以 `AttemptedDowngradeToTls12WhenTls13IsSupported` 终止。
+/// Go 的 crypto/tls（uTLS 的底子）在同一处有同样的判断，所以这不是我们的特殊行为 ——
+/// **用 TLS 1.2 的指纹，就要把 config 的版本范围设成 1.2**。
+pub fn client_config_tls12(
+    fingerprint: utls_engine::FingerprintClient,
+    alpn: Vec<Vec<u8>>,
+    verifier: Arc<AcceptAnySignature>,
+) -> ClientConfig {
+    let mut config = ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_protocol_versions(&[&rustls::version::TLS12])
+    .expect("TLS 1.2 可用")
+    .dangerous()
+    .with_custom_certificate_verifier(verifier)
+    .with_no_client_auth();
+    config.alpn_protocols = alpn;
+    config.fork_client_hello = Some(Arc::new(fingerprint));
+    config
+}

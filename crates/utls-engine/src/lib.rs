@@ -472,12 +472,17 @@ impl SuppliesClientHello for FingerprintClient {
             .copied()
             .filter(|g| engine_groups.contains(g))
             .collect();
-        if usable.is_empty() {
+        if usable.is_empty() && !want.is_empty() {
             return Err(Error::General(format!(
                 "utls-engine: spec 的 key_share 组 {want:?} 与引擎能完成的组 {engine_groups:?} \
                  没有交集 —— 这样发出去的 ClientHello 永远握不上手"
             )));
         }
+        // ⚠️ `want` **空** 是另一回事：那是 TLS 1.2 时代的指纹（Chrome 58 / Firefox 55 /
+        // iOS 11 / Android 11 / 360 7…），它们的 spec 里**根本没有 `key_share` 扩展**。
+        // 这种 hello 走 TLS 1.2，ECDHE 在第二飞（`ClientKeyExchange`）里由引擎自己做，
+        // 所以「没有外部交换」不是缺陷，是这一档的正常形态。原来的代码把它与
+        // 「声明了组但一个都完不成」混为一谈，于是这 8 档连字节都发不出去。
         let exchanges = self.start_exchanges(&usable)?;
 
         // ② 会话复用：引擎把会话当**数据**交给我们（ticket / 混淆年龄 / binder 长度），
@@ -493,9 +498,42 @@ impl SuppliesClientHello for FingerprintClient {
         };
 
         // ③ 每连接的输入。公钥**长度**进指纹（它决定总长，进而决定要不要填充），
-        //    所以每个组都要给。
+        //    所以 spec 里出现的**每一个**非 GREASE 组都要给公钥 —— 包括引擎完不成的那些。
+        //
+        //    为什么完不成的组也要给：Chrome 的 PQ 预设（`ChromePq(115)`/`(120)`、`ChromePsk(115)`）
+        //    的 `key_share` 是 `[GREASE, X25519Kyber768Draft00(0x6399), X25519]`。
+        //    `0x6399` 是**草案**组，rustls 的 aws-lc-rs 提供者只有 `X25519MLKEM768(4588)`
+        //    —— 于是这一档的「形状」根本发不出去（编码器要它 1216 字节的公钥）。
+        //    但我们**只需要发对形状**：给 `0x6399` 一个长度正确的占位公钥
+        //    （长度表在指纹层：`values::group_public_key_len`，它认得这个草案组），
+        //    真交换只交可完成的那些（这里是 X25519）。后果如实说清：
+        //    * 服务器**不认** `0x6399` ⇒ 它选 X25519 ⇒ 握手照常完成 ✓
+        //      （这也正是真实世界的情形：不认这个草案组的服务器就回退到 X25519）；
+        //    * 服务器**认** `0x6399` 并选了它 ⇒ 我们完成不了，fork 会**响亮报错**
+        //      （`OfferedKeyShares::take_for` 找不到对应交换），不会静默降级成别的组。
+        //      这是与 uTLS 的**语义**差异（uTLS 自己实现了这个草案组，能完成）——
+        //      我们选择「形状逐字节像 Chrome，完成不了就明说」，而不是「拒绝整档预设」。
+        //
+        //    占位字节取**密码学随机**（不是常量）：真公钥看起来就是随机字节，
+        //    用常量会让两连接的可比字节里多出一个固定模式。
         let mut inputs = self.fresh_inputs();
-        inputs.key_exchange = exchanges.iter().map(|(g, kx)| (*g, kx.pub_key())).collect();
+        inputs.key_exchange = want
+            .iter()
+            .map(|g| match exchanges.iter().find(|(eg, _)| eg == g) {
+                Some((_, kx)) => Ok((*g, kx.pub_key())),
+                None => {
+                    let len = v::group_public_key_len(*g).ok_or_else(|| {
+                        Error::General(format!(
+                            "utls-engine: 组 0x{g:04x} 在 spec 的 key_share 里，但指纹层不知道\
+                             它的公钥长度 —— 发不出一条形状正确的 hello"
+                        ))
+                    })?;
+                    let mut placeholder = vec![0u8; len];
+                    self.provider.secure_random.fill(&mut placeholder)?;
+                    Ok((*g, placeholder))
+                }
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
         *self
             .last_inputs
             .lock()
@@ -590,7 +628,10 @@ impl SuppliesClientHello for FingerprintClient {
             .into_iter()
             .map(|(_, kx)| Arc::new(kx) as Arc<dyn ExternalKeyExchange>)
             .collect();
-        if exchanges.is_empty() {
+        if exchanges.is_empty() && !want.is_empty() {
+            // `want` 非空却一把交换都没有 = 内部不一致（上面刚按它筛过）。
+            // `want` **空**（spec 里没有 `key_share` —— TLS 1.2 时代那几档）不是错误：
+            // 那几档的第二飞由引擎自己做 ECDHE，第一飞本来就不该带交换。
             return Err(Error::General("utls-engine: 内部错误，密钥交换为空".into()));
         }
 
