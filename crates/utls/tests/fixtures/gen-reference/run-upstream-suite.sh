@@ -22,10 +22,16 @@
 # 用法：
 #   run-upstream-suite.sh [参照树目录] [go test 的额外参数...]
 # 默认参照树 `/tmp/utls-ref/utls-master`（取回命令见 ../README.md）。
-set -euo pipefail
+#
+# ⚠️ 本脚本刻意写成 **POSIX sh**（不用 bashism）：CI 与很多发行版的 `/bin/sh` 是 dash，
+# 而 `set -o pipefail` 在旧 dash 上是 `Illegal option`（实测：GitHub runner 上红了第一次）。
+# 这里也没有需要 pipefail 的管道，所以直接不用它。
+set -eu
 
 REF=${1:-/tmp/utls-ref/utls-master}
-[ $# -ge 1 ] && shift
+if [ $# -ge 1 ]; then
+    shift
+fi
 REF=$(realpath "$REF")
 [ -f "$REF/tls_test.go" ] || {
     echo "找不到 $REF/tls_test.go —— 参照树没取回？取回命令见 ../README.md" >&2
@@ -33,7 +39,7 @@ REF=$(realpath "$REF")
 }
 
 W=$(mktemp -d)
-trap 'rm -rf "$W"' EXIT
+trap 'rm -rf "$W"' 0
 
 sed -e 's|www\.google\.com|www.baidu.com|g' \
     -e 's|"yahoo\.com:443"|"www.baidu.com:443"|g' \
