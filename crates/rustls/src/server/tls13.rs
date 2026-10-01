@@ -151,6 +151,22 @@ mod client_hello {
 
             sigschemes_ext.retain(SignatureScheme::supported_in_tls13);
 
+            // FORK(utls-rs) (j): REALITY 的服务端证书是「一次性 ed25519 + HMAC 尾签」，
+            // 而真实浏览器指纹（Chrome 131/133）**不报 Ed25519** —— Go 参照因此把
+            // `hs.sigAlg = Ed25519` 写死（`handshake_server_tls13.go:165`），不协商。
+            // 这个开关就是那条硬编码：显式打开时，把**签名键自己支持的方案**并进候选
+            // （`choose_scheme` 已经实现了「这个键能签哪几种」的全部知识，不用另找入口）。
+            if self.config.fork_use_certificate_signature_scheme {
+                if let Some(signer) =
+                    server_key.get_key().choose_scheme(&ALL_TLS13_SIGNATURE_SCHEMES)
+                {
+                    let own = signer.scheme();
+                    if !sigschemes_ext.contains(&own) {
+                        sigschemes_ext.push(own);
+                    }
+                }
+            }
+
             let shares_ext = client_hello.key_shares.as_ref().ok_or_else(|| {
                 cx.common.send_fatal_alert(
                     AlertDescription::HandshakeFailure,
@@ -777,7 +793,21 @@ mod client_hello {
         flight.add(c);
     }
 
-    fn emit_certificate_verify_tls13(
+    /// RFC 8446 §4.4.3 的 TLS 1.3 签名方案全集（`signature_algorithms` 里可能出现的
+/// 那些）。只用于 FORK(utls-rs) (j)：问签名键「你自己支持哪些」——
+/// `choose_scheme` 会从这里面挑它真正能签的。
+const ALL_TLS13_SIGNATURE_SCHEMES: [SignatureScheme; 8] = [
+    SignatureScheme::ECDSA_NISTP256_SHA256,
+    SignatureScheme::ECDSA_NISTP384_SHA384,
+    SignatureScheme::ECDSA_NISTP521_SHA512,
+    SignatureScheme::ED25519,
+    SignatureScheme::RSA_PSS_SHA256,
+    SignatureScheme::RSA_PSS_SHA384,
+    SignatureScheme::RSA_PSS_SHA512,
+    SignatureScheme::RSA_PKCS1_SHA256,
+];
+
+fn emit_certificate_verify_tls13(
         flight: &mut HandshakeFlightTls13<'_>,
         common: &mut CommonState,
         signing_key: &dyn sign::SigningKey,

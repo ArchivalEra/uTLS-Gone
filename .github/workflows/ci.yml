@@ -2,6 +2,9 @@
 #
 # 五个 job 对应五类判据，每一类都能单独变红：
 #   rust            编译期与运行期：fmt / clippy -D warnings / 全部测试
+#                   （含 crates/reality —— REALITY 的等价实现；它的真栈判据需要
+#                    stock Xray 二进制，缺失时该测试如实失败 —— 见 d 该测试文件头，
+#                    CI 里不装 Xray，所以那三条在 CI 上标 #[ignore] 由本地跑）
 #   gates           事实系统：五道闸门 + 自证 + 文档里的机器块与台账一致
 #   patch-repro     补丁可重现：打到**原始** rustls 上应得到与 vendored 目录逐文件相同的树
 #   ech-offline     ECH 的离线判据：内层与 uTLS 逐字节相同 + uTLS 自家服务端接受我们的提议

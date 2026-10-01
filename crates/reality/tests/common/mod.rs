@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -100,4 +100,97 @@ pub fn run_tls13_server_and_capture_flight(
         "客户端收到的 flight 必须与服务端写出的逐字节相同（装置自检）"
     );
     out
+}
+
+/// 真站（rustls 服务端）的配置：用 vendored rustls 的测试证书。
+pub fn dest_server_config() -> Arc<ServerConfig> {
+    dest_server_config_with_groups(None)
+}
+
+/// 同上，可限制 kx_groups（P-256-only 判据用）。
+pub fn dest_server_config_with_groups(
+    only_groups: Option<Vec<rustls::NamedGroup>>,
+) -> Arc<ServerConfig> {
+    let provider = match only_groups {
+        None => Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
+        Some(groups) => {
+            let mut p = rustls::crypto::aws_lc_rs::default_provider();
+            p.kx_groups.retain(|g| groups.contains(&g.name()));
+            Arc::new(p)
+        }
+    };
+    Arc::new(
+        ServerConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .expect("TLS 1.3")
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![CertificateDer::from(CERT_DER.to_vec())],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(KEY_PKCS8_DER.to_vec())),
+            )
+            .expect("证书与私钥配套"),
+    )
+}
+
+/// 一个跳过证书验证的 rustls 客户端（**判据只看证书字节**，不看链）：
+/// 连上去、完成握手、把服务端给的证书 DER 取回来。
+pub fn tls_client_handshake_and_peer_cert(addr: impl ToSocketAddrs) -> std::io::Result<Vec<u8>> {
+    #[derive(Debug)]
+    struct Skip;
+    impl rustls::client::danger::ServerCertVerifier for Skip {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &rustls::pki_types::CertificateDer<'_>,
+            _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+            _server_name: &rustls::pki_types::ServerName<'_>,
+            _ocsp: &[u8],
+            _now: rustls::pki_types::UnixTime,
+        ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+            Ok(rustls::client::danger::ServerCertVerified::assertion())
+        }
+        fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &rustls::pki_types::CertificateDer<'_>,
+            _dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        }
+        fn verify_tls13_signature(
+            &self,
+            _message: &[u8],
+            _cert: &rustls::pki_types::CertificateDer<'_>,
+            _dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        }
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            vec![
+                rustls::SignatureScheme::ED25519,
+                rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+                rustls::SignatureScheme::RSA_PSS_SHA256,
+            ]
+        }
+    }
+    let cfg = Arc::new(
+        rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .expect("TLS 1.3")
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(Skip))
+        .with_no_client_auth(),
+    );
+    let mut sock = TcpStream::connect(addr)?;
+    sock.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let name = rustls::pki_types::ServerName::try_from("localhost").expect("名字");
+    let mut conn = rustls::ClientConnection::new(cfg, name).expect("建客户端");
+    while conn.is_handshaking() {
+        conn.complete_io(&mut sock)?;
+    }
+    let certs = conn
+        .peer_certificates()
+        .ok_or_else(|| std::io::Error::other("服务端没给证书"))?;
+    Ok(certs[0].as_ref().to_vec())
 }

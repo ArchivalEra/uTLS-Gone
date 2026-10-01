@@ -1,6 +1,6 @@
 # 11: REALITY 的 Rust 等价实现 —— 从哪一步开始、对什么判据
 
-**Status:** ready-for-agent  <!-- 无人值守推进中：spike 已完成，镜像/客户端半边待做 -->
+**Status:** resolved
 
 来源：issue #1（需求单：REALITY 的 Rust 等价实现，权威参照 = XTLS/REALITY）。
 本工单承接「怎么做、怎么判」；issue 只留需求。
@@ -64,12 +64,55 @@
   （`tls.go` 的 flow 校验会 `break f` 进 fallback）。记为已知边界，不修。
 - ML-DSA-65 证书扩展签名（`Mldsa65Key`）暂不实现（Go 参照的可选增强）。
 
-## 落法与顺序
+## 落法与顺序（已执行）
 
-先 spike **密钥派生**（issue 建议且本轮采纳）：完全离线、有 Go 向量可对拍、
-且是唯一「生态里没有对应物」的一步。随后 CH 解析（复用 `crates/utls` 的解析器）、
-fallback 判定、镜像/透传代理、客户端半边。真栈的 stock Xray-core 客户端判据
-视二进制可得性，不可得时如实记录于本工单。
+spike **密钥派生**（issue 建议且本轮采纳）→ CH 解析 → fallback 判定 →
+客户端半边 → 镜像/透传服务端 → 真栈（stock Xray-core，官方 release 可取，已跑通）。
 
-**Settling:** `cargo test -p reality` —— 离线三测 + KDF 对拍全绿 ⇒ spike 成立；
-Go 向量重生成后 Rust 侧仍绿 ⇒ 对拍持续成立。真栈判据的 settles 另列于测试文件头。
+**Settling:** `cargo test -p reality` —— rc=0 且输出 24 条 `... ok`（**0 failed**）⇒ 结论成立；
+rc≠0 或出现 `FAILED` ⇒ 结论要改。真栈那三条另外需要 `/tmp/xray-bin/xray`
+（官方 release；取法在 `tests/real_stack.rs` 的 `xray_bin()`，可用 `REALITY_XRAY` 覆盖路径）：
+没有二进制时会以「找不到 stock Xray」失败（**不是** skip）—— 那同样是 rc≠0，但它证伪的是
+「真栈判据在本机可跑」，与另外 21 条离线判据无关。
+
+## 结论（2026-10-01 当日完成）
+
+四类判据全部落地，逐条对照 issue 的结案条件：
+
+1. **离线三测**（`tests/ch_parse.rs` 4 条 / `tests/kdf_vectors.rs` 2 条 /
+   `tests/fallback_decision.rs` 10 条）：CH 解析（含 MLKEM768 优先 X25519 的形状与
+   线序）、密钥派生、fallback 判定（每条失败路径一个独立断言）。
+2. **KDF 对拍**（`tests/kdf_vectors.rs`）：向量由 `fixtures/gen-reality/main.go`
+   生成 —— 逐行复刻 `tls.go:241-260` 与 `reality.go` 的 UClient，hello 用上游 uTLS
+   的真指纹（HelloChrome_100）+ 确定性 rand。**双向逐字节**：Go 封 ⇒ Rust 开、
+   Rust 封 ⇒ 与 Go 密文相同；AuthKey 两侧各自派生并相等。
+3. **真栈**（`tests/real_stack.rs`，**stock Xray-core 26.3.27**）：
+   鉴权路径完成握手并承载流量（VLESS 请求到达 handler、`short_id` 解出、
+   回显往返）；未鉴权客户端拿到与**直连真站逐字节相同**的证书链（实测断言相等）。
+4. **P-256-only dest**：鉴权与镜像计划成立（`tests/mirror_server.rs` 与
+   `tests/real_stack.rs` 各一条，真站与客户端都用真 P-256 公钥 —— 哑字节会被
+   rustls 以 `PeerMisbehaved(InvalidKeyShare)` 拒绝，这条弯路已记录）。
+
+## 过程中的四个实测发现（都进了代码注释）
+
+1. **rustls 严格协商签名算法**，而浏览器指纹（Chrome 131/133）**不报 Ed25519** ——
+   REALITY 的证书恰恰必须是 ed25519（客户端按 `ed25519.PublicKey` 做 HMAC 校验）。
+   Go 参照把 `hs.sigAlg = Ed25519` 写死（`handshake_server_tls13.go:165`）。
+   本仓加了 fork 开关 `ServerConfig::fork_use_certificate_signature_scheme`
+   （默认关，FORK(utls-rs) (j)），打开后把签名键自己支持的方案并进候选。
+   不打开时的症状：`PeerIncompatible::NoSignatureSchemesInCommon`。
+2. **HMAC 的输入是裸 ed25519 公钥（32 字节），不是 SPKI**。第一版传 rustls 的
+   `SubjectPublicKeyInfoDer`（44 字节），AuthKey 两侧明明相同（打印核对过），
+   客户端仍 `BadCertificate`。SPKI 里 ed25519 公钥固定在最后 32 字节。
+3. **rustls 的 TCP 0-RTT 只支持有状态恢复**（本仓既有结论，本轮再次用到）。
+4. **`split_dest_flight` 的 Malformed 要逐条查**，只查第一条会漏掉「缺 CCS」这类
+   出现在第二条的坏形状（对照 `tls.go:368-372` 的逐条 `break f`）。
+
+## 已知边界（与 issue 一致）
+
+- **HRR 不处理**：真站对 CH 回 HelloRetryRequest 时镜像失败 —— Go 参照同样如此。
+- **Mldsa65Key / Mldsa65Verify（ML-DSA-65 证书扩展签名）暂不实现** —— 参照的可选增强。
+- **架构性差异（写进 `src/server.rs` 模块头）**：参照拿真站的 ServerHello 当模板、
+  只换 serverShare 密钥字节；本实现跑在 rustls 上、不 fork 服务端，所以 ServerHello
+  由 rustls 生成（密码学合法、客户端只验转录与尾签），但「ServerHello 与真站同形」
+  这层保真**没做**。要做需给 fork 加服务端侧的 ClientHello/ServerHello 缝。

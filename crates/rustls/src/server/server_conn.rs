@@ -395,6 +395,23 @@ pub struct ServerConfig {
     /// do any resumption.
     pub send_tls13_tickets: usize,
 
+    /// FORK(utls-rs) (j): use the certificate's own signature scheme even when the
+    /// client did not offer it in `signature_algorithms`.
+    ///
+    /// Default `false` (RFC 8446 §4.4.2.2: the server MUST choose from the client's
+    /// list). XTLS/REALITY needs the opposite: its certificate is a one-off ed25519
+    /// self-signed leaf whose *signature field* carries `HMAC(AuthKey, pub)`
+    /// (`handshake_server_tls13.go:143-151`), the client verifies that HMAC rather
+    /// than a chain, and real browser fingerprints (Chrome 131/133) **do not offer
+    /// Ed25519 at all** — so the Go reference hard-codes `hs.sigAlg = Ed25519`
+    /// (line 165) instead of negotiating. Without this switch the handshake dies
+    /// with `PeerIncompatible::NoSignatureSchemesInCommon`, which is exactly what
+    /// happened when a stock Xray-core client first met this server.
+    ///
+    /// Only meaningful for a certificate resolver that serves a scheme of its own
+    /// choosing; leave it off for anything that talks to real browsers.
+    pub fork_use_certificate_signature_scheme: bool,
+
     /// Upper bound on the number of TLS 1.3 tickets sent in response to a
     /// client [RFC 9149] `ticket_request` extension.
     ///

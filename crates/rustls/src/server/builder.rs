@@ -121,6 +121,8 @@ impl ConfigBuilder<ServerConfig, WantsServerCert> {
             max_early_data_size: 0,
             send_half_rtt_data: false,
             send_tls13_tickets: 2,
+            // FORK(utls-rs) (j): 默认关（RFC 要求从客户端列表里选）。
+            fork_use_certificate_signature_scheme: false,
             max_tls13_tickets: 0,
             #[cfg(feature = "tls12")]
             require_ems,

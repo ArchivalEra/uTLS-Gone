@@ -94,10 +94,7 @@ fn sealing_touches_only_the_session_id_bytes() {
         if (39..71).contains(&i) {
             continue; // sessionId 那 32 字节被密文替换（预期）
         }
-        assert_eq!(
-            got, want,
-            "第 {i} 字节不该被改（只有 sessionId 区域能变）"
-        );
+        assert_eq!(got, want, "第 {i} 字节不该被改（只有 sessionId 区域能变）");
     }
     assert_ne!(
         &sealed.hello[39..71],
