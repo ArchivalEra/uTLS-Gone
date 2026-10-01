@@ -20,33 +20,45 @@ go test -count=1 -timeout 480s ./...        # 注意：**没有** -skip
 
 **Settling:** `cd <干净检出的 uTLS 树> && go test -count=1 -timeout 480s ./...` —— rc=0 且末行是 `ok` ⇒ 结论成立；rc≠0（或出现 `--- FAIL`）⇒ 结论要改
 
-## 怎么让那两条「要真外网」的测试真跑（本节是修订出来的）
+## 怎么让那两条「要真外网」的测试真跑
+
+> **⚠️ 本节已退役（2026-10-01）。** 现在有一条**不碰系统、不用代理**的路：
+> `sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>` ——
+> 它只把那两条测试**拨号的目标域名**换成直连可达且判据等价的 `www.baidu.com`
+> （用 `go -overlay` 在构建期替换，上游树磁盘上一字节不动）。
+> 下面这段代理配方**保留为历史记录**（它是当时唯一能让**完全未改动**的上游树跑通的办法，
+> 也是 `R-005` 的取证过程），但**不再是推荐路径**；转发器脚本已随退役一并删除。
 
 `TestVerifyHostname`（拨 `www.google.com:443`）与 `TestRealResumption`（`yahoo.com`）
 在**不使用代理**时挂住（拨号被黑洞，不是拒连）。而本机**有**一个 `127.0.0.1:2080` 的
 **SOCKS5h/HTTP 代理** —— 卡点只是 **Go 的 `net.Dial` 不认代理环境变量**
 （`ALL_PROXY` 只对 `net/http` 生效）。所以「本机不可达」这个归因**不完整**，已登记为 `R-005`。
 
-两步就能让它们真跑（只碰本机，不改上游一行）：
+当时的两步（只碰本机，不改上游一行；转发器脚本**已删除**，要重现得自己再写一个）：
 
 ```bash
 # ① 两个名字指到两个回环地址（443 是特权端口，所以要 sudo）
 printf '127.0.0.2 www.google.com\n127.0.0.3 yahoo.com www.yahoo.com\n' | sudo tee -a /etc/hosts
-# ② 两个走 SOCKS5h 的转发器，各接住一个回环地址的 443（脚本入库在 `crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py`）
-cp crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py /tmp/ && \
-  sudo python3 /tmp/socks5fwd.py 127.0.0.2 443 www.google.com 443 &
+# ② 两个走 SOCKS5h 的转发器，各接住一个回环地址的 443（脚本曾入库在
+#    crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py，现已退役删除）
+sudo python3 /tmp/socks5fwd.py 127.0.0.2 443 www.google.com 443 &
 sudo python3 /tmp/socks5fwd.py 127.0.0.3 443 yahoo.com 443 &
 # ③ 现在可以不带 -skip 跑全量
 cd /tmp/utls-ref/utls-master && go test -count=1 -timeout 480s ./...
 ```
 
-转发器本体（`crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py`，约 40 行、纯 stdlib；跑之前 `cp` 到 /tmp 或直接用入库路径）：接受本地连接 → 与
-`127.0.0.1:2080` 做 SOCKS5 无认证握手 → `CONNECT host:port`（**socks5h**：把**名字**交给
-代理解析，所以 google 的 DNS 污染不影响它）→ 双向泵。实测两条隧道都拿到真证书
-（`www.google.com` / `yahoo.com` 的 CN 正确、TLS 1.3），两条测试各自 `--- PASS`。
+转发器当时做的事：接受本地连接 → 与 `127.0.0.1:2080` 做 SOCKS5 无认证握手 →
+`CONNECT host:port`（**socks5h**：把**名字**交给代理解析，所以 google 的 DNS 污染不影响它）
+→ 双向泵。实测两条隧道都拿到真证书（`www.google.com` / `yahoo.com` 的 CN 正确、TLS 1.3），
+两条测试各自 `--- PASS`。
 
 **收尾**：跑完把那两行 `/etc/hosts` 删掉、转发器杀掉（不留系统改动）。
-配方留在这里，所以下次可复跑。
+
+**为什么退役**：它每次都要求 sudo 改 `/etc/hosts` 再手工收尾，把「跑一遍判据」变成一件
+会留系统改动的事；而换域名那条路一条命令、无副作用、判据等价（两条测试判的机制与对端是谁无关）。
+**代价如实记下**：退役后我们失去了「**完全未改动**的上游树跑那两条测试」的可复跑性 ——
+那条路上的 222 PASS / 0 FAIL / 1 SKIP 仍记在上面（作为历史观测），但不再有人能一条命令重现它。
+
 
 ## 不带代理时的观察（仍然有效，只是不再是上界）
 

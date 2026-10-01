@@ -140,4 +140,31 @@ if [ -n "$unexpected" ]; then
     exit 1
 fi
 
+# ── 「真的跑了东西」也必须可判 ──
+# 只断言「没有意外的跳过」是不够的：**一条测试都没跑**（包名解析成空、源码树取错、
+# `-run` 意外命中零条）同样是 0 FAIL / 0 SKIP，两个 job 都会安静地绿。
+# 所以这里要一个**正数**。不写死 222：那会因上游加一条测试而红（本仓的规矩：
+# 写死计数是「上游一改就响」的魔法数，见 `utls_testdata.rs` 里同一条理由），
+# 只断言「非空」，并把实测值打出来给人看。
+if [ "$(python3 - "$W/run.json" <<'PY'
+import json, sys
+n = 0
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line.startswith('{'):
+        continue
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    t = ev.get('Test')
+    if t and '/' not in t and ev.get('Action') == 'pass':
+        n += 1
+print(n)
+PY
+)" = "0" ]; then
+    echo "⚠️ 顶层 PASS 数为 0 —— 这一跑什么都没验到（不是「通过」）" >&2
+    exit 1
+fi
+
 exit $rc

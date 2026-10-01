@@ -16,15 +16,26 @@
 //! 本 crate 是后者。拆分的好处是前者可以完全离线、可复现、可对账（见
 //! `crates/utls/tests/utls_conformance.rs`），而后者只承担「接进引擎」这一件事。
 //!
-//! # 已知限制（明写，不假装）
+//! # 这一层现在覆盖什么（**这份清单被逐条判过，别再照旧稿抄**）
 //!
-//! - **只能完成一个组的握手**：`ClientHelloPlan` 只接受**一个**外部密钥交换，所以
-//!   我们发出去的 `key_share` 里虽然有多个组，真正能完成的只有**第一个与引擎有交集的组**。
-//!   服务器若选了别的组，rustls 会以 `PeerMisbehaved::WrongGroupForKeyShare` 明确失败
-//!   （不是悄悄用错密钥）。要支持多组需要改 fork，那是一个明显更大的 delta。
-//! - **HelloRetryRequest 之后用不了**：fork 明确拒绝（外供字节是**第一条** ClientHello
-//!   的字节，第二飞是另一条消息）。
-//! - **resumption / PSK / early data / 真实 ECH 都还没做**。
+//! 下面每一条都有一个可复跑的判据，判据在括号里；**曾经**这里写着「只能完成一个组、
+//! HRR 用不了、resumption/PSK/ECH 都没做」——那些话在 2026-10 之前是对的，之后逐条
+//! 被推翻，而清单没人改，于是文档开始**低估**自己（比高估更容易误导后来的人）。
+//!
+//! - **多个组**：`key_share` 里每个引擎能完成的组都会拿到一把真交换
+//!   （`tests/multi_key_share.rs`：服务端选中**第二个**组也谈成）。
+//! - **混合/经典共用材料**：spec 声明了 `KeyShare::reuse` 时只交一把混合交换，
+//!   经典条目的公钥取它的经典分量（`tests/key_share_reuse.rs`，Firefox 148）。
+//! - **HelloRetryRequest**：第二飞复用第一飞的输入、只改 `key_share`/cookie/PSK/padding
+//!   （`tests/hello_retry.rs`、`tests/hello_retry_e2e.rs`，另有上游夹具的第二飞逐字节对账）。
+//! - **会话复用 / PSK**：binder 由引擎在拿到字节后算，我们只留占位（`tests/resumption.rs`：
+//!   服务端在第二条连接上说 `Resumed`）。
+//! - **真实 ECH**：三族真服务器报 `Accepted`，另有离线判据（`tests/ech_e2e.rs`、
+//!   `tests/ech_utls_server.rs`；内层与 uTLS 逐字节相同）。
+//! - **TLS 1.2 时代的指纹**（没有 `key_share` 的 8 档）：`tests/tls12_presets.rs`。
+//!
+//! 仍然**没做**的（如实写）：early data（0-RTT）；QUIC 那条路（`u_quic*.go` 的指纹层
+//! 尚未移植，见 `docs/utls-parity.md`）。
 
 use std::io::{Read, Write};
 use std::net::TcpStream;

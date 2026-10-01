@@ -128,6 +128,12 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
   与它**交集为 0** —— uTLS 底下的 Go 默认同样不实现那些套件。它的字节仍然保真，
   只是对面得是一台还认老套件的服务器。
 
+## 等价物还差什么
+
+`uTLS` 的每一个测试族判到了哪一步、哪些是真缺口、哪些属于 rustls 领地（不重写）、
+哪些上游自己就没测 —— 一张可核对的表在 [`docs/utls-parity.md`](docs/utls-parity.md)。
+**「完全等价」不是一句话，是那张表。**
+
 ## 判据与 CI
 
 CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑六组判据，每一组都能单独变红：
@@ -180,8 +186,14 @@ sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/
 
 ## 明确的非目标
 
-HTTP/2 与 HTTP/3 的指纹、以及 TLS record 层的行为控制 —— uTLS 本身也没有这些，
-它们属于另一层（`ClientProfile` 那一类的封装）。本项目只做 ClientHello。
+HTTP/2 的指纹 —— uTLS 本身也没有，它属于另一层（`ClientProfile` 那一类的封装）。
+本项目只做 **ClientHello**（TCP 上的 TLS）。
+
+⚠️ **HTTP/3 不在这条里，别照旧稿抄**：上游 uTLS **有**一个 QUIC 指纹层
+（`u_quic.go` / `u_quic_transport_parameters.go`，是它自己写的，带 golden-bytes 与
+GREASE-version 测试），我们**还没有**把它移植过来 —— 这是「完全等价」上一处**已知的、
+未完成的**缺口，逐条记在 [`docs/utls-parity.md`](docs/utls-parity.md)。
+（这里从前写着「HTTP/3 指纹 uTLS 本身也没有」，那句话是错的。）
 
 ## License
 

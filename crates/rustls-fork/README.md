@@ -49,12 +49,12 @@ grep -m1 '^version' /tmp/rs/rustls-0.23.45/Cargo.toml       # => version = "0.23
 `raw.githubusercontent.com` 不通（http 000），`gh` 的 GraphQL 端点 401。本次用的是前者，
 没有回退。
 
-### 补丁应当成为一条台账事实
+### 补丁应当成为一条台账事实 —— **已落地**
 
-`rustls_pin` **目前不在台账里**（我核对 `FACTS.json` 时该键不存在，19 条事实里没有它）。
-按 `AGENTS.md` 第三条，升级 rustls 是一次**改口**，而要被抓到就必须先有这条事实。
-所以在真正把 fork 挂进 workspace 的那一步，应当把钉住的版本登记为事实（键名 `rustls_pin`），
-让「换了 rustls 版本」在闸门里显形 —— 否则下次升版会是一次静默的指纹改动。
+`rustls_pin` **已在台账里**（值 `0.23.45`，复跑 `grep '^rustls' …`；
+本段原文写的是「目前不在台账里 …… 应当把钉住的版本登记为事实」，那条待办**已完成**）。
+按 `AGENTS.md` 第三条，升级 rustls 是一次**改口**，所以有了这条事实之后，
+「换了 rustls 版本」会在闸门里显形 —— 否则下次升版会是一次静默的指纹改动。
 
 ---
 
@@ -71,20 +71,34 @@ cp -a <repo>/crates/rustls/src ./
 git add -A && git diff --cached > <repo>/crates/rustls-fork/patch.diff
 ```
 
-**判据（两条，都要过）**：
+**判据（两条，都要过）—— 由脚本一次跑完，别手工两步**：
 
-1. **`patch.diff` 里的文件数必须等于 `fork_rs_modified`**（带 `FORK(utls-rs)` 标记的文件数）。
-2. **把补丁打到一份全新的原始树上，得到的树与我们 vendored 的那棵逐文件相同**：
-   ```bash
-   rs=$(mktemp -d) && cd "$rs" && tar xzf /tmp/rs-pristine/rustls-0.23.45.crate
-   cd rustls-0.23.45 && git init -q . && git add -A \
-     && git -c user.email=x@y -c user.name=x commit -qm p \
-     && git apply <repo>/crates/rustls-fork/patch.diff \
-     && diff -r src <repo>/crates/rustls/src && echo IDENTICAL
-   ```
-   第二条是本轮新增的：本轮踩到的正是**第一条过了、补丁却是旧的**——
-   `hs.rs` 的会话 id 修复没进补丁（`patch.diff` 比 `src` 旧），而文件数照样是 9。
-   「文件数相等」只是必要条件；**打出来能重现**才是判据。
+```bash
+sh crates/rustls-fork/verify-patch.sh          # CI 的 patch-repro job 调的就是它
+#   判据① 补丁文件数 == 带 FORK(utls-rs) 标记的文件数
+#   判据② 打到原始树上，得到的树与 crates/rustls **逐文件相同**（整棵 crate，排除 .git/target）
+```
+
+两条缺一不可。第二条是本轮新增的：本轮踩到的正是**第一条过了、补丁却是旧的**——
+`hs.rs` 的会话 id 修复没进补丁（`patch.diff` 比 `src` 旧），而文件数照样是 9。
+「文件数相等」只是必要条件；**打出来能重现**才是判据。
+
+⚠️ 脚本需要 `rustls-$VERSION.crate`（首次去 `static.crates.io` 取，之后复用）——
+这是**要联网**的判据，取不到时它会如实失败，不会伪装成离线可跑。
+
+手工版的等价命令（想看清每一步时用；**口径与脚本一致 = 整棵 crate**）：
+
+```bash
+rs=$(mktemp -d) && cd "$rs" && tar xzf /tmp/rs-pristine/rustls-0.23.45.crate
+cd rustls-0.23.45 && git init -q . && git add -A \
+  && git -c user.email=x@y -c user.name=x commit -qm p \
+  && git apply <repo>/crates/rustls-fork/patch.diff \
+  && diff -r -x .git -x target . <repo>/crates/rustls && echo IDENTICAL
+```
+
+<!-- 上面这段原来是「diff src」，与 README 前面的手工配方（比整棵 crate）**不是同一个判据**；
+     现在统一到整棵 crate，并收进脚本一处。 -->
+
 
 ⚠️ **另一处踩过的**：第一版脚本从**旧补丁**的 `diff --git` 行里取文件清单，
 于是「这一轮新改的**第 9 个**文件」（`src/client/tls13.rs`）根本没进补丁 ——
@@ -365,15 +379,22 @@ patch -p1 --dry-run < /path/to/patch.diff               # 退出码 0
 所有 `ClientExtensions { .. }` 字面量构造（含测试）都带 `..Default::default()`，
 所以加字段不会破坏它们。
 
-### 5. 我**没能**验证的
+### 5. 当时**没能**验证的（现已全部验证，**这份是历史快照**）
 
-- **编译**：没有 `cargo check` 的证据。上面的小样验证覆盖了借用/类型转换/名字解析的
-  易错点，但不等于整 crate 编得过。
-- **握手**：一次真实握手都没跑。这一层要等 workspace 挂载之后才能验。
+补丁第一版落地时，下面这几项确实没有证据 —— 它们后来都补上了，**留在这里是为了
+记住「静态审查看不出什么」**：
+
+- **编译**：当时没有 `cargo check` 的证据。**现在**：整 crate 编得过，且
+  `cargo clippy --workspace --all-targets -- -D warnings` 0 警告（CI 的 `rust` job）。
+- **握手**：当时一次真实握手都没跑。**现在**：真握手覆盖到多组 / HRR / 会话复用 /
+  TLS 1.2 时代指纹 / 真实 ECH —— 并且**正是「跑起来」才炸出下面那八条缺陷**
+  （见「跑通之后才暴露的缺陷」一节）。这是本文件最值钱的一条教训：
+  编译通过 + `git apply` 干净 + 静态核对符号，**不等于**这一版能工作。
 - **行号**：README 里没有写死行号（只在第二节提到函数名），所以 rebase 后本文件不会腐烂。
   `patch.diff` 里的行号是相对 0.23.45 的 hunk 头，由 `git diff` 生成，可复跑。
 - 上游 issue/PR 号（#1421/#1932/#2498/#2414/#2485/#1730、PR #1564/#1475）来自任务给定的
   既有调研，**我没有联网复核**；本机的可用网络只到 `static.crates.io` 一类的下载端点。
+  （这一条**仍然**是未复核项，如实留着。）
 
 ---
 
@@ -440,22 +461,18 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 
 ---
 
-## 六、这一版补丁已知的边界（都是核对过代码得出的，不是估计）
+## 六、这一版补丁已知的边界
 
-1. **只支持一个 key exchange**（可带一个 hybrid component）。引擎的模型是
-   `ExpectServerHello::offered_key_share` 单个 `ActiveKeyExchange`。所以一份像 Chrome 那样
-   报 2–3 个 key share 的 hello，只能对**调用方提供了 `key_exchange` 的那一组**完成握手；
-   服务端若选了另一个我们「报过」的组，`src/client/tls13.rs` 的 `KeyExchangeChoice::new`
-   会以 `PeerMisbehaved::WrongGroupForKeyShare` 失败（**是明确报错，不是算错密钥**）。
-   多 key share 的完成支持是更大的 delta，属于后续工作。
-2. **外部 hello 不支持恢复（PSK）、早数据、ECH。** `prepare_resumption` 在早退分支之前，
-   所以带 PSK 的 binder 不会被算；`early_data_key_schedule` 恒为 `None`；
-   `ech_state` 为 `None`。调用方若要恢复，得自己把 PSK 扩展写进字节，而当前引擎还不能完成它。
-3. **外部 hello / 外部 key exchange 遇上 HelloRetryRequest 会明确报错**
-   （两处 `Error::General`：`handle_hello_retry_request` 里的前置守卫 +
-   `emit_external_client_hello` 里的防御性检查）。第二条 ClientHello 是不同的消息
-   （新的 key share、cookie、已 rollup 的 transcript），用同一份字节重发是静默错误，
-   所以宁可响亮地失败。
+> ⚠️ **这一节的三条（1)(2)(3) 都已经被后续补丁取代** —— 保留原文是为了记住「能力是分批长出来的」，
+> 但**别照它判断现在能做什么**。取代关系：1 → 见 (e) 补记（外部交换是**一张表**，
+> 不是一把）；2 → 见 (g)（会话复用/PSK 已接）与 (h)（真实 ECH 已接）；3 → 见 (f)（第二飞已跑通）。
+> 现在仍成立的是下面 (4)(5) 与 (i)。
+
+1. ~~只支持一个 key exchange~~（已被 (e) 补记取代 —— 多组与 hybrid component 都在支持之列，
+   另有 `tests/multi_key_share.rs`、`tests/key_share_reuse.rs` 的真握手判据）。
+2. ~~外部 hello 不支持恢复（PSK）、早数据、ECH~~（PSK 见 (g)、ECH 见 (h)；**早数据仍未做**）。
+3. ~~外部 hello / 外部 key exchange 遇上 HelloRetryRequest 会明确报错~~
+   （第二飞已跑通，见 (f)：`tests/hello_retry.rs`、`tests/hello_retry_e2e.rs`）。
 4. **`(c)` 是广播而非协商**（见第二节 `(c)`）。
 5. **不写 kx_hint**（见第二节 (e)）。
 

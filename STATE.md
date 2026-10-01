@@ -38,19 +38,22 @@ fork 掉 TLS 引擎、在上面搭 `u_*` 层；唯一的区别是引擎从 Go �
 - **一条已登记的缺口**：`fp_chrome_133_len_stable` 是 `NO` —— 而参照实现**也是** `False`
   （同一个预设跑多次得到多个总长）。所以我们与 uTLS 一致；剩下的问题是**真实 Chrome**
   是否也如此（见 `questions/06-*.md`）。
-- **原版全量测试已跑通（无跳过）**：**两条路都到同一个数** —— 干净检出上
-  `go test -count=1 -timeout 480s ./...` ⇒ `ok`，**222 PASS / 0 FAIL / 1 SKIP**
-  （那条 SKIP 是上游自己跳的）。①**无代理**：只把那两条 egress 测试拨号的目标域名换成
-  直连可达、判据等价者，用 `go -overlay` 在构建期替换（上游树磁盘不动）——
-  `sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>`；
-  ②**经代理**跑**未改动**的那条：配方与脚本见 `questions/09-*.md` 与
-  `crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py`。
-  两条路为什么是**两个**判据（而不是互相替代）写在 `gen-reference/README.md`。
+- **原版全量测试已跑通（无跳过）**：干净检出上 `go test -count=1 -timeout 480s ./...`
+  ⇒ `ok`，**222 PASS / 0 FAIL / 1 SKIP**（那条 SKIP 是上游自己跳的）。
+  现在只有**一条**推荐路径：`sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh`
+  —— 无代理，只把那两条 egress 测试拨号的目标域名换成直连可达、判据等价者，
+  用 `go -overlay` 在构建期替换（上游树磁盘不动）。
+  **经代理跑「完全未改动的上游树」那条已退役**（2026-10-01：它要 sudo 改 `/etc/hosts`
+  再手工收尾，把跑判据变成会留系统改动的事），配方与已删的转发器留在
+  `questions/09-*.md` 作历史记录；**代价**是失去了那条路的可复跑性（已写明）。
+  两条路为什么是**两个**判据写在 `gen-reference/README.md`。
 - **CI 在跑本仓自己的判据**（`.github/workflows/ci.yml`，六个 job）：
   `rust`（fmt / clippy -D warnings / 全部测试）、`gates`（五道闸门 + 自证 + 机器块一致）、
-  `patch-repro`（补丁打到原始 rustls 上要与 vendored 树逐文件相同）、
+  `patch-repro`（一条命令：补丁打到原始 rustls 上要与 vendored 树逐文件相同，两条判据）、
   `ech-offline`（内层逐字节 + 过 uTLS 自己的 ECH 服务端）、`upstream`（原版套件，
   不联网那两条 `-skip`）、`upstream-no-skip`（原版套件**全量**，靠 `-overlay` 换目标域名）。
+  两个 upstream job 现在都断言「**顶层 PASS 非零**」+「跳过集恰如预期」——
+  原先只断言「没有意外的跳过」，于是**一条都没跑**也是绿的。
   联网判据**不在 CI 里**，理由与本地跑法写在 workflow 文件头。
 - **事实系统**：[[gate_count]] 个闸门（**发现式**名录，见 `gates-selftest.sh`），
   [[question_count]] 条悬案（未结案 [[open_questions]] 条），[[retraction_count]] 条翻案，
@@ -330,13 +333,12 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
    `cargo test --workspace` 全绿 + clippy 0 警告。
 2. **原版 `go test` 全量（无 `-skip`）通过**：干净检出上
    `go test -count=1 -timeout 480s ./...` ⇒ `ok`，**222 PASS / 0 FAIL / 1 SKIP**
-   （那条 SKIP 是上游自己跳的）。那两条要真外网的测试有**两条**跑通的路，都不靠跳过：
-   ①**无代理** —— 只换它们拨号的目标域名（`www.baidu.com`，判据等价：证书 SAN 与自身
+   （那条 SKIP 是上游自己跳的）。那两条要真外网的测试现在只有**一条**推荐路径：
+   **无代理** —— 只换它们拨号的目标域名（`www.baidu.com`，判据等价：证书 SAN 与自身
    主机名一致 + 支持 TLS 1.3 票据），`go -overlay` 构建期替换，上游树磁盘不动
-   （`sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>`）；
-   ②**经代理**跑未改动的那条 —— `127.0.0.1:2080` 的 SOCKS5h 代理 + `/etc/hosts` 两行 +
-   一个入库的小转发器（`.../probes/socks5fwd.py`）。那次「本机不可达」的误判记为 `R-005`，
-   配方见 `questions/09-*.md`；两条路的区别见 `gen-reference/README.md`。
+   （`sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>`）。
+   **经代理跑未改动树的配方已退役**（转发器已删，历史见 `questions/09-*.md`；
+   那次「本机不可达」的误判记为 `R-005`）。
 3. **悬案清零**：`questions/` 10 条**全部结案**（未结案 0）。本轮结掉的三条：
    04（两道守卫在真实台账上 rc=2 且拒绝写盘）、
    05（新增第 5 个闸门 `zreflect/check_cmds.py`：321 条 `cmd` 全部产出记录值）、
@@ -686,15 +688,15 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_ja3_text` | **771,4866-4867-4865-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27,4588-29-23-24-25,0** | `cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_text='` |
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
-| `md_files` | **21** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **2684** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_files` | **22** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `md_lines` | **2841** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
-| `py_files` | **16** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `py_lines` | **1991** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `py_lines` | **1933** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `question_count` | **10** | `ls questions/*.md | wc -l` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
-| `rs_files` | **45** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **19100** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_files` | **44** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `rs_lines` | **18946** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 

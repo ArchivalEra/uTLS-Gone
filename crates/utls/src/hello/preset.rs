@@ -18,24 +18,30 @@
 //!
 //! # 已实现 / 未实现
 //!
-//! `u_parrots.go` 里**已落地**：Chrome 58/62/70/72/83/87/96/100/102/106/115_PQ/120/120_PQ/131/133、
-//! Firefox 55/56/63/65/99/102/105/120/148、iOS 11.1/12.1/13、Android 11 OkHttp、
-//! Edge 85/106、Safari 16.0/26.3、360 7.5/11.0、QQ 11.1 —— 共 35 条，见 [`ClientHelloId::implemented`]。
+//! `u_parrots.go` 里**已落地**的都在 [`ClientHelloId::implemented`] 里 ——
+//! **不要再手抄条数**（这里以前写着「共 35 条」，而实际列表早就是 40 个 id 了；
+//! 手抄的计数会漂）。Chrome 58/62/70/72/83/87/96/100/100_PSK/102/106/112_PSK/114_PSK/
+//! 115_PQ/115_PQ_PSK/120/120_PQ/131/133、Firefox 55/56/63/65/99/102/105/120/148、
+//! iOS 11.1/12.1/13、Android 11 OkHttp、Edge 85/106、Safari 16.0/26.3、360 7.5/11.0、
+//! QQ 11.1；外加三个随机化家族与 `HelloCustom`（空 spec，由调用方填）。
 //!
 //! **刻意未实现的**（返回 [`SpecError::PresetUnavailable`]，不静默降级）：
 //!
-//! - `HelloRandomized` / `HelloRandomizedALPN` / `HelloRandomizedNoALPN`：uTLS 用一张
-//!   带权重的生成器（`u_parrots.go` 的 `Weights`）产出，那是**引擎**级的随机化，
-//!   不是一条固定的 spec；
+//! - `HelloRandomized` / `HelloRandomizedALPN` / `HelloRandomizedNoALPN` 的**静态形态**：
+//!   uTLS 用一张带权重的生成器（`u_parrots.go` 的 `Weights`）产出，那是**引擎**级的
+//!   随机化，不是一条固定的 spec。本仓的对应物是
+//!   [`ClientHelloSpec::randomized`](super::ClientHelloSpec::randomized) 那一族（按 seed 可复现）；
 //! - `HelloGolang`：uTLS 里它是「用 Go stdlib 的 ClientHello」。在 Rust 里对应
 //!   「用 rustls 自己的 ClientHello」——那正好是**不使用本 crate** 时得到的东西，
 //!   所以这里不可能有它的 spec；
-//! - `HelloChrome_100_PSK` / `112_PSK` / `114_PSK` / `115_PQ_PSK`（四个 `_PSK_` 变体）：
-//!   它们依赖 `PreSharedKeyExtension` 的 **binder** 与「必须排最后」的位置约束，
-//!   本层的模型还没有 PSK 扩展 —— **宁可不做，也不发一条没有 binder 的假 PSK**；
 //! - 未列出的版本号（例如 `Chrome(999)` / `Ios(14)`）：uTLS 里没有对应版本串，
 //!   而**猜一个最近邻**会让调用方以为自己在模仿 Chrome 120，实际发出去的是别的版本 ——
 //!   这种错在指纹上看得见、在代码里看不见。
+//!
+//! ⚠️ 四个 `_PSK_` 变体（`Chrome 100/112/114/115_PQ` 带 PSK）**已经实现了** ——
+//! 这里曾有整段文字说它们「刻意未实现、本层没有 PSK 扩展」，那是旧稿：
+//! PSK 扩展（`Extension::PreSharedKey`）与「binder 留占位、位置必须最后」的约束都已进模型，
+//! 判据在 `src/hello/tests.rs` 与 `crates/utls-engine/tests/resumption.rs`。
 //!
 //! `HelloChrome_106_Shuffle` **是**实现了的（就是 [`ClientHelloId::Chrome`]`(106)`，
 //! 也是 uTLS 里唯一的 106）。

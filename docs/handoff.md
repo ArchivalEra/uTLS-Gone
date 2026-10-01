@@ -60,9 +60,8 @@
   只复制 `ech_*_test.go`：同目录还有 `main.go`（`package main`），整个目录拷进去会让
   `go test` 直接 `setup failed`。`ech_utls_server` 那条测试会自己复制它需要的那个探针。
 - **那两条要真外网的原版测试**（`TestVerifyHostname` 拨 `www.google.com`、`TestRealResumption`
-  拨 `yahoo.com`）有**两条路**，先看第 ①条：
-
-  **① 无代理（推荐，一条命令）** —— 把目标域名换成直连可达、判据等价的 `www.baidu.com`：
+  拨 `yahoo.com`）现在只有**一条**推荐路径 —— 把目标域名换成直连可达、判据等价的
+  `www.baidu.com`：
 
   ```bash
   sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
@@ -71,24 +70,13 @@
 
   它**不改上游树**：改写稿只在临时目录里，靠 `go -overlay` 在**构建期**替换 `tls_test.go`。
   为什么换域名不算放宽判据、以及为什么 `www.jd.com` 没被选中（实测 4 次里 1 次不复用），
-  见脚本与 `gen-reference/README.md` 的文件头。**注意它是另一条判据**，不是 ② 的替代。
+  见脚本与 `gen-reference/README.md` 的文件头。
 
-  **② 经代理跑未改动的那条**（要有一个 SOCKS5h/HTTP 代理；本机直连不通那两个域名 ——
-  DNS 对 google 返回的是 Meta 段的地址，且无路由）。**Go 的 `net.Dial` 不认代理环境变量**，
-  所以要自己做端口转发：
-
-  ```bash
-  # ① 两个名字指到两个回环地址（443 是特权端口 ⇒ sudo）
-  printf '127.0.0.2 www.google.com\n127.0.0.3 yahoo.com www.yahoo.com\n' | sudo tee -a /etc/hosts
-  # ② 两个走 SOCKS5h 的转发器（脚本入库在 gen-reference/probes/socks5fwd.py，默认代理端口写在脚本里）
-  sudo python3 crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py 127.0.0.2 443 www.google.com 443 &
-  sudo python3 crates/utls/tests/fixtures/gen-reference/probes/socks5fwd.py 127.0.0.3 443 yahoo.com 443 &
-  # ③ 全量，不带 -skip
-  cd /tmp/utls-ref/utls-master && go test -count=1 -timeout 480s ./...
-  ```
-
-  **跑完把那两行 `/etc/hosts` 删掉、转发器杀掉**（别把系统改动留下）。
-  取证与两个哈希见 [`questions/09`](../questions/09-full-suite-oracle.md)。
+  **⚠️ 另一条路（经 SOCKS5h 代理 + `/etc/hosts` 跑「完全未改动」的上游树）已于 2026-10-01 退役**：
+  它每次要 sudo 改 `/etc/hosts` 再手工收尾，把「跑判据」变成一件会留系统改动的事；
+  转发器脚本已删。配方与当时的观测（222/0/1）保留在
+  [`questions/09`](../questions/09-full-suite-oracle.md) 作历史记录。
+  **代价**：失去了「完全未改动的上游树」那条路的可复跑性 —— 那条判据现在只剩历史观测。
 
 ## 判据怎么跑
 
@@ -211,9 +199,16 @@ for g in zreflect/check_*.py; do python3 "$g"; done && sh gates-selftest.sh
 
 ## 还没做
 
-**判据缺口：无。** 此前唯一没判过的那一格（混合组 `X25519MLKEM768(4588)` 没有正向结论）
-已补齐 —— 见上面「一句话现状」里那条与 `crates/utls-engine/tests/mixed_group_handshake.rs`。
-引擎组列表里每一个会被真实预设发出去的组，现在都有一条**服务端给的**正向结论。
+**「完全等价」还差哪些，看 [`utls-parity.md`](utls-parity.md)** —— 那是唯一的口径，
+本文件不再另抄一份（抄两份就会漂）。摘要：
+
+- **指纹/握手判据缺口：无**。此前唯一没判过的那一格（混合组 `X25519MLKEM768(4588)`
+  没有正向结论）已补齐，见 `crates/utls-engine/tests/mixed_group_handshake.rs`。
+- **真缺口（uTLS 有、我们没有）**：QUIC 指纹层、`ClientHelloSpec` 的 JSON 格式、
+  Fingerprinter 的三件事（KeepPSK 捕获 / dump-larger-than-extensions / `AllowBluntMimicry`
+  口径）、GREASE-ECH 的 golden vector、early data。
+- **不重写**：上游那些测 Go 引擎本身的用例（服务端、记录层、密钥计划、QUIC 连接状态机）。
+- **无 oracle**：`Roller` —— 上游自己零测试。
 
 **加固**（判据都绿，只是能更省事）：
 
