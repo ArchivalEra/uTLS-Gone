@@ -28,9 +28,9 @@ use crate::msgs::handshake::{
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::persist;
 use crate::server::common::ActiveCertifiedKey;
-use crate::server::{ClientHello, ServerConfig, tls13};
+use crate::server::{tls13, ClientHello, ServerConfig};
 use crate::sync::Arc;
-use crate::{SupportedCipherSuite, suites};
+use crate::{suites, SupportedCipherSuite};
 
 pub(super) type NextState<'a> = Box<dyn State<ServerConnectionData> + 'a>;
 pub(super) type NextStateOrError<'a> = Result<NextState<'a>, Error>;
@@ -139,9 +139,7 @@ impl ExtensionProcessing {
             let transport_params = hello
                 .transport_parameters
                 .as_ref()
-                .or(hello
-                    .transport_parameters_draft
-                    .as_ref());
+                .or(hello.transport_parameters_draft.as_ref());
             match transport_params {
                 Some(params) => cx.common.quic.params = Some(params.to_owned().into_vec()),
                 None => {
@@ -162,15 +160,10 @@ impl ExtensionProcessing {
         // Send status_request response if we have one.  This is not allowed
         // if we're resuming, and is only triggered if we have an OCSP response
         // to send.
-        if !for_resume
-            && hello
-                .certificate_status_request
-                .is_some()
-        {
+        if !for_resume && hello.certificate_status_request.is_some() {
             if ocsp_response.is_some() && !cx.common.is_tls13() {
                 // Only TLS1.2 sends confirmation in ServerHello
-                self.extensions
-                    .certificate_status_request_ack = Some(());
+                self.extensions.certificate_status_request_ack = Some(());
             }
         } else {
             // Throw away any OCSP response so we don't try to send it later.
@@ -213,8 +206,7 @@ impl ExtensionProcessing {
 
         // Confirm use of EMS if offered.
         if using_ems {
-            self.extensions
-                .extended_master_secret_ack = Some(());
+            self.extensions.extended_master_secret_ack = Some(());
         }
     }
 
@@ -231,9 +223,7 @@ impl ExtensionProcessing {
 
         self.process_cert_type_extension(
             client_supports,
-            config
-                .cert_resolver
-                .only_raw_public_keys(),
+            config.cert_resolver.only_raw_public_keys(),
             ExtensionType::ServerCertificateType,
             cx,
         )
@@ -252,9 +242,7 @@ impl ExtensionProcessing {
 
         self.process_cert_type_extension(
             client_supports,
-            config
-                .verifier
-                .requires_raw_public_keys(),
+            config.verifier.requires_raw_public_keys(),
             ExtensionType::ClientCertificateType,
             cx,
         )
@@ -406,11 +394,7 @@ impl ExpectClientHello {
             .cipher_suites
             .iter()
             .copied()
-            .filter(|scs| {
-                client_hello
-                    .cipher_suites
-                    .contains(&scs.suite())
-            })
+            .filter(|scs| client_hello.cipher_suites.contains(&scs.suite()))
             .collect::<Vec<_>>();
 
         sig_schemes
@@ -419,9 +403,7 @@ impl ExpectClientHello {
         // We adhere to the TLS 1.2 RFC by not exposing this to the cert resolver if TLS version is 1.2
         let certificate_authorities = match version {
             ProtocolVersion::TLSv1_2 => None,
-            _ => client_hello
-                .certificate_authority_names
-                .as_deref(),
+            _ => client_hello.certificate_authority_names.as_deref(),
         };
         // Choose a certificate.
         let certkey = {
@@ -429,22 +411,15 @@ impl ExpectClientHello {
                 server_name: &cx.data.sni,
                 signature_schemes: &sig_schemes,
                 alpn: client_hello.protocols.as_ref(),
-                client_cert_types: client_hello
-                    .client_certificate_types
-                    .as_deref(),
-                server_cert_types: client_hello
-                    .server_certificate_types
-                    .as_deref(),
+                client_cert_types: client_hello.client_certificate_types.as_deref(),
+                server_cert_types: client_hello.server_certificate_types.as_deref(),
                 cipher_suites: &client_hello.cipher_suites,
                 certificate_authorities,
                 named_groups: client_hello.named_groups.as_deref(),
             };
             trace!("Resolving server certificate: {client_hello:#?}");
 
-            let certkey = self
-                .config
-                .cert_resolver
-                .resolve(client_hello);
+            let certkey = self.config.cert_resolver.resolve(client_hello);
 
             certkey.ok_or_else(|| {
                 cx.common.send_fatal_alert(
@@ -460,10 +435,7 @@ impl ExpectClientHello {
                 version,
                 certkey.get_key().algorithm(),
                 cx.common.protocol,
-                client_hello
-                    .named_groups
-                    .as_deref()
-                    .unwrap_or_default(),
+                client_hello.named_groups.as_deref().unwrap_or_default(),
                 &client_hello.cipher_suites,
             )
             .map_err(|incompat| {
@@ -562,14 +534,9 @@ impl ExpectClientHello {
         let mut supported_groups = Vec::with_capacity(client_groups.len());
 
         for offered_group in client_groups {
-            let supported = self
-                .config
-                .provider
-                .kx_groups
-                .iter()
-                .find(|skxg| {
-                    skxg.usable_for_version(selected_version) && skxg.name() == *offered_group
-                });
+            let supported = self.config.provider.kx_groups.iter().find(|skxg| {
+                skxg.usable_for_version(selected_version) && skxg.name() == *offered_group
+            });
 
             match offered_group.key_exchange_algorithm() {
                 KeyExchangeAlgorithm::DHE => {
@@ -584,33 +551,27 @@ impl ExpectClientHello {
             supported_groups.push(supported);
         }
 
-        let first_supported_dhe_kxg = if selected_version == ProtocolVersion::TLSv1_2 {
-            // https://datatracker.ietf.org/doc/html/rfc7919#section-4 (paragraph 2)
-            let first_supported_dhe_kxg = self
-                .config
-                .provider
-                .kx_groups
-                .iter()
-                .find(|skxg| skxg.name().key_exchange_algorithm() == KeyExchangeAlgorithm::DHE);
-            ffdhe_possible |= !ffdhe_offered && first_supported_dhe_kxg.is_some();
-            first_supported_dhe_kxg
-        } else {
-            // In TLS1.3, the server may only directly negotiate a group.
-            None
-        };
+        let first_supported_dhe_kxg =
+            if selected_version == ProtocolVersion::TLSv1_2 {
+                // https://datatracker.ietf.org/doc/html/rfc7919#section-4 (paragraph 2)
+                let first_supported_dhe_kxg =
+                    self.config.provider.kx_groups.iter().find(|skxg| {
+                        skxg.name().key_exchange_algorithm() == KeyExchangeAlgorithm::DHE
+                    });
+                ffdhe_possible |= !ffdhe_offered && first_supported_dhe_kxg.is_some();
+                first_supported_dhe_kxg
+            } else {
+                // In TLS1.3, the server may only directly negotiate a group.
+                None
+            };
 
         if !ecdhe_possible && !ffdhe_possible {
             return Err(PeerIncompatible::NoKxGroupsInCommon);
         }
 
-        let mut suitable_suites_iter = self
-            .config
-            .provider
-            .cipher_suites
-            .iter()
-            .filter(|suite| {
-                // Reduce our supported ciphersuites by the certified key's algorithm.
-                suite.usable_for_signature_algorithm(sig_key_algorithm)
+        let mut suitable_suites_iter = self.config.provider.cipher_suites.iter().filter(|suite| {
+            // Reduce our supported ciphersuites by the certified key's algorithm.
+            suite.usable_for_signature_algorithm(sig_key_algorithm)
                 // And version
                 && suite.version().version == selected_version
                 // And protocol
@@ -618,7 +579,7 @@ impl ExpectClientHello {
                 // And support one of key exchange groups
                 && (ecdhe_possible && suite.usable_for_kx_algorithm(KeyExchangeAlgorithm::ECDHE)
                 || ffdhe_possible && suite.usable_for_kx_algorithm(KeyExchangeAlgorithm::DHE))
-            });
+        });
 
         // RFC 7919 (https://datatracker.ietf.org/doc/html/rfc7919#section-4) requires us to send
         // the InsufficientSecurity alert in case we don't recognize client's FFDHE groups (i.e.,
@@ -633,9 +594,7 @@ impl ExpectClientHello {
             client_suites
                 .iter()
                 .find_map(|client_suite| {
-                    suitable_suites
-                        .iter()
-                        .find(|x| *client_suite == x.suite())
+                    suitable_suites.iter().find(|x| *client_suite == x.suite())
                 })
                 .copied()
         }
@@ -766,15 +725,12 @@ pub(super) fn process_client_hello<'m>(
         return Err(PeerMisbehaved::ServerNameDifferedOnRetry.into());
     }
 
-    let sig_schemes = client_hello
-        .signature_schemes
-        .as_ref()
-        .ok_or_else(|| {
-            cx.common.send_fatal_alert(
-                AlertDescription::HandshakeFailure,
-                PeerIncompatible::SignatureAlgorithmsExtensionRequired,
-            )
-        })?;
+    let sig_schemes = client_hello.signature_schemes.as_ref().ok_or_else(|| {
+        cx.common.send_fatal_alert(
+            AlertDescription::HandshakeFailure,
+            PeerIncompatible::SignatureAlgorithmsExtensionRequired,
+        )
+    })?;
 
     Ok((client_hello, sig_schemes.to_owned()))
 }

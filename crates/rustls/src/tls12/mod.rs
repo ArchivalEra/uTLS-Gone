@@ -124,15 +124,13 @@ impl ConnectionSecrets {
         // slice parameters are non-empty.
         // `label` is guaranteed non-empty because it's assigned from a `&str` above.
         // `seed.as_ref()` is guaranteed non-empty by documentation on the AsRef impl.
-        ret.suite
-            .prf_provider
-            .for_key_exchange(
-                &mut ret.master_secret,
-                kx,
-                peer_pub_key,
-                label.as_bytes(),
-                seed.as_ref(),
-            )?;
+        ret.suite.prf_provider.for_key_exchange(
+            &mut ret.master_secret,
+            kx,
+            peer_pub_key,
+            label.as_bytes(),
+            seed.as_ref(),
+        )?;
 
         Ok(ret)
     }
@@ -147,8 +145,7 @@ impl ConnectionSecrets {
             suite,
             master_secret: [0u8; 48],
         };
-        ret.master_secret
-            .copy_from_slice(master_secret);
+        ret.master_secret.copy_from_slice(master_secret);
         ret
     }
 
@@ -355,26 +352,22 @@ mod tests {
         server_buf.push(34);
 
         let mut common = CommonState::new(Side::Client);
-        assert!(
-            decode_kx_params::<ServerKeyExchangeParams>(
-                KeyExchangeAlgorithm::ECDHE,
-                &mut common,
-                &server_buf
-            )
-            .is_err()
-        );
+        assert!(decode_kx_params::<ServerKeyExchangeParams>(
+            KeyExchangeAlgorithm::ECDHE,
+            &mut common,
+            &server_buf
+        )
+        .is_err());
     }
 
     #[test]
     fn client_ecdhe_invalid() {
         let mut common = CommonState::new(Side::Server);
-        assert!(
-            decode_kx_params::<ServerKeyExchangeParams>(
-                KeyExchangeAlgorithm::ECDHE,
-                &mut common,
-                &[34],
-            )
-            .is_err()
-        );
+        assert!(decode_kx_params::<ServerKeyExchangeParams>(
+            KeyExchangeAlgorithm::ECDHE,
+            &mut common,
+            &[34],
+        )
+        .is_err());
     }
 }

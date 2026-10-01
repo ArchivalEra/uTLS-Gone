@@ -10,12 +10,12 @@ use super::hs::{ClientContext, ClientHelloInput, ClientSessionValue};
 use crate::check::inappropriate_handshake_message;
 use crate::client::common::{ClientAuthDetails, ClientHelloDetails, ServerCertDetails};
 use crate::client::ech::{self, EchState, EchStatus};
-use crate::client::{ClientConfig, ClientSessionStore, hs};
+use crate::client::{hs, ClientConfig, ClientSessionStore};
 use crate::common_state::{
     CommonState, HandshakeFlightTls13, HandshakeKind, KxState, Protocol, Side, State,
 };
-use crate::conn::ConnectionRandoms;
 use crate::conn::kernel::{Direction, KernelContext, KernelState};
+use crate::conn::ConnectionRandoms;
 use crate::crypto::hash::Hash;
 use crate::crypto::{ActiveKeyExchange, SharedSecret};
 use crate::enums::{
@@ -29,10 +29,10 @@ use crate::msgs::ccs::ChangeCipherSpecPayload;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, KeyUpdateRequest};
 use crate::msgs::handshake::{
-    CERTIFICATE_MAX_SIZE_LIMIT, CertificatePayloadTls13, ClientExtensions, EchConfigPayload,
-    HandshakeMessagePayload, HandshakePayload, KeyShareEntry, NewSessionTicketPayloadTls13,
-    PresharedKeyBinder, PresharedKeyIdentity, PresharedKeyOffer, ServerExtensions,
-    ServerHelloPayload,
+    CertificatePayloadTls13, ClientExtensions, EchConfigPayload, HandshakeMessagePayload,
+    HandshakePayload, KeyShareEntry, NewSessionTicketPayloadTls13, PresharedKeyBinder,
+    PresharedKeyIdentity, PresharedKeyOffer, ServerExtensions, ServerHelloPayload,
+    CERTIFICATE_MAX_SIZE_LIMIT,
 };
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::persist::{self, Retrieved};
@@ -44,10 +44,10 @@ use crate::tls13::key_schedule::{
     KeyScheduleTraffic,
 };
 use crate::tls13::{
-    Tls13CipherSuite, construct_client_verify_message, construct_server_verify_message,
+    construct_client_verify_message, construct_server_verify_message, Tls13CipherSuite,
 };
 use crate::verify::{self, DigitallySignedStruct};
-use crate::{ConnectionTrafficSecrets, KeyLog, compress, crypto};
+use crate::{compress, crypto, ConnectionTrafficSecrets, KeyLog};
 
 // Extensions we expect in plaintext in the ServerHello.
 static ALLOWED_PLAINTEXT_EXTS: &[ExtensionType] = &[
@@ -81,15 +81,12 @@ pub(super) fn handle_server_hello(
 ) -> hs::NextStateOrError<'static> {
     validate_server_hello(cx.common, server_hello)?;
 
-    let their_key_share = server_hello
-        .key_share
-        .as_ref()
-        .ok_or_else(|| {
-            cx.common.send_fatal_alert(
-                AlertDescription::MissingExtension,
-                PeerMisbehaved::MissingKeyShare,
-            )
-        })?;
+    let their_key_share = server_hello.key_share.as_ref().ok_or_else(|| {
+        cx.common.send_fatal_alert(
+            AlertDescription::MissingExtension,
+            PeerMisbehaved::MissingKeyShare,
+        )
+    })?;
 
     let ClientHelloInput {
         config,
@@ -111,14 +108,12 @@ pub(super) fn handle_server_hello(
     // FORK(utls-rs) (e): pick the share the server selected out of everything we offered.
     // Upstream had exactly one, so this used to be a plain comparison; with several the
     // server may pick any group we advertised, and failing here would be a defect.
-    let selected = our_key_shares
-        .take_for(their_key_share)
-        .ok_or_else(|| {
-            cx.common.send_fatal_alert(
-                AlertDescription::IllegalParameter,
-                PeerMisbehaved::WrongGroupForKeyShare,
-            )
-        })?;
+    let selected = our_key_shares.take_for(their_key_share).ok_or_else(|| {
+        cx.common.send_fatal_alert(
+            AlertDescription::IllegalParameter,
+            PeerMisbehaved::WrongGroupForKeyShare,
+        )
+    })?;
     // FORK(utls-rs) (e): `kx_state` should name the group the handshake actually used, and
     // with several offered shares that is only known now. (The engine-built path sets it
     // when it starts its one share; the hybrid path below does the same correction.)
@@ -127,8 +122,8 @@ pub(super) fn handle_server_hello(
         Some(g) => KxState::Start(g),
         None => KxState::External,
     };
-    let our_key_share = KeyExchangeChoice::new(&config, cx, selected, their_key_share)
-        .map_err(|_| {
+    let our_key_share =
+        KeyExchangeChoice::new(&config, cx, selected, their_key_share).map_err(|_| {
             cx.common.send_fatal_alert(
                 AlertDescription::IllegalParameter,
                 PeerMisbehaved::WrongGroupForKeyShare,
@@ -221,9 +216,7 @@ pub(super) fn handle_server_hello(
             // server hello message, and switch the relevant state to the copies for the
             // inner client hello.
             Some(mut accepted) => {
-                accepted
-                    .transcript
-                    .add_message(server_hello_msg);
+                accepted.transcript.add_message(server_hello_msg);
                 transcript = accepted.transcript;
                 randoms.client = accepted.random.0;
                 hello.sent_extensions = accepted.sent_extensions;
@@ -286,9 +279,7 @@ impl KeyExchangeChoice {
             return Ok(Self::Whole(our_key_share));
         }
 
-        let (component_group, _) = our_key_share
-            .hybrid_component()
-            .ok_or(())?;
+        let (component_group, _) = our_key_share.hybrid_component().ok_or(())?;
 
         if component_group != their_key_share.group {
             return Err(());
@@ -403,9 +394,7 @@ pub(super) fn prepare_resumption(
     // PreSharedKey extension.
     let max_early_data_size = resuming_session.max_early_data_size();
     if config.enable_early_data && max_early_data_size > 0 && !doing_retry {
-        cx.data
-            .early_data
-            .enable(max_early_data_size as usize);
+        cx.data.early_data.enable(max_early_data_size as usize);
         exts.early_data_request = Some(());
     }
 
@@ -416,10 +405,7 @@ pub(super) fn prepare_resumption(
     // the message it's contained in (!!!).
     let obfuscated_ticket_age = resuming_session.obfuscated_ticket_age();
 
-    let binder_len = resuming_suite
-        .common
-        .hash_provider
-        .output_len();
+    let binder_len = resuming_suite.common.hash_provider.output_len();
     let binder = vec![0u8; binder_len];
 
     let psk_identity =
@@ -551,9 +537,7 @@ impl State<ClientConnectionData> for ExpectEncryptedExtensions {
             // If we offered ECH, and it was rejected, store the retry configs (if any) from
             // the server's ECH extension. We will return them in an error produced at the end
             // of the handshake.
-            (EchStatus::Rejected, ext) => ext
-                .as_ref()
-                .map(|ext| ext.retry_configs.to_vec()),
+            (EchStatus::Rejected, ext) => ext.as_ref().map(|ext| ext.retry_configs.to_vec()),
             _ => None,
         };
 
@@ -588,15 +572,10 @@ impl State<ClientConnectionData> for ExpectEncryptedExtensions {
 
                 if was_early_traffic && !cx.common.early_traffic {
                     // If no early traffic, set the encryption key for handshakes
-                    self.key_schedule
-                        .set_handshake_encrypter(cx.common);
+                    self.key_schedule.set_handshake_encrypter(cx.common);
                 }
 
-                cx.common.peer_certificates = Some(
-                    resuming_session
-                        .server_cert_chain()
-                        .clone(),
-                );
+                cx.common.peer_certificates = Some(resuming_session.server_cert_chain().clone());
                 cx.common.handshake_kind = Some(HandshakeKind::Resumed);
 
                 // We *don't* reverify the certificate chain here: resumption is a
@@ -620,9 +599,7 @@ impl State<ClientConnectionData> for ExpectEncryptedExtensions {
                 if exts.early_data_ack.is_some() {
                     return Err(PeerMisbehaved::EarlyDataExtensionWithoutResumption.into());
                 }
-                cx.common
-                    .handshake_kind
-                    .get_or_insert(HandshakeKind::Full);
+                cx.common.handshake_kind.get_or_insert(HandshakeKind::Full);
 
                 Ok(if self.hello.offered_cert_compression {
                     Box::new(ExpectCertificateOrCompressedCertificateOrCertReq {
@@ -938,13 +915,8 @@ impl State<ClientConnectionData> for ExpectCertificateRequest {
             .cloned();
 
         let client_auth = ClientAuthDetails::resolve(
-            self.config
-                .client_auth_cert_resolver
-                .as_ref(),
-            certreq
-                .extensions
-                .authority_names
-                .as_deref(),
+            self.config.client_auth_cert_resolver.as_ref(),
+            certreq.extensions.authority_names.as_deref(),
             &compat_sigschemes,
             Some(certreq.context.0.clone()),
             compat_compressor,
@@ -1050,11 +1022,7 @@ impl State<ClientConnectionData> for ExpectCompressedCertificate {
         trace!(
             "Server certificate decompressed using {:?} ({} bytes -> {})",
             compressed_cert.alg,
-            compressed_cert
-                .compressed
-                .0
-                .bytes()
-                .len(),
+            compressed_cert.compressed.0.bytes().len(),
             compressed_cert.uncompressed_len,
         );
 
@@ -1124,9 +1092,7 @@ impl State<ClientConnectionData> for ExpectCertificate {
 
         let end_entity_ocsp = cert_chain.end_entity_ocsp().to_vec();
         let server_cert = ServerCertDetails::new(
-            cert_chain
-                .into_certificate_chain()
-                .into_owned(),
+            cert_chain.into_certificate_chain().into_owned(),
             end_entity_ocsp,
         );
 
@@ -1197,10 +1163,7 @@ impl State<ClientConnectionData> for ExpectCertificateVerify<'_> {
                 &self.server_cert.ocsp_response,
                 now,
             )
-            .map_err(|err| {
-                cx.common
-                    .send_cert_verify_error_alert(err)
-            })?;
+            .map_err(|err| cx.common.send_cert_verify_error_alert(err))?;
 
         // 2. Verify their signature on the handshake.
         let handshake_hash = self.transcript.current_hash();
@@ -1212,10 +1175,7 @@ impl State<ClientConnectionData> for ExpectCertificateVerify<'_> {
                 end_entity,
                 cert_verify,
             )
-            .map_err(|err| {
-                cx.common
-                    .send_cert_verify_error_alert(err)
-            })?;
+            .map_err(|err| cx.common.send_cert_verify_error_alert(err))?;
 
         cx.common.peer_certificates = Some(self.server_cert.cert_chain.into_owned());
         self.transcript.add_message(&m);
@@ -1276,9 +1236,7 @@ fn emit_certificate_tls13(
     certkey: Option<&CertifiedKey>,
     auth_context: Option<Vec<u8>>,
 ) {
-    let certs = certkey
-        .map(|ck| ck.cert.as_ref())
-        .unwrap_or(&[][..]);
+    let certs = certkey.map(|ck| ck.cert.as_ref()).unwrap_or(&[][..]);
     let mut cert_payload = CertificatePayloadTls13::new(certs.iter(), None);
     cert_payload.context = PayloadU8::new(auth_context.unwrap_or_default());
 
@@ -1354,9 +1312,7 @@ impl State<ClientConnectionData> for ExpectFinished {
             require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;
 
         let handshake_hash = st.transcript.current_hash();
-        let expect_verify_data = st
-            .key_schedule
-            .sign_server_finish(&handshake_hash);
+        let expect_verify_data = st.key_schedule.sign_server_finish(&handshake_hash);
 
         let fin = match ConstantTimeEq::ct_eq(expect_verify_data.as_ref(), finished.bytes()).into()
         {
@@ -1377,8 +1333,7 @@ impl State<ClientConnectionData> for ExpectFinished {
             emit_end_of_early_data_tls13(&mut st.transcript, cx.common);
             cx.common.early_traffic = false;
             cx.data.early_data.finished();
-            st.key_schedule
-                .set_handshake_encrypter(cx.common);
+            st.key_schedule.set_handshake_encrypter(cx.common);
         }
 
         let mut flight = HandshakeFlightTls13::new(&mut st.transcript);
@@ -1422,9 +1377,8 @@ impl State<ClientConnectionData> for ExpectFinished {
             }
         }
 
-        let (key_schedule_pre_finished, verify_data) = st
-            .key_schedule
-            .into_pre_finished_client_traffic(
+        let (key_schedule_pre_finished, verify_data) =
+            st.key_schedule.into_pre_finished_client_traffic(
                 hash_after_handshake,
                 flight.transcript.current_hash(),
                 &*st.config.key_log,
@@ -1445,8 +1399,7 @@ impl State<ClientConnectionData> for ExpectFinished {
         cx.common.check_aligned_handshake()?;
         let (key_schedule, resumption) =
             key_schedule_pre_finished.into_traffic(cx.common, st.transcript.current_hash());
-        cx.common
-            .start_traffic(&mut cx.sendable_plaintext);
+        cx.common.start_traffic(&mut cx.sendable_plaintext);
 
         // Now that we've reached the end of the normal handshake we must enforce ECH acceptance by
         // sending an alert and returning an error (potentially with retry configs) if the server
@@ -1499,9 +1452,7 @@ impl ExpectTraffic {
         cx: &mut KernelContext<'_>,
         nst: &NewSessionTicketPayloadTls13,
     ) -> Result<(), Error> {
-        let secret = self
-            .resumption
-            .derive_ticket_psk(&nst.nonce.0);
+        let secret = self.resumption.derive_ticket_psk(&nst.nonce.0);
 
         let now = self.config.current_time()?;
 
@@ -1510,17 +1461,13 @@ impl ExpectTraffic {
             self.suite,
             nst.ticket.clone(),
             secret.as_ref(),
-            cx.peer_certificates
-                .cloned()
-                .unwrap_or_default(),
+            cx.peer_certificates.cloned().unwrap_or_default(),
             &self.config.verifier,
             &self.config.client_auth_cert_resolver,
             now,
             nst.lifetime,
             nst.age_add,
-            nst.extensions
-                .max_early_data_size
-                .unwrap_or_default(),
+            nst.extensions.max_early_data_size.unwrap_or_default(),
         );
 
         if cx.is_quic() {
@@ -1550,10 +1497,7 @@ impl ExpectTraffic {
             protocol: cx.common.protocol,
             quic: &cx.common.quic,
         };
-        cx.common.tls13_tickets_received = cx
-            .common
-            .tls13_tickets_received
-            .saturating_add(1);
+        cx.common.tls13_tickets_received = cx.common.tls13_tickets_received.saturating_add(1);
         self.handle_new_ticket_impl(&mut kcx, nst)
     }
 
@@ -1573,13 +1517,11 @@ impl ExpectTraffic {
         common.check_aligned_handshake()?;
 
         if common.should_update_key(key_update_request)? {
-            self.key_schedule
-                .update_encrypter_and_notify(common);
+            self.key_schedule.update_encrypter_and_notify(common);
         }
 
         // Update our read-side keys.
-        self.key_schedule
-            .update_decrypter(common);
+        self.key_schedule.update_decrypter(common);
         Ok(())
     }
 }
@@ -1594,9 +1536,7 @@ impl State<ClientConnectionData> for ExpectTraffic {
         Self: 'm,
     {
         match m.payload {
-            MessagePayload::ApplicationData(payload) => cx
-                .common
-                .take_received_plaintext(payload),
+            MessagePayload::ApplicationData(payload) => cx.common.take_received_plaintext(payload),
             MessagePayload::Handshake {
                 parsed: HandshakeMessagePayload(HandshakePayload::NewSessionTicketTls13(new_ticket)),
                 ..
@@ -1633,8 +1573,7 @@ impl State<ClientConnectionData> for ExpectTraffic {
     }
 
     fn extract_secrets(&self) -> Result<PartiallyExtractedSecrets, Error> {
-        self.key_schedule
-            .extract_secrets(Side::Client)
+        self.key_schedule.extract_secrets(Side::Client)
     }
 
     fn into_external_state(self: Box<Self>) -> Result<Box<dyn KernelState + 'static>, Error> {
@@ -1648,11 +1587,10 @@ impl State<ClientConnectionData> for ExpectTraffic {
 
 impl KernelState for ExpectTraffic {
     fn update_secrets(&mut self, dir: Direction) -> Result<ConnectionTrafficSecrets, Error> {
-        self.key_schedule
-            .refresh_traffic_secret(match dir {
-                Direction::Transmit => Side::Client,
-                Direction::Receive => Side::Server,
-            })
+        self.key_schedule.refresh_traffic_secret(match dir {
+            Direction::Transmit => Side::Client,
+            Direction::Receive => Side::Server,
+        })
     }
 
     fn handle_new_session_ticket(
@@ -1680,8 +1618,7 @@ impl State<ClientConnectionData> for ExpectQuicTraffic {
             HandshakeType::NewSessionTicket,
             HandshakePayload::NewSessionTicketTls13
         )?;
-        self.0
-            .handle_new_ticket_tls13(cx, nst)?;
+        self.0.handle_new_ticket_tls13(cx, nst)?;
         Ok(self)
     }
 
@@ -1691,8 +1628,7 @@ impl State<ClientConnectionData> for ExpectQuicTraffic {
         label: &[u8],
         context: Option<&[u8]>,
     ) -> Result<(), Error> {
-        self.0
-            .export_keying_material(output, label, context)
+        self.0.export_keying_material(output, label, context)
     }
 
     fn into_external_state(self: Box<Self>) -> Result<Box<dyn KernelState + 'static>, Error> {

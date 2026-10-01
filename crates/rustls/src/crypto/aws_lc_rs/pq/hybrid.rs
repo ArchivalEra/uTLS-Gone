@@ -39,16 +39,10 @@ impl SupportedKxGroup for Hybrid {
             .split_received_client_share(client_share)
             .ok_or(INVALID_KEY_SHARE)?;
 
-        let cl = self
-            .classical
-            .start_and_complete(classical_share)?;
-        let pq = self
-            .post_quantum
-            .start_and_complete(post_quantum_share)?;
+        let cl = self.classical.start_and_complete(classical_share)?;
+        let pq = self.post_quantum.start_and_complete(post_quantum_share)?;
 
-        let combined_pub_key = self
-            .layout
-            .concat(&pq.pub_key, &cl.pub_key);
+        let combined_pub_key = self.layout.concat(&pq.pub_key, &cl.pub_key);
         let secret = self
             .layout
             .concat(pq.secret.secret_bytes(), cl.secret.secret_bytes());
@@ -109,16 +103,10 @@ impl ActiveKeyExchange for ActiveHybrid {
             .split_received_server_share(peer_pub_key)
             .ok_or(INVALID_KEY_SHARE)?;
 
-        let cl = self
-            .classical
-            .complete(classical_share)?;
-        let pq = self
-            .post_quantum
-            .complete(post_quantum_share)?;
+        let cl = self.classical.complete(classical_share)?;
+        let pq = self.post_quantum.complete(post_quantum_share)?;
 
-        let secret = self
-            .layout
-            .concat(pq.secret_bytes(), cl.secret_bytes());
+        let secret = self.layout.concat(pq.secret_bytes(), cl.secret_bytes());
         Ok(SharedSecret::from(secret))
     }
 

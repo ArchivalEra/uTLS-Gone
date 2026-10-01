@@ -232,11 +232,9 @@ impl Nonce {
     /// Creates a unique nonce based on the `iv` and sequence number `seq`.
     #[inline]
     fn new_from_seq(iv: &Iv, mut seq: [u8; NONCE_LEN]) -> Self {
-        seq.iter_mut()
-            .zip(iv.0.iter())
-            .for_each(|(s, iv)| {
-                *s ^= *iv;
-            });
+        seq.iter_mut().zip(iv.0.iter()).for_each(|(s, iv)| {
+            *s ^= *iv;
+        });
 
         Self(seq)
     }

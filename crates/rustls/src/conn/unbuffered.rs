@@ -7,10 +7,10 @@ use core::{fmt, mem};
 use std::error::Error as StdError;
 
 use super::UnbufferedConnectionCommon;
-use crate::Error;
 use crate::client::ClientConnectionData;
 use crate::msgs::deframer::buffers::DeframerSliceBuffer;
 use crate::server::ServerConnectionData;
+use crate::Error;
 
 impl UnbufferedConnectionCommon<ClientConnectionData> {
     /// Processes the TLS records in `incoming_tls` buffer until a new [`UnbufferedStatus`] is
@@ -56,35 +56,21 @@ impl<Data> UnbufferedConnectionCommon<Data> {
                 );
             }
 
-            if !self
-                .core
-                .common_state
-                .received_plaintext
-                .is_empty()
-            {
+            if !self.core.common_state.received_plaintext.is_empty() {
                 break (
                     buffer.pending_discard(),
                     ReadTraffic::new(self, incoming_tls).into(),
                 );
             }
 
-            if let Some(chunk) = self
-                .core
-                .common_state
-                .sendable_tls
-                .pop()
-            {
+            if let Some(chunk) = self.core.common_state.sendable_tls.pop() {
                 break (
                     buffer.pending_discard(),
                     EncodeTlsData::new(self, chunk).into(),
                 );
             }
 
-            let deframer_output = if self
-                .core
-                .common_state
-                .has_received_close_notify
-            {
+            let deframer_output = if self.core.common_state.has_received_close_notify {
                 None
             } else {
                 match self
@@ -137,29 +123,16 @@ impl<Data> UnbufferedConnectionCommon<Data> {
                     buffer.pending_discard(),
                     TransmitTlsData { conn: self }.into(),
                 );
-            } else if self
-                .core
-                .common_state
-                .has_received_close_notify
+            } else if self.core.common_state.has_received_close_notify
                 && !self.emitted_peer_closed_state
             {
                 self.emitted_peer_closed_state = true;
                 break (buffer.pending_discard(), ConnectionState::PeerClosed);
-            } else if self
-                .core
-                .common_state
-                .has_received_close_notify
-                && self
-                    .core
-                    .common_state
-                    .has_sent_close_notify
+            } else if self.core.common_state.has_received_close_notify
+                && self.core.common_state.has_sent_close_notify
             {
                 break (buffer.pending_discard(), ConnectionState::Closed);
-            } else if self
-                .core
-                .common_state
-                .may_send_application_data
-            {
+            } else if self.core.common_state.may_send_application_data {
                 break (
                     buffer.pending_discard(),
                     ConnectionState::WriteTraffic(WriteTraffic { conn: self }),
@@ -311,13 +284,9 @@ impl<Data> fmt::Debug for ConnectionState<'_, '_, Data> {
 
             Self::EncodeTlsData(..) => f.debug_tuple("EncodeTlsData").finish(),
 
-            Self::TransmitTlsData(..) => f
-                .debug_tuple("TransmitTlsData")
-                .finish(),
+            Self::TransmitTlsData(..) => f.debug_tuple("TransmitTlsData").finish(),
 
-            Self::BlockedHandshake => f
-                .debug_tuple("BlockedHandshake")
-                .finish(),
+            Self::BlockedHandshake => f.debug_tuple("BlockedHandshake").finish(),
 
             Self::WriteTraffic(..) => f.debug_tuple("WriteTraffic").finish(),
         }
@@ -347,12 +316,7 @@ impl<'c, 'i, Data> ReadTraffic<'c, 'i, Data> {
     /// Decrypts and returns the next available app-data record
     // TODO deprecate in favor of `Iterator` implementation, which requires in-place decryption
     pub fn next_record(&mut self) -> Option<Result<AppDataRecord<'_>, Error>> {
-        self.chunk = self
-            .conn
-            .core
-            .common_state
-            .received_plaintext
-            .pop();
+        self.chunk = self.conn.core.common_state.received_plaintext.pop();
         self.chunk.as_ref().map(|chunk| {
             Ok(AppDataRecord {
                 discard: 0,
@@ -447,9 +411,7 @@ impl<Data> WriteTraffic<'_, Data> {
         application_data: &[u8],
         outgoing_tls: &mut [u8],
     ) -> Result<usize, EncryptError> {
-        self.conn
-            .core
-            .maybe_refresh_traffic_keys();
+        self.conn.core.maybe_refresh_traffic_keys();
         self.conn
             .core
             .common_state
@@ -537,12 +499,7 @@ impl<Data> TransmitTlsData<'_, Data> {
     ///
     /// If allowed at this stage of the handshake process
     pub fn may_encrypt_app_data(&mut self) -> Option<WriteTraffic<'_, Data>> {
-        if self
-            .conn
-            .core
-            .common_state
-            .may_send_application_data
-        {
+        if self.conn.core.common_state.may_send_application_data {
             Some(WriteTraffic { conn: self.conn })
         } else {
             None

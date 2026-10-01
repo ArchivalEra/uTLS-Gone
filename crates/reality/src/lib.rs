@@ -25,6 +25,10 @@
 
 pub mod auth;
 pub mod ch;
+pub mod client;
+pub mod mirror;
+
+pub use client::PeerVerdict;
 
 /// 鉴权失败/回退的原因。每一条都对应参照实现里一个**显式的**分支，
 /// 不存在「未知原因的 fallback」—— 那种 fallback 会把可诊断性丢掉。

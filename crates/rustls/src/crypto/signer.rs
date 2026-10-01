@@ -161,9 +161,7 @@ impl CertifiedKey {
         key: PrivateKeyDer<'static>,
         provider: &CryptoProvider,
     ) -> Result<Self, Error> {
-        let private_key = provider
-            .key_provider
-            .load_private_key(key)?;
+        let private_key = provider.key_provider.load_private_key(key)?;
 
         let certified_key = Self::new(cert_chain, private_key);
         match certified_key.keys_match() {
@@ -201,9 +199,7 @@ impl CertifiedKey {
 
     /// The end-entity certificate.
     pub fn end_entity_cert(&self) -> Result<&CertificateDer<'_>, Error> {
-        self.cert
-            .first()
-            .ok_or(Error::NoCertificatesPresented)
+        self.cert.first().ok_or(Error::NoCertificatesPresented)
     }
 }
 

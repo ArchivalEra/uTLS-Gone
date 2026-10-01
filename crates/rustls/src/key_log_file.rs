@@ -9,8 +9,8 @@ use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::sync::Mutex;
 
-use crate::KeyLog;
 use crate::log::warn;
+use crate::KeyLog;
 
 // Internal mutable state for KeyLogFile
 struct KeyLogFileInner {
@@ -131,31 +131,21 @@ mod tests {
     use super::*;
 
     fn init() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .try_init();
+        let _ = env_logger::builder().is_test(true).try_init();
     }
 
     #[test]
     fn test_env_var_is_not_set() {
         init();
         let mut inner = KeyLogFileInner::new(None);
-        assert!(
-            inner
-                .try_write("label", b"random", b"secret")
-                .is_ok()
-        );
+        assert!(inner.try_write("label", b"random", b"secret").is_ok());
     }
 
     #[test]
     fn test_env_var_cannot_be_opened() {
         init();
         let mut inner = KeyLogFileInner::new(Some("/dev/does-not-exist".into()));
-        assert!(
-            inner
-                .try_write("label", b"random", b"secret")
-                .is_ok()
-        );
+        assert!(inner.try_write("label", b"random", b"secret").is_ok());
     }
 
     #[cfg(target_os = "linux")]
@@ -163,11 +153,7 @@ mod tests {
     fn test_env_var_cannot_be_written() {
         init();
         let mut inner = KeyLogFileInner::new(Some("/dev/full".into()));
-        assert!(
-            inner
-                .try_write("label", b"random", b"secret")
-                .is_err()
-        );
+        assert!(inner.try_write("label", b"random", b"secret").is_err());
     }
 
     #[test]
@@ -185,11 +171,7 @@ mod tests {
         let inner = KeyLogFileInner::new(Some(path.clone().into()));
         assert!(inner.file.is_some(), "key log file should open");
 
-        let mode = fs::metadata(&path)
-            .expect("metadata")
-            .permissions()
-            .mode()
-            & 0o777;
+        let mode = fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
         let _ = fs::remove_file(&path);
 
         assert_eq!(

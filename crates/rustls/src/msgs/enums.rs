@@ -1,6 +1,6 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(non_camel_case_types)]
-use crate::crypto::{KeyExchangeAlgorithm, hash};
+use crate::crypto::{hash, KeyExchangeAlgorithm};
 use crate::msgs::codec::{Codec, Reader};
 
 enum_builder! {

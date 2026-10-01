@@ -94,9 +94,7 @@ impl<Data> KernelConnection<Data> {
                 .negotiated_version
                 .ok_or(Error::HandshakeNotComplete)?,
             protocol: common.protocol,
-            suite: common
-                .suite
-                .ok_or(Error::HandshakeNotComplete)?,
+            suite: common.suite.ok_or(Error::HandshakeNotComplete)?,
 
             _data: PhantomData,
         })
@@ -229,8 +227,7 @@ impl KernelConnection<ClientConnectionData> {
             protocol: self.protocol,
             quic: &self.quic,
         };
-        self.state
-            .handle_new_session_ticket(&mut cx, &nst)
+        self.state.handle_new_session_ticket(&mut cx, &nst)
     }
 }
 

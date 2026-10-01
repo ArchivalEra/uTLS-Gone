@@ -10,8 +10,15 @@ repository.workspace = true
 x25519-dalek.workspace = true
 aes-gcm.workspace = true
 sha2.workspace = true
+# HMAC-SHA512：镜像证书尾签（handshake_server_tls13.go:149）
+hmac = "0.12"
 hkdf.workspace = true
 
 [dev-dependencies]
 utls = { path = "../utls" }
 serde_json = "1"
+# 本地「真站」装置要用 vendored fork 的 rustls（与 utls-engine 的测试同源）。
+rustls = { package = "rustls", path = "../rustls" }
+# P-256 真公钥（真站要拿它做 ECDH；哑字节会被 rustls 拒绝）
+p256 = "0.13"
+x25519-dalek.workspace = true

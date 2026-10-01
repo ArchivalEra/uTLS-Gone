@@ -20,7 +20,7 @@ use crate::error::InvalidMessage;
 #[cfg(feature = "tls12")]
 use crate::ffdhe_groups::FfdheGroup;
 use crate::log::warn;
-use crate::msgs::base::{MaybeEmpty, NonEmpty, Payload, PayloadU8, PayloadU16, PayloadU24};
+use crate::msgs::base::{MaybeEmpty, NonEmpty, Payload, PayloadU16, PayloadU24, PayloadU8};
 use crate::msgs::codec::{
     self, Codec, LengthPrefixedBuffer, ListLength, Reader, TlsListElement, TlsListIter,
 };
@@ -308,9 +308,7 @@ impl<'a> Codec<'a> for ServerNamePayload<'a> {
         ServerNameType::HostName.encode(server_name_list.buf);
         let name_slice = dns_name.as_ref().as_bytes();
         (name_slice.len() as u16).encode(server_name_list.buf);
-        server_name_list
-            .buf
-            .extend_from_slice(name_slice);
+        server_name_list.buf.extend_from_slice(name_slice);
     }
 
     fn read(r: &mut Reader<'a>) -> Result<Self, InvalidMessage> {
@@ -1055,10 +1053,7 @@ impl ClientExtensions<'_> {
         let mut exts = self.order_insensitive_extensions_in_random_order();
         exts.extend(&self.contiguous_extensions);
 
-        if self
-            .encrypted_client_hello_outer
-            .is_some()
-        {
+        if self.encrypted_client_hello_outer.is_some() {
             exts.push(ExtensionType::EncryptedClientHelloOuterExtensions);
         }
         if self.encrypted_client_hello.is_some() {
@@ -1164,9 +1159,7 @@ fn trim_hostname_trailing_dot_for_sni(dns_name: &DnsName<'_>) -> DnsName<'static
     // ASCII encoding without a trailing dot"
     if dns_name_str.ends_with('.') {
         let trimmed = &dns_name_str[0..dns_name_str.len() - 1];
-        DnsName::try_from(trimmed)
-            .unwrap()
-            .to_owned()
+        DnsName::try_from(trimmed).unwrap().to_owned()
     } else {
         dns_name.to_owned()
     }
@@ -1399,11 +1392,7 @@ impl ClientHelloPayload {
         self.key_shares
             .as_ref()
             .map(|entries| {
-                has_duplicates::<_, _, u16>(
-                    entries
-                        .iter()
-                        .map(|kse| u16::from(kse.group)),
-                )
+                has_duplicates::<_, _, u16>(entries.iter().map(|kse| u16::from(kse.group)))
             })
             .unwrap_or_default()
     }
@@ -1516,11 +1505,7 @@ impl<'a> Codec<'a> for HelloRetryRequestExtensions<'a> {
     fn encode(&self, bytes: &mut Vec<u8>) {
         let extensions = LengthPrefixedBuffer::new(ListLength::U16, bytes);
 
-        for ext in self
-            .order
-            .as_deref()
-            .unwrap_or(Self::ALL_EXTENSIONS)
-        {
+        for ext in self.order.as_deref().unwrap_or(Self::ALL_EXTENSIONS) {
             self.encode_one(*ext, extensions.buf);
         }
     }
@@ -1593,12 +1578,7 @@ impl HelloRetryRequest {
             //
             // See draft-ietf-tls-esni-18 7.2.1:
             // <https://datatracker.ietf.org/doc/html/draft-ietf-tls-esni-18#name-sending-helloretryrequest-2>
-            Encoding::EchConfirmation
-                if self
-                    .extensions
-                    .encrypted_client_hello
-                    .is_some() =>
-            {
+            Encoding::EchConfirmation if self.extensions.encrypted_client_hello.is_some() => {
                 let hrr_confirmation = [0u8; 8];
                 HelloRetryRequestExtensions {
                     encrypted_client_hello: Some(Payload::Borrowed(&hrr_confirmation)),
@@ -1667,8 +1647,7 @@ impl Codec<'_> for ServerHelloPayload {
             extensions,
         };
 
-        r.expect_empty("ServerHelloPayload")
-            .map(|_| ret)
+        r.expect_empty("ServerHelloPayload").map(|_| ret)
     }
 }
 
@@ -1706,12 +1685,7 @@ pub(crate) struct CertificateChain<'a>(pub(crate) Vec<CertificateDer<'a>>);
 
 impl CertificateChain<'_> {
     pub(crate) fn into_owned(self) -> CertificateChain<'static> {
-        CertificateChain(
-            self.0
-                .into_iter()
-                .map(|c| c.into_owned())
-                .collect(),
-        )
+        CertificateChain(self.0.into_iter().map(|c| c.into_owned()).collect())
     }
 }
 
@@ -1896,23 +1870,12 @@ impl<'a> CertificatePayloadTls13<'a> {
             .extensions
             .status
             .as_ref()
-            .map(|status| {
-                status
-                    .ocsp_response
-                    .0
-                    .clone()
-                    .into_vec()
-            })
+            .map(|status| status.ocsp_response.0.clone().into_vec())
             .unwrap_or_default()
     }
 
     pub(crate) fn into_certificate_chain(self) -> CertificateChain<'a> {
-        CertificateChain(
-            self.entries
-                .into_iter()
-                .map(|e| e.cert)
-                .collect(),
-        )
+        CertificateChain(self.entries.into_iter().map(|e| e.cert).collect())
     }
 }
 
@@ -2815,9 +2778,7 @@ impl<'a> HandshakeMessagePayload<'a> {
 
     pub(crate) fn encoding_for_binder_signing(&self) -> Vec<u8> {
         let mut ret = self.get_encoding();
-        let ret_len = ret
-            .len()
-            .saturating_sub(self.total_binder_length());
+        let ret_len = ret.len().saturating_sub(self.total_binder_length());
         ret.truncate(ret_len);
         ret
     }
@@ -2827,9 +2788,7 @@ impl<'a> HandshakeMessagePayload<'a> {
             HandshakePayload::ClientHello(ch) => match &ch.preshared_key_offer {
                 Some(offer) => {
                     let mut binders_encoding = Vec::new();
-                    offer
-                        .binders
-                        .encode(&mut binders_encoding);
+                    offer.binders.encode(&mut binders_encoding);
                     binders_encoding.len()
                 }
                 _ => 0,
@@ -2840,9 +2799,7 @@ impl<'a> HandshakeMessagePayload<'a> {
 
     pub(crate) fn payload_encode(&self, bytes: &mut Vec<u8>, encoding: Encoding) {
         // output type, length, and encoded payload
-        self.0
-            .wire_handshake_type()
-            .encode(bytes);
+        self.0.wire_handshake_type().encode(bytes);
 
         let nested = LengthPrefixedBuffer::new(
             ListLength::U24 {
@@ -2915,8 +2872,7 @@ impl Codec<'_> for HpkeKeyConfig {
         self.config_id.encode(bytes);
         self.kem_id.encode(bytes);
         self.public_key.encode(bytes);
-        self.symmetric_cipher_suites
-            .encode(bytes);
+        self.symmetric_cipher_suites.encode(bytes);
     }
 
     fn read(r: &mut Reader<'_>) -> Result<Self, InvalidMessage> {
@@ -2941,11 +2897,7 @@ impl EchConfigContents {
     /// Returns true if there is more than one extension of a given
     /// type.
     pub(crate) fn has_duplicate_extension(&self) -> bool {
-        has_duplicates::<_, _, u16>(
-            self.extensions
-                .iter()
-                .map(|ext| ext.ext_type()),
-        )
+        has_duplicates::<_, _, u16>(self.extensions.iter().map(|ext| ext.ext_type()))
     }
 
     /// Returns true if there is at least one mandatory unsupported extension.
@@ -2974,13 +2926,9 @@ impl Codec<'_> for EchConfigContents {
             key_config: HpkeKeyConfig::read(r)?,
             maximum_name_length: u8::read(r)?,
             public_name: {
-                DnsName::try_from(
-                    PayloadU8::<MaybeEmpty>::read(r)?
-                        .0
-                        .as_slice(),
-                )
-                .map_err(|_| InvalidMessage::InvalidServerName)?
-                .to_owned()
+                DnsName::try_from(PayloadU8::<MaybeEmpty>::read(r)?.0.as_slice())
+                    .map_err(|_| InvalidMessage::InvalidServerName)?
+                    .to_owned()
             },
             extensions: Vec::read(r)?,
         })
@@ -3072,8 +3020,7 @@ impl Codec<'_> for EchConfigExtension {
             _ => Self::Unknown(UnknownExtension::read(typ, &mut sub)),
         };
 
-        sub.expect_empty("EchConfigExtension")
-            .map(|_| ext)
+        sub.expect_empty("EchConfigExtension").map(|_| ext)
     }
 }
 
@@ -3219,17 +3166,11 @@ impl DuplicateExtensionChecker {
 }
 
 fn low_quality_integer_hash(mut x: u32) -> u32 {
-    x = x
-        .wrapping_add(0x7ed55d16)
-        .wrapping_add(x << 12);
+    x = x.wrapping_add(0x7ed55d16).wrapping_add(x << 12);
     x = (x ^ 0xc761c23c) ^ (x >> 19);
-    x = x
-        .wrapping_add(0x165667b1)
-        .wrapping_add(x << 5);
+    x = x.wrapping_add(0x165667b1).wrapping_add(x << 5);
     x = x.wrapping_add(0xd3a2646c) ^ (x << 9);
-    x = x
-        .wrapping_add(0xfd7046c5)
-        .wrapping_add(x << 3);
+    x = x.wrapping_add(0xfd7046c5).wrapping_add(x << 3);
     x = (x ^ 0xb55a4f09) ^ (x >> 16);
     x
 }
@@ -3245,9 +3186,7 @@ mod tests {
             payload: Payload::new(vec![0x42]),
         });
         let mut config = config_template();
-        config
-            .extensions
-            .push(unknown_ext.clone());
+        config.extensions.push(unknown_ext.clone());
         config.extensions.push(unknown_ext);
 
         assert!(config.has_duplicate_extension());
@@ -3261,9 +3200,7 @@ mod tests {
             payload: Payload::new(vec![0x42]),
         });
         let mut config = config_template();
-        config
-            .extensions
-            .push(mandatory_unknown_ext);
+        config.extensions.push(mandatory_unknown_ext);
 
         assert!(!config.has_duplicate_extension());
         assert!(config.has_unknown_mandatory_extension());

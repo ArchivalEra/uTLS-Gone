@@ -3,9 +3,7 @@ use alloc::vec::Vec;
 use pki_types::{CertificateDer, CertificateRevocationListDer, UnixTime};
 use webpki::{CertRevocationList, ExpirationPolicy, RevocationCheckDepth, UnknownStatusPolicy};
 
-use super::{VerifierBuilderError, pki_error};
-#[cfg(doc)]
-use crate::ConfigBuilder;
+use super::{pki_error, VerifierBuilderError};
 #[cfg(doc)]
 use crate::crypto;
 use crate::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
@@ -17,7 +15,9 @@ use crate::verify::{
     NoClientAuth,
 };
 use crate::webpki::parse_crls;
-use crate::webpki::verify::{ParsedCertificate, verify_tls12_signature, verify_tls13_signature};
+use crate::webpki::verify::{verify_tls12_signature, verify_tls13_signature, ParsedCertificate};
+#[cfg(doc)]
+use crate::ConfigBuilder;
 use crate::{DistinguishedName, Error, RootCertStore, SignatureScheme};
 
 /// A builder for configuring a `webpki` client certificate verifier.
@@ -437,10 +437,10 @@ mod tests {
     use pki_types::pem::PemObject;
     use pki_types::{CertificateDer, CertificateRevocationListDer};
 
-    use super::{WebPkiClientVerifier, provider};
-    use crate::RootCertStore;
+    use super::{provider, WebPkiClientVerifier};
     use crate::server::VerifierBuilderError;
     use crate::sync::Arc;
+    use crate::RootCertStore;
 
     fn load_crls(crls_der: &[&[u8]]) -> Vec<CertificateRevocationListDer<'static>> {
         crls_der
@@ -458,11 +458,9 @@ mod tests {
 
     fn load_roots(roots_der: &[&[u8]]) -> Arc<RootCertStore> {
         let mut roots = RootCertStore::empty();
-        roots_der.iter().for_each(|der| {
-            roots
-                .add(CertificateDer::from(der.to_vec()))
-                .unwrap()
-        });
+        roots_der
+            .iter()
+            .for_each(|der| roots.add(CertificateDer::from(der.to_vec())).unwrap());
         roots.into()
     }
 

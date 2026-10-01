@@ -5,8 +5,8 @@ use core::fmt::{Debug, Formatter};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use aws_lc_rs::cipher::{
-    AES_256, AES_256_KEY_LEN, AES_CBC_IV_LEN, DecryptionContext, PaddedBlockDecryptingKey,
-    PaddedBlockEncryptingKey, UnboundCipherKey,
+    DecryptionContext, PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, UnboundCipherKey,
+    AES_256, AES_256_KEY_LEN, AES_CBC_IV_LEN,
 };
 use aws_lc_rs::{hmac, iv};
 
@@ -67,8 +67,7 @@ impl Rfc5077Ticketer {
 
         // Generate a random AES 256 key to use for AES CBC encryption.
         let mut aes_key = [0u8; AES_256_KEY_LEN];
-        rand.fill(&mut aes_key)
-            .map_err(|_| GetRandomFailed)?;
+        rand.fill(&mut aes_key).map_err(|_| GetRandomFailed)?;
 
         // Convert the raw AES 256 key bytes into encrypting and decrypting keys using CBC mode and
         // PKCS#7 padding. We don't want to store just the raw key bytes as constructing the
@@ -90,8 +89,7 @@ impl Rfc5077Ticketer {
 
         // Generate a random key name.
         let mut key_name = [0u8; 16];
-        rand.fill(&mut key_name)
-            .map_err(|_| GetRandomFailed)?;
+        rand.fill(&mut key_name).map_err(|_| GetRandomFailed)?;
 
         Ok(Self {
             aes_encrypt_key,
@@ -118,10 +116,7 @@ impl ProducesTickets for Rfc5077Ticketer {
         // Encrypt the ticket state - the cipher module handles generating a random IV of
         // appropriate size, returning it in the `DecryptionContext`.
         let mut encrypted_state = Vec::from(message);
-        let dec_ctx = self
-            .aes_encrypt_key
-            .encrypt(&mut encrypted_state)
-            .ok()?;
+        let dec_ctx = self.aes_encrypt_key.encrypt(&mut encrypted_state).ok()?;
         let iv: &[u8] = (&dec_ctx).try_into().ok()?;
 
         // Produce the MAC tag over the relevant context & encrypted state.
@@ -134,11 +129,7 @@ impl ProducesTickets for Rfc5077Ticketer {
             Vec::with_capacity(self.key_name.len() + iv.len() + 2 + encrypted_state.len());
         hmac_data.extend(&self.key_name);
         hmac_data.extend(iv);
-        hmac_data.extend(
-            u16::try_from(encrypted_state.len())
-                .ok()?
-                .to_be_bytes(),
-        );
+        hmac_data.extend(u16::try_from(encrypted_state.len()).ok()?.to_be_bytes());
         hmac_data.extend(&encrypted_state);
         let tag = hmac::sign(&self.hmac_key, &hmac_data);
         let tag = tag.as_ref();
@@ -163,11 +154,7 @@ impl ProducesTickets for Rfc5077Ticketer {
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
-        if ciphertext.len()
-            > self
-                .maximum_ciphertext_len
-                .load(Ordering::SeqCst)
-        {
+        if ciphertext.len() > self.maximum_ciphertext_len.load(Ordering::SeqCst) {
             #[cfg(debug_assertions)]
             debug!("rejected over-length ticket");
             return None;
@@ -180,11 +167,7 @@ impl ProducesTickets for Rfc5077Ticketer {
         let (iv, ciphertext) = try_split_at(ciphertext, AES_CBC_IV_LEN)?;
 
         // And finally, split the encrypted state from the tag.
-        let tag_len = self
-            .hmac_key
-            .algorithm()
-            .digest_algorithm()
-            .output_len();
+        let tag_len = self.hmac_key.algorithm().digest_algorithm().output_len();
         let (enc_state, mac) = try_split_at(ciphertext, ciphertext.len().checked_sub(tag_len)?)?;
 
         // Reconstitute the HMAC data to verify the tag.
@@ -192,11 +175,7 @@ impl ProducesTickets for Rfc5077Ticketer {
             Vec::with_capacity(alleged_key_name.len() + iv.len() + 2 + enc_state.len());
         hmac_data.extend(alleged_key_name);
         hmac_data.extend(iv);
-        hmac_data.extend(
-            u16::try_from(enc_state.len())
-                .ok()?
-                .to_be_bytes(),
-        );
+        hmac_data.extend(u16::try_from(enc_state.len()).ok()?.to_be_bytes());
         hmac_data.extend(enc_state);
         hmac::verify(&self.hmac_key, &hmac_data, mac).ok()?;
 
@@ -206,10 +185,7 @@ impl ProducesTickets for Rfc5077Ticketer {
 
         // And finally, decrypt the encrypted state.
         let mut out = Vec::from(enc_state);
-        let plaintext = self
-            .aes_decrypt_key
-            .decrypt(&mut out, dec_context)
-            .ok()?;
+        let plaintext = self.aes_decrypt_key.decrypt(&mut out, dec_context).ok()?;
 
         Some(plaintext.into())
     }

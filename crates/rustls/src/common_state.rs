@@ -208,8 +208,7 @@ impl CommonState {
                 Side::Server => HandshakeType::ClientHello,
             };
             if msg.is_handshake_type(reject_ty) {
-                self.temper_counters
-                    .received_renegotiation_request()?;
+                self.temper_counters.received_renegotiation_request()?;
                 self.send_warning_alert(AlertDescription::NoRenegotiation);
                 return Ok(state);
             }
@@ -242,19 +241,14 @@ impl CommonState {
             return Ok(0);
         }
 
-        let fragments = self
-            .message_fragmenter
-            .fragment_payload(
-                ContentType::ApplicationData,
-                ProtocolVersion::TLSv1_2,
-                payload.clone(),
-            );
+        let fragments = self.message_fragmenter.fragment_payload(
+            ContentType::ApplicationData,
+            ProtocolVersion::TLSv1_2,
+            payload.clone(),
+        );
 
         for f in 0..fragments.len() {
-            match self
-                .record_layer
-                .pre_encrypt_action(f as u64)
-            {
+            match self.record_layer.pre_encrypt_action(f as u64) {
                 PreEncryptAction::Nothing => {}
                 PreEncryptAction::RefreshOrClose => match self.negotiated_version {
                     Some(ProtocolVersion::TLSv1_3) => {
@@ -279,13 +273,11 @@ impl CommonState {
 
         self.check_required_size(outgoing_tls, fragments)?;
 
-        let fragments = self
-            .message_fragmenter
-            .fragment_payload(
-                ContentType::ApplicationData,
-                ProtocolVersion::TLSv1_2,
-                payload,
-            );
+        let fragments = self.message_fragmenter.fragment_payload(
+            ContentType::ApplicationData,
+            ProtocolVersion::TLSv1_2,
+            payload,
+        );
 
         Ok(self.write_fragments(outgoing_tls, fragments))
     }
@@ -308,9 +300,7 @@ impl CommonState {
     /// Fragment `m`, encrypt the fragments, and then queue
     /// the encrypted fragments for sending.
     pub(crate) fn send_msg_encrypt(&mut self, m: PlainMessage) {
-        let iter = self
-            .message_fragmenter
-            .fragment_message(&m);
+        let iter = self.message_fragmenter.fragment_message(&m);
         for m in iter {
             self.send_single_fragment(m);
         }
@@ -324,19 +314,15 @@ impl CommonState {
         // constant and predictable amount, so it's not a terrible issue.
         let len = match limit {
             #[cfg(feature = "std")]
-            Limit::Yes => self
-                .sendable_tls
-                .apply_limit(payload.len()),
+            Limit::Yes => self.sendable_tls.apply_limit(payload.len()),
             Limit::No => payload.len(),
         };
 
-        let iter = self
-            .message_fragmenter
-            .fragment_payload(
-                ContentType::ApplicationData,
-                ProtocolVersion::TLSv1_2,
-                payload.split_at(len).0,
-            );
+        let iter = self.message_fragmenter.fragment_payload(
+            ContentType::ApplicationData,
+            ProtocolVersion::TLSv1_2,
+            payload.split_at(len).0,
+        );
         for m in iter {
             self.send_single_fragment(m);
         }
@@ -352,10 +338,7 @@ impl CommonState {
             return;
         }
 
-        match self
-            .record_layer
-            .next_pre_encrypt_action()
-        {
+        match self.record_layer.next_pre_encrypt_action() {
             PreEncryptAction::Nothing => {}
 
             // Close connection once we start to run out of
@@ -460,18 +443,14 @@ impl CommonState {
                     );
                     let mut bytes = Vec::new();
                     m.payload.encode(&mut bytes);
-                    self.quic
-                        .hs_queue
-                        .push_back((must_encrypt, bytes));
+                    self.quic.hs_queue.push_back((must_encrypt, bytes));
                 }
                 return;
             }
         }
         if !must_encrypt {
             let msg = &m.into();
-            let iter = self
-                .message_fragmenter
-                .fragment_message(msg);
+            let iter = self.message_fragmenter.fragment_message(msg);
             for m in iter {
                 self.queue_tls_message(m.to_unencrypted_opaque());
             }
@@ -482,23 +461,15 @@ impl CommonState {
 
     pub(crate) fn take_received_plaintext(&mut self, bytes: Payload<'_>) {
         self.temper_counters.received_app_data();
-        self.received_plaintext
-            .append(bytes.into_vec());
+        self.received_plaintext.append(bytes.into_vec());
     }
 
     #[cfg(feature = "tls12")]
     pub(crate) fn start_encryption_tls12(&mut self, secrets: &ConnectionSecrets, side: Side) {
         let (dec, enc) = secrets.make_cipher_pair(side);
         self.record_layer
-            .prepare_message_encrypter(
-                enc,
-                secrets
-                    .suite()
-                    .common
-                    .confidentiality_limit,
-            );
-        self.record_layer
-            .prepare_message_decrypter(dec);
+            .prepare_message_encrypter(enc, secrets.suite().common.confidentiality_limit);
+        self.record_layer.prepare_message_decrypter(dec);
     }
 
     pub(crate) fn missing_extension(&mut self, why: PeerMisbehaved) -> Error {
@@ -530,8 +501,7 @@ impl CommonState {
         // (except, for no good reason, user_cancelled).
         let err = Error::AlertReceived(alert.description);
         if alert.level == AlertLevel::Warning {
-            self.temper_counters
-                .received_warning_alert()?;
+            self.temper_counters.received_warning_alert()?;
             if self.is_tls13() && alert.description != AlertDescription::UserCanceled {
                 return Err(self.send_fatal_alert(AlertDescription::DecodeError, err));
             }
@@ -638,10 +608,7 @@ impl CommonState {
         }
 
         for m in fragments {
-            let em = self
-                .record_layer
-                .encrypt_outgoing(m)
-                .encode();
+            let em = self.record_layer.encrypt_outgoing(m).encode();
 
             let len = em.len();
             outgoing_tls[written..written + len].copy_from_slice(&em);
@@ -652,14 +619,11 @@ impl CommonState {
     }
 
     pub(crate) fn set_max_fragment_size(&mut self, new: Option<usize>) -> Result<(), Error> {
-        self.message_fragmenter
-            .set_max_fragment_size(new)
+        self.message_fragmenter.set_max_fragment_size(new)
     }
 
     pub(crate) fn get_alpn_protocol(&self) -> Option<&[u8]> {
-        self.alpn_protocol
-            .as_ref()
-            .map(AsRef::as_ref)
+        self.alpn_protocol.as_ref().map(AsRef::as_ref)
     }
 
     /// Returns true if the caller should call [`Connection::read_tls`] as soon
@@ -699,8 +663,7 @@ impl CommonState {
         &mut self,
         key_update_request: &KeyUpdateRequest,
     ) -> Result<bool, Error> {
-        self.temper_counters
-            .received_key_update_request()?;
+        self.temper_counters.received_key_update_request()?;
 
         match key_update_request {
             KeyUpdateRequest::UpdateNotRequested => Ok(false),
@@ -722,8 +685,7 @@ impl CommonState {
     }
 
     pub(crate) fn received_tls13_change_cipher_spec(&mut self) -> Result<(), Error> {
-        self.temper_counters
-            .received_tls13_change_cipher_spec()
+        self.temper_counters.received_tls13_change_cipher_spec()
     }
 }
 
@@ -1048,8 +1010,7 @@ impl<'a, const TLS13: bool> HandshakeFlight<'a, TLS13> {
     pub(crate) fn add(&mut self, hs: HandshakeMessagePayload<'_>) {
         let start_len = self.body.len();
         hs.encode(&mut self.body);
-        self.transcript
-            .add(&self.body[start_len..]);
+        self.transcript.add(&self.body[start_len..]);
     }
 
     pub(crate) fn finish(self, common: &mut CommonState) {

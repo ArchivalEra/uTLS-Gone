@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use super::{HEADER_SIZE, MAX_PAYLOAD, MessageError, PlainMessage};
+use super::{MessageError, PlainMessage, HEADER_SIZE, MAX_PAYLOAD};
 use crate::enums::{ContentType, ProtocolVersion};
 use crate::msgs::base::Payload;
 use crate::msgs::codec::{Codec, Reader};
@@ -61,10 +61,7 @@ impl<'a> OutboundChunks<'a> {
             Self::Multiple {
                 chunks,
                 start: 0,
-                end: chunks
-                    .iter()
-                    .map(|chunk| chunk.len())
-                    .sum(),
+                end: chunks.iter().map(|chunk| chunk.len()).sum(),
             }
         }
     }
@@ -399,12 +396,7 @@ mod tests {
             for end in start..128 {
                 for mid in 0..(end - start) {
                     let witness = owner[start..end].split_at(mid);
-                    let split_payload = payload
-                        .split_at(end)
-                        .0
-                        .split_at(start)
-                        .1
-                        .split_at(mid);
+                    let split_payload = payload.split_at(end).0.split_at(start).1.split_at(mid);
                     assert_eq!(
                         witness.0,
                         split_payload.0.to_vec(),

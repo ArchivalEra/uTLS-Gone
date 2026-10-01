@@ -12,8 +12,8 @@ use super::hs::{self, ServerContext};
 use super::server_conn::{ProducesTickets, ServerConfig, ServerConnectionData};
 use crate::check::inappropriate_message;
 use crate::common_state::{CommonState, HandshakeFlightTls12, HandshakeKind, Side, State};
-use crate::conn::ConnectionRandoms;
 use crate::conn::kernel::{Direction, KernelContext, KernelState};
+use crate::conn::ConnectionRandoms;
 use crate::crypto::ActiveKeyExchange;
 use crate::enums::{AlertDescription, ContentType, HandshakeType, ProtocolVersion};
 use crate::error::{Error, PeerIncompatible, PeerMisbehaved};
@@ -31,7 +31,7 @@ use crate::msgs::persist;
 use crate::suites::PartiallyExtractedSecrets;
 use crate::sync::Arc;
 use crate::tls12::{self, ConnectionSecrets, Tls12CipherSuite};
-use crate::{ConnectionTrafficSecrets, verify};
+use crate::{verify, ConnectionTrafficSecrets};
 
 mod client_hello {
     use pki_types::CertificateDer;
@@ -74,10 +74,7 @@ mod client_hello {
             // -- TLS1.2 only from hereon in --
             self.transcript.add_message(chm);
 
-            if client_hello
-                .extended_master_secret_request
-                .is_some()
-            {
+            if client_hello.extended_master_secret_request.is_some() {
                 self.using_ems = true;
             } else if self.config.require_ems {
                 return Err(cx.common.send_fatal_alert(
@@ -90,9 +87,7 @@ mod client_hello {
             // it means that only the uncompressed point format is
             // supported"
             // - <https://datatracker.ietf.org/doc/html/rfc8422#section-5.1.2>
-            let supported_ec_point_formats = client_hello
-                .ec_point_formats
-                .unwrap_or_default();
+            let supported_ec_point_formats = client_hello.ec_point_formats.unwrap_or_default();
 
             trace!("ecpoints {supported_ec_point_formats:?}");
 
@@ -131,10 +126,7 @@ mod client_hello {
                 .and_then(|ticket| {
                     ticket_received = true;
                     debug!("Ticket received");
-                    let data = self
-                        .config
-                        .ticketer
-                        .decrypt(ticket.bytes());
+                    let data = self.config.ticketer.decrypt(ticket.bytes());
                     if data.is_none() {
                         debug!("Ticket didn't decrypt");
                     }
@@ -161,9 +153,7 @@ mod client_hello {
             }
 
             // Now we have chosen a ciphersuite, we can make kx decisions.
-            let sigschemes = self
-                .suite
-                .resolve_sig_schemes(&sigschemes_ext);
+            let sigschemes = self.suite.resolve_sig_schemes(&sigschemes_ext);
 
             if sigschemes.is_empty() {
                 return Err(cx.common.send_fatal_alert(
@@ -284,8 +274,7 @@ mod client_hello {
                 &secrets.randoms.client,
                 &secrets.master_secret,
             );
-            cx.common
-                .start_encryption_tls12(&secrets, Side::Server);
+            cx.common.start_encryption_tls12(&secrets, Side::Server);
             cx.common.peer_certificates = resumedata.client_cert_chain;
             cx.common.handshake_kind = Some(HandshakeKind::Resumed);
 
@@ -302,9 +291,7 @@ mod client_hello {
                 )?;
             }
             emit_ccs(cx.common);
-            cx.common
-                .record_layer
-                .start_encrypting();
+            cx.common.record_layer.start_encrypting();
             emit_finished(&secrets, &mut self.transcript, cx.common);
 
             Ok(Box::new(ExpectCcs {
@@ -410,10 +397,7 @@ mod client_hello {
         let mut verify_schemes = client_auth.supported_verify_schemes();
         verify_schemes.retain(|scheme| scheme.algorithm().is_some());
 
-        let names = config
-            .verifier
-            .root_hint_subjects()
-            .to_vec();
+        let names = config.verifier.root_hint_subjects().to_vec();
 
         let cr = CertificateRequestPayload {
             certtypes: vec![
@@ -465,10 +449,7 @@ impl State<ServerConnectionData> for ExpectCertificate {
         )?;
 
         // If we can't determine if the auth is mandatory, abort
-        let mandatory = self
-            .config
-            .verifier
-            .client_auth_mandatory();
+        let mandatory = self.config.verifier.client_auth_mandatory();
 
         trace!("certs {cert_chain:?}");
 
@@ -490,10 +471,7 @@ impl State<ServerConnectionData> for ExpectCertificate {
                 self.config
                     .verifier
                     .verify_client_cert(end_entity, intermediates, now)
-                    .map_err(|err| {
-                        cx.common
-                            .send_cert_verify_error_alert(err)
-                    })?;
+                    .map_err(|err| cx.common.send_cert_verify_error_alert(err))?;
 
                 Some(cert_chain)
             }
@@ -545,9 +523,7 @@ impl State<ServerConnectionData> for ExpectClientKx<'_> {
             HandshakePayload::ClientKeyExchange
         )?;
         self.transcript.add_message(&m);
-        let ems_seed = self
-            .using_ems
-            .then(|| self.transcript.current_hash());
+        let ems_seed = self.using_ems.then(|| self.transcript.current_hash());
 
         // Complete key agreement, and set up encryption with the
         // resulting premaster secret.
@@ -574,8 +550,7 @@ impl State<ServerConnectionData> for ExpectClientKx<'_> {
             &secrets.randoms.client,
             &secrets.master_secret,
         );
-        cx.common
-            .start_encryption_tls12(&secrets, Side::Server);
+        cx.common.start_encryption_tls12(&secrets, Side::Server);
 
         match self.client_cert {
             Some(client_cert) => Ok(Box::new(ExpectCertificateVerify {
@@ -608,9 +583,7 @@ impl State<ServerConnectionData> for ExpectClientKx<'_> {
             suite: self.suite,
             using_ems: self.using_ems,
             server_kx: self.server_kx,
-            client_cert: self
-                .client_cert
-                .map(|cert| cert.into_owned()),
+            client_cert: self.client_cert.map(|cert| cert.into_owned()),
             send_ticket: self.send_ticket,
         })
     }
@@ -665,9 +638,7 @@ impl State<ServerConnectionData> for ExpectCertificateVerify<'_> {
         };
 
         if let Err(e) = rc {
-            return Err(cx
-                .common
-                .send_cert_verify_error_alert(e));
+            return Err(cx.common.send_cert_verify_error_alert(e));
         }
 
         trace!("client CertificateVerify OK");
@@ -732,9 +703,7 @@ impl State<ServerConnectionData> for ExpectCcs {
         // message.
         cx.common.check_aligned_handshake()?;
 
-        cx.common
-            .record_layer
-            .start_decrypting();
+        cx.common.record_layer.start_decrypting();
         Ok(Box::new(ExpectFinished {
             config: self.config,
             secrets: self.secrets,
@@ -791,9 +760,7 @@ fn emit_ticket(
 
     // If we can't produce a ticket for some reason, we can't
     // report an error. Send an empty one.
-    let ticket = ticketer
-        .encrypt(&plain)
-        .unwrap_or_default();
+    let ticket = ticketer.encrypt(&plain).unwrap_or_default();
     let ticket_lifetime = ticketer.lifetime();
 
     let m = Message {
@@ -910,14 +877,11 @@ impl State<ServerConnectionData> for ExpectFinished {
                 )?;
             }
             emit_ccs(cx.common);
-            cx.common
-                .record_layer
-                .start_encrypting();
+            cx.common.record_layer.start_encrypting();
             emit_finished(&self.secrets, &mut self.transcript, cx.common);
         }
 
-        cx.common
-            .start_traffic(&mut cx.sendable_plaintext);
+        cx.common.start_traffic(&mut cx.sendable_plaintext);
         Ok(Box::new(ExpectTraffic {
             secrets: self.secrets,
             _fin_verified,
@@ -947,9 +911,7 @@ impl State<ServerConnectionData> for ExpectTraffic {
         Self: 'm,
     {
         match m.payload {
-            MessagePayload::ApplicationData(payload) => cx
-                .common
-                .take_received_plaintext(payload),
+            MessagePayload::ApplicationData(payload) => cx.common.take_received_plaintext(payload),
             payload => {
                 return Err(inappropriate_message(
                     &payload,
@@ -966,14 +928,12 @@ impl State<ServerConnectionData> for ExpectTraffic {
         label: &[u8],
         context: Option<&[u8]>,
     ) -> Result<(), Error> {
-        self.secrets
-            .export_keying_material(output, label, context);
+        self.secrets.export_keying_material(output, label, context);
         Ok(())
     }
 
     fn extract_secrets(&self) -> Result<PartiallyExtractedSecrets, Error> {
-        self.secrets
-            .extract_secrets(Side::Server)
+        self.secrets.extract_secrets(Side::Server)
     }
 
     fn into_external_state(self: Box<Self>) -> Result<Box<dyn KernelState + 'static>, Error> {

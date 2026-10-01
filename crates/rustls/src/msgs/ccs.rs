@@ -17,7 +17,6 @@ impl Codec<'_> for ChangeCipherSpecPayload {
             return Err(InvalidMessage::InvalidCcs);
         }
 
-        r.expect_empty("ChangeCipherSpecPayload")
-            .map(|_| Self {})
+        r.expect_empty("ChangeCipherSpecPayload").map(|_| Self {})
     }
 }

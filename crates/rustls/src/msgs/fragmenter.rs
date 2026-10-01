@@ -1,6 +1,6 @@
-use crate::Error;
 use crate::enums::{ContentType, ProtocolVersion};
 use crate::msgs::message::{OutboundChunks, OutboundPlainMessage, PlainMessage};
+use crate::Error;
 pub(crate) const MAX_FRAGMENT_LEN: usize = 16384;
 pub(crate) const PACKET_OVERHEAD: usize = 1 + 2 + 2;
 pub(crate) const MAX_FRAGMENT_SIZE: usize = MAX_FRAGMENT_LEN + PACKET_OVERHEAD;
@@ -140,11 +140,8 @@ mod tests {
         };
 
         let mut frag = MessageFragmenter::default();
-        frag.set_max_fragment_size(Some(32))
-            .unwrap();
-        let q = frag
-            .fragment_message(&m)
-            .collect::<Vec<_>>();
+        frag.set_max_fragment_size(Some(32)).unwrap();
+        let q = frag.fragment_message(&m).collect::<Vec<_>>();
         assert_eq!(q.len(), 3);
         msg_eq(
             &q[0],
@@ -184,11 +181,8 @@ mod tests {
         };
 
         let mut frag = MessageFragmenter::default();
-        frag.set_max_fragment_size(Some(32))
-            .unwrap();
-        let q = frag
-            .fragment_message(&m)
-            .collect::<Vec<_>>();
+        frag.set_max_fragment_size(Some(32)).unwrap();
+        let q = frag.fragment_message(&m).collect::<Vec<_>>();
         assert_eq!(q.len(), 1);
         msg_eq(
             &q[0],

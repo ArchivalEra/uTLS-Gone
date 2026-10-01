@@ -35,9 +35,8 @@ impl SupportedKxGroup for MlKem {
         let encaps_key =
             kem::EncapsulationKey::new(self.alg, client_share).map_err(|_| INVALID_KEY_SHARE)?;
 
-        let (ciphertext, shared_secret) = encaps_key
-            .encapsulate()
-            .map_err(|_| INVALID_KEY_SHARE)?;
+        let (ciphertext, shared_secret) =
+            encaps_key.encapsulate().map_err(|_| INVALID_KEY_SHARE)?;
 
         Ok(CompletedKeyExchange {
             group: self.name(),

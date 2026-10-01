@@ -639,7 +639,7 @@ enum_builder! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::msgs::enums::tests::{test_enum8, test_enum16};
+    use crate::msgs::enums::tests::{test_enum16, test_enum8};
 
     #[test]
     fn test_enums() {

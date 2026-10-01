@@ -5,14 +5,14 @@ use pki_types::{CertificateDer, PrivateKeyDer};
 
 use super::client_conn::Resumption;
 use crate::builder::{ConfigBuilder, WantsVerifier};
-use crate::client::{ClientConfig, EchMode, ResolvesClientCert, handy};
+use crate::client::{handy, ClientConfig, EchMode, ResolvesClientCert};
 use crate::error::Error;
 use crate::key_log::NoKeyLog;
 use crate::sign::{CertifiedKey, SingleCertAndKey};
 use crate::sync::Arc;
 use crate::versions::TLS13;
 use crate::webpki::{self, WebPkiServerVerifier};
-use crate::{WantsVersions, compress, verify, versions};
+use crate::{compress, verify, versions, WantsVersions};
 
 impl ConfigBuilder<ClientConfig, WantsVersions> {
     /// Enable Encrypted Client Hello (ECH) in the given mode.
@@ -52,9 +52,7 @@ impl ConfigBuilder<ClientConfig, WantsVerifier> {
         self,
         root_store: impl Into<Arc<webpki::RootCertStore>>,
     ) -> ConfigBuilder<ClientConfig, WantsClientCert> {
-        let algorithms = self
-            .provider
-            .signature_verification_algorithms;
+        let algorithms = self.provider.signature_verification_algorithms;
         self.with_webpki_verifier(
             WebPkiServerVerifier::new_without_revocation(root_store, algorithms).into(),
         )
@@ -93,7 +91,7 @@ pub(super) mod danger {
 
     use crate::client::WantsClientCert;
     use crate::sync::Arc;
-    use crate::{ClientConfig, ConfigBuilder, WantsVerifier, verify};
+    use crate::{verify, ClientConfig, ConfigBuilder, WantsVerifier};
 
     /// Accessor for dangerous configuration options.
     #[derive(Debug)]

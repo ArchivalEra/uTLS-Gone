@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use core::fmt::{self, Debug, Formatter};
 
 use aws_lc_rs::aead::{
-    self, Aad, BoundKey, NONCE_LEN, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey,
+    self, Aad, BoundKey, Nonce, NonceSequence, OpeningKey, SealingKey, UnboundKey, NONCE_LEN,
 };
 use aws_lc_rs::agreement;
 use aws_lc_rs::cipher::{AES_128_KEY_LEN, AES_256_KEY_LEN};
@@ -16,7 +16,7 @@ use crate::crypto::aws_lc_rs::unspecified_err;
 use crate::crypto::hpke::{
     EncapsulatedSecret, Hpke, HpkeOpener, HpkePrivateKey, HpkePublicKey, HpkeSealer, HpkeSuite,
 };
-use crate::crypto::tls13::{HkdfExpander, HkdfPrkExtract, HkdfUsingHmac, expand};
+use crate::crypto::tls13::{expand, HkdfExpander, HkdfPrkExtract, HkdfUsingHmac};
 use crate::msgs::enums::{HpkeAead, HpkeKdf, HpkeKem};
 use crate::msgs::handshake::HpkeSymmetricCipherSuite;
 #[cfg(feature = "std")]
@@ -424,9 +424,7 @@ impl<const KEY_SIZE: usize, const KDF_SIZE: usize> Sealer<KEY_SIZE, KDF_SIZE> {
         pub_key: &HpkePublicKey,
         sk_e: &[u8],
     ) -> Result<(EncapsulatedSecret, Self), Error> {
-        let (shared_secret, enc) = suite
-            .dh_kem
-            .test_only_encap(pub_key, sk_e)?;
+        let (shared_secret, enc) = suite.dh_kem.test_only_encap(pub_key, sk_e)?;
         let key_schedule = suite.key_schedule(shared_secret, info)?;
         Ok((enc, Self { key_schedule }))
     }
@@ -570,9 +568,7 @@ impl<const KDF_SIZE: usize> DhKem<KDF_SIZE> {
         //   shared_secret = ExtractAndExpand(dh, kem_context)
         //   return shared_secret, enc
 
-        let enc = sk_e
-            .compute_public_key()
-            .map_err(unspecified_err)?;
+        let enc = sk_e.compute_public_key().map_err(unspecified_err)?;
         let pk_r = agreement::UnparsedPublicKey::new(self.agreement_algorithm, &recipient.0);
         let kem_context = [enc.as_ref(), pk_r.bytes()].concat();
 
@@ -611,9 +607,7 @@ impl<const KDF_SIZE: usize> DhKem<KDF_SIZE> {
             recipient.secret_bytes(),
         )
         .map_err(key_rejected_err)?;
-        let pk_rm = sk_r
-            .compute_public_key()
-            .map_err(unspecified_err)?;
+        let pk_rm = sk_r.compute_public_key().map_err(unspecified_err)?;
         let kem_context = [&enc.0, pk_rm.as_ref()].concat();
 
         let shared_secret = agreement::agree(&sk_r, pk_e, aws_lc_rs::error::Unspecified, |dh| {
@@ -686,9 +680,8 @@ fn generate_p_curve_key_pair(
     // will panic for this algorithm.
     debug_assert_ne!(alg, &agreement::X25519);
     let (public_key, private_key) = generate_key_pair(alg)?;
-    let raw_private_key: EcPrivateKeyBin<'_> = private_key
-        .as_be_bytes()
-        .map_err(unspecified_err)?;
+    let raw_private_key: EcPrivateKeyBin<'_> =
+        private_key.as_be_bytes().map_err(unspecified_err)?;
     Ok((
         public_key,
         HpkePrivateKey::from(raw_private_key.as_ref().to_vec()),
@@ -703,9 +696,8 @@ fn generate_p_curve_key_pair(
 /// For generating P-256, P-384 and P-512 keys see [`generate_p_curve_key_pair`].
 fn generate_x25519_key_pair() -> Result<(HpkePublicKey, HpkePrivateKey), Error> {
     let (public_key, private_key) = generate_key_pair(&agreement::X25519)?;
-    let raw_private_key: Curve25519SeedBin<'_> = private_key
-        .as_be_bytes()
-        .map_err(unspecified_err)?;
+    let raw_private_key: Curve25519SeedBin<'_> =
+        private_key.as_be_bytes().map_err(unspecified_err)?;
     Ok((
         public_key,
         HpkePrivateKey::from(raw_private_key.as_ref().to_vec()),
@@ -979,9 +971,7 @@ mod tests {
             let ct = sealer.seal(aad, pt).unwrap();
 
             // We should be able to set up an opener.
-            let mut opener = suite
-                .setup_opener(&enc, info, &sk)
-                .unwrap();
+            let mut opener = suite.setup_opener(&enc, info, &sk).unwrap();
             _ = format!("{opener:?}"); // Opener should be Debug.
 
             // Setting up an opener with an invalid private key should fail.
@@ -1061,14 +1051,10 @@ mod rfc_tests {
             let info = hex::decode(vec.info).unwrap();
             let expected_enc = hex::decode(vec.enc).unwrap();
 
-            let (enc, mut sealer) = hpke
-                .setup_test_sealer(&info, &pk_r, &sk_em)
-                .unwrap();
+            let (enc, mut sealer) = hpke.setup_test_sealer(&info, &pk_r, &sk_em).unwrap();
             assert_eq!(enc.0, expected_enc);
 
-            let mut opener = hpke
-                .setup_opener(&enc, &info, &sk_r)
-                .unwrap();
+            let mut opener = hpke.setup_opener(&enc, &info, &sk_r).unwrap();
 
             for test_encryption in vec.encryptions {
                 let aad = hex::decode(test_encryption.aad).unwrap();
@@ -1174,10 +1160,7 @@ mod rfc_tests {
             suite: HpkeSuite,
             supported: &[&'static dyn TestHpke],
         ) -> Option<&'static dyn TestHpke> {
-            supported
-                .iter()
-                .find(|s| s.suite() == suite)
-                .copied()
+            supported.iter().find(|s| s.suite() == suite).copied()
         }
     }
 

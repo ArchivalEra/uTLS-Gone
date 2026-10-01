@@ -1,0 +1,103 @@
+//! **本地真站（dest）装置**：一台真实的 rustls TLS 1.3 服务端，用来当 REALITY
+//! 镜像的「真站」——把客户端给的 hello 喂给它，抓回它回的第一段 flight。
+//!
+//! # 为什么需要它
+//!
+//! 镜像服务端的判据要有**真站的实际字节**：`tls.go:330-360` 那张形状校验表
+//! （ServerHello → CCS → 应用数据）只有在真站真的这样回时才有意义。
+//! 本地 rustls 服务端就是那个「真站」——完全离线、可控（能只看 P-256）、
+//! 且**它的证书链是真的**（`fixtures/server-cert.der`，与 utls-engine 共用同一份
+//! 测试凭据；那是测试凭据不是秘密，见 utls-engine 的 fixtures/README）。
+#![allow(dead_code)]
+
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::server::{ServerConfig, ServerConnection};
+
+pub const CERT_DER: &[u8] = include_bytes!("../fixtures/server-cert.der");
+pub const KEY_PKCS8_DER: &[u8] = include_bytes!("../fixtures/server-key.pk8.der");
+
+/// 服务端配置；`only_groups = Some(..)` 时把提供者的 kx_groups 滤成只认那些组
+///（P-256-only 判据用）。
+pub fn server_config(only_groups: Option<Vec<rustls::NamedGroup>>) -> Arc<ServerConfig> {
+    let provider = match only_groups {
+        None => Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
+        Some(groups) => {
+            let mut p = rustls::crypto::aws_lc_rs::default_provider();
+            p.kx_groups.retain(|g| groups.contains(&g.name()));
+            Arc::new(p)
+        }
+    };
+    Arc::new(
+        ServerConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .expect("TLS 1.3 可用")
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![CertificateDer::from(CERT_DER.to_vec())],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(KEY_PKCS8_DER.to_vec())),
+            )
+            .expect("证书与私钥配套"),
+    )
+}
+
+/// 把 `client_hello`（**完整的 ClientHello 握手消息**，不带记录头）当原始记录体
+/// 喂给本地真站，抓回它回复的**全部字节**（ServerHello 记录 + CCS + 加密 flight）。
+///
+/// 实现：手写记录头（`0x16 0x03 0x01` + u16 长度）包住 hello —— 真实客户端的
+/// 第一飞就是 b 这个样子；然后一直读到服务端把首 flight 写完。
+pub fn run_tls13_server_and_capture_flight(
+    config: Arc<ServerConfig>,
+    client_hello: Vec<u8>,
+) -> Vec<u8> {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
+    let addr = listener.local_addr().expect("端口");
+    let handle = thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        sock.set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("读超时");
+        let mut conn = ServerConnection::new(config).expect("建服务端连接");
+        // 把 hello 包成一条记录（真实客户端的第一飞就是这个形状）。
+        let mut record = vec![0x16, 0x03, 0x01];
+        record.extend_from_slice(&(client_hello.len() as u16).to_be_bytes());
+        record.extend_from_slice(&client_hello);
+        conn.read_tls(&mut record.as_slice()).expect("喂 hello");
+        conn.process_new_packets().expect("处理 hello");
+        // 服务端此刻会把首 flight 排进待发缓冲；取出来写回 socket。
+        let mut out = Vec::new();
+        while conn.wants_write() {
+            let mut chunk = Vec::new();
+            let n = conn.write_tls(&mut chunk).expect("取待发字节");
+            if n == 0 {
+                break;
+            }
+            out.extend_from_slice(&chunk);
+        }
+        sock.write_all(&out).expect("写 flight");
+        sock.flush().expect("flush");
+        out
+    });
+    // 客户端：连上去、读走 flight（读不到 EOF 也没关系 —— 收到一段就够分类）。
+    let mut sock = TcpStream::connect(addr).expect("连回环");
+    sock.set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("读超时");
+    let mut sink = Vec::new();
+    let mut buf = [0u8; 4096];
+    while let Ok(n) = sock.read(&mut buf) {
+        if n == 0 {
+            break;
+        }
+        sink.extend_from_slice(&buf[..n]);
+    }
+    let out = handle.join().expect("真站线程");
+    assert_eq!(
+        sink, out,
+        "客户端收到的 flight 必须与服务端写出的逐字节相同（装置自检）"
+    );
+    out
+}

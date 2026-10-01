@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 use zeroize::Zeroize;
 
-use super::{ActiveKeyExchange, hmac};
+use super::{hmac, ActiveKeyExchange};
 use crate::error::Error;
 use crate::version::TLS13;
 
@@ -14,13 +14,8 @@ impl HkdfExpanderUsingHmac {
     fn expand_unchecked(&self, info: &[&[u8]], output: &mut [u8]) {
         let mut term = hmac::Tag::new(b"");
 
-        for (n, chunk) in output
-            .chunks_mut(self.0.tag_len())
-            .enumerate()
-        {
-            term = self
-                .0
-                .sign_concat(term.as_ref(), info, &[(n + 1) as u8]);
+        for (n, chunk) in output.chunks_mut(self.0.tag_len()).enumerate() {
+            term = self.0.sign_concat(term.as_ref(), info, &[(n + 1) as u8]);
             chunk.copy_from_slice(&term.as_ref()[..chunk.len()]);
         }
     }
@@ -61,8 +56,7 @@ impl Hkdf for HkdfUsingHmac<'_> {
 
     fn extract_from_secret(&self, salt: Option<&[u8]>, secret: &[u8]) -> Box<dyn HkdfExpander> {
         Box::new(HkdfExpanderUsingHmac(
-            self.0
-                .with_key(&self.extract_prk_from_secret(salt, secret)),
+            self.0.with_key(&self.extract_prk_from_secret(salt, secret)),
         ))
     }
 
@@ -71,9 +65,7 @@ impl Hkdf for HkdfUsingHmac<'_> {
     }
 
     fn hmac_sign(&self, key: &OkmBlock, message: &[u8]) -> hmac::Tag {
-        self.0
-            .with_key(key.as_ref())
-            .sign(&[message])
+        self.0.with_key(key.as_ref()).sign(&[message])
     }
 }
 
@@ -84,11 +76,7 @@ impl HkdfPrkExtract for HkdfUsingHmac<'_> {
             Some(salt) => salt,
             None => &zeroes[..self.0.hash_output_len()],
         };
-        self.0
-            .with_key(salt)
-            .sign(&[secret])
-            .as_ref()
-            .to_vec()
+        self.0.with_key(salt).sign(&[secret]).as_ref().to_vec()
     }
 }
 
@@ -266,7 +254,7 @@ pub struct OutputLengthError;
 mod tests {
     use std::prelude::v1::*;
 
-    use super::{Hkdf, HkdfUsingHmac, expand};
+    use super::{expand, Hkdf, HkdfUsingHmac};
     // nb: crypto::aws_lc_rs provider doesn't provide (or need) hmac,
     // so cannot be used for this test.
     use crate::crypto::ring::hmac;
@@ -293,11 +281,8 @@ mod tests {
             &[0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9],
         ];
 
-        let output: ByteArray<42> = expand(
-            hkdf.extract_from_secret(Some(salt), ikm)
-                .as_ref(),
-            info,
-        );
+        let output: ByteArray<42> =
+            expand(hkdf.extract_from_secret(Some(salt), ikm).as_ref(), info);
 
         assert_eq!(
             &output.0,
@@ -317,8 +302,7 @@ mod tests {
         let info: Vec<u8> = (0xb0u8..=0xff).collect();
 
         let output: ByteArray<82> = expand(
-            hkdf.extract_from_secret(Some(&salt), &ikm)
-                .as_ref(),
+            hkdf.extract_from_secret(Some(&salt), &ikm).as_ref(),
             &[&info],
         );
 
@@ -342,11 +326,8 @@ mod tests {
         let salt = &[];
         let info = &[];
 
-        let output: ByteArray<42> = expand(
-            hkdf.extract_from_secret(Some(salt), ikm)
-                .as_ref(),
-            info,
-        );
+        let output: ByteArray<42> =
+            expand(hkdf.extract_from_secret(Some(salt), ikm).as_ref(), info);
 
         assert_eq!(
             &output.0,
@@ -370,11 +351,7 @@ mod tests {
         let ikm = &[0x0b; 40];
         let info = &[&b"hel"[..], &b"lo"[..]];
 
-        let output: ByteArray<96> = expand(
-            hkdf.extract_from_secret(None, ikm)
-                .as_ref(),
-            info,
-        );
+        let output: ByteArray<96> = expand(hkdf.extract_from_secret(None, ikm).as_ref(), info);
 
         assert_eq!(
             &output.0,
@@ -397,10 +374,9 @@ mod tests {
         let info = &[];
 
         let mut output = [0u8; 32 * 255 + 1];
-        assert!(
-            hkdf.extract_from_secret(None, ikm)
-                .expand_slice(info, &mut output)
-                .is_err()
-        );
+        assert!(hkdf
+            .extract_from_secret(None, ikm)
+            .expand_slice(info, &mut output)
+            .is_err());
     }
 }

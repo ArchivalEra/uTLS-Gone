@@ -126,7 +126,7 @@ pub struct CompressionFailed;
 #[cfg(feature = "zlib")]
 mod feat_zlib_rs {
     use zlib_rs::{
-        DeflateConfig, InflateConfig, ReturnCode, compress_bound, compress_slice, decompress_slice,
+        compress_bound, compress_slice, decompress_slice, DeflateConfig, InflateConfig, ReturnCode,
     };
 
     use super::*;
@@ -353,9 +353,7 @@ impl CompressionCache {
         let encoding = original.get_encoding();
         let algorithm = compressor.algorithm();
 
-        let mut cache = entries
-            .lock()
-            .map_err(|_| CompressionFailed)?;
+        let mut cache = entries.lock().map_err(|_| CompressionFailed)?;
         for (i, item) in cache.iter().enumerate() {
             if item.algorithm == algorithm && item.original == encoding {
                 // this item is now MRU
@@ -380,9 +378,7 @@ impl CompressionCache {
         });
 
         // insert into cache
-        let mut cache = entries
-            .lock()
-            .map_err(|_| CompressionFailed)?;
+        let mut cache = entries.lock().map_err(|_| CompressionFailed)?;
         if cache.len() == max_size {
             cache.pop_front();
         }
@@ -481,9 +477,7 @@ mod tests {
         let original = vec![0u8; plain_len];
 
         for level in [CompressionLevel::Interactive, CompressionLevel::Amortized] {
-            let compressed = comp
-                .compress(original.clone(), level)
-                .unwrap();
+            let compressed = comp.compress(original.clone(), level).unwrap();
             println!(
                 "{:?} compressed trivial {} -> {} using {:?} level",
                 comp.algorithm(),
@@ -492,9 +486,7 @@ mod tests {
                 level
             );
             let mut recovered = vec![0xffu8; plain_len];
-            decomp
-                .decompress(&compressed, &mut recovered)
-                .unwrap();
+            decomp.decompress(&compressed, &mut recovered).unwrap();
             assert_eq!(original, recovered);
         }
     }
@@ -508,23 +500,17 @@ mod tests {
 
         // too big
         let mut recovered = vec![0xffu8; original.len() + 1];
-        decomp
-            .decompress(&compressed, &mut recovered)
-            .unwrap_err();
+        decomp.decompress(&compressed, &mut recovered).unwrap_err();
 
         // too small
         let mut recovered = vec![0xffu8; original.len() - 1];
-        decomp
-            .decompress(&compressed, &mut recovered)
-            .unwrap_err();
+        decomp.decompress(&compressed, &mut recovered).unwrap_err();
     }
 
     fn test_decompress_garbage(decomp: &dyn CertDecompressor) {
         let junk = [0u8; 1024];
         let mut recovered = vec![0u8; 512];
-        decomp
-            .decompress(&junk, &mut recovered)
-            .unwrap_err();
+        decomp.decompress(&junk, &mut recovered).unwrap_err();
     }
 
     #[test]

@@ -79,7 +79,7 @@ mod tests {
     use crate::sign::CertifiedKey;
     use crate::sync::Arc;
     use crate::{
-        CipherSuiteCommon, SupportedCipherSuite, Tls12CipherSuite, Tls13CipherSuite, version,
+        version, CipherSuiteCommon, SupportedCipherSuite, Tls12CipherSuite, Tls13CipherSuite,
     };
 
     #[cfg(feature = "tls12")]
@@ -101,17 +101,14 @@ mod tests {
         let mut conn = ServerConnection::new(config.into()).unwrap();
 
         let mut ch = minimal_client_hello();
-        ch.extensions
-            .extended_master_secret_request
-            .take();
+        ch.extensions.extended_master_secret_request.take();
         let ch = Message {
             version: ProtocolVersion::TLSv1_3,
             payload: MessagePayload::handshake(HandshakeMessagePayload(
                 HandshakePayload::ClientHello(ch),
             )),
         };
-        conn.read_tls(&mut ch.into_wire_bytes().as_slice())
-            .unwrap();
+        conn.read_tls(&mut ch.into_wire_bytes().as_slice()).unwrap();
 
         assert_eq!(
             conn.process_new_packets(),
@@ -193,8 +190,7 @@ mod tests {
                 HandshakePayload::ClientHello(client_hello),
             )),
         };
-        conn.read_tls(&mut ch.into_wire_bytes().as_slice())
-            .unwrap();
+        conn.read_tls(&mut ch.into_wire_bytes().as_slice()).unwrap();
         conn.process_new_packets().unwrap();
 
         let KxState::Start(skxg) = &conn.kx_state else {
@@ -215,8 +211,7 @@ mod tests {
         };
 
         let mut conn = ServerConnection::new(server_config_for_rpk().into()).unwrap();
-        conn.read_tls(&mut ch.into_wire_bytes().as_slice())
-            .unwrap();
+        conn.read_tls(&mut ch.into_wire_bytes().as_slice()).unwrap();
         assert_eq!(
             conn.process_new_packets().unwrap_err(),
             PeerIncompatible::IncorrectCertificateTypeExtension.into(),
@@ -235,8 +230,7 @@ mod tests {
         };
 
         let mut conn = ServerConnection::new(server_config_for_rpk().into()).unwrap();
-        conn.read_tls(&mut ch.into_wire_bytes().as_slice())
-            .unwrap();
+        conn.read_tls(&mut ch.into_wire_bytes().as_slice()).unwrap();
         assert_eq!(
             conn.process_new_packets().unwrap_err(),
             PeerIncompatible::IncorrectCertificateTypeExtension.into(),
@@ -278,8 +272,7 @@ mod tests {
             PresharedKeyIdentity::new(vec![0u8; 16], 0),
             vec![0u8; 32],
         ));
-        conn.read_tls(&mut encode(first).as_slice())
-            .unwrap();
+        conn.read_tls(&mut encode(first).as_slice()).unwrap();
         conn.process_new_packets().unwrap();
 
         // the second hello follows the retry, but drops the PSK offer entirely.
@@ -288,8 +281,7 @@ mod tests {
             psk_dhe: true,
             psk: false,
         });
-        conn.read_tls(&mut encode(second).as_slice())
-            .unwrap();
+        conn.read_tls(&mut encode(second).as_slice()).unwrap();
 
         assert_eq!(
             conn.process_new_packets().unwrap_err(),
@@ -332,16 +324,14 @@ mod tests {
         let mut first = minimal_client_hello();
         first.cipher_suites = vec![CipherSuite::TLS13_AES_128_GCM_SHA256];
         first.extensions.key_shares = Some(vec![]);
-        conn.read_tls(&mut encode(first).as_slice())
-            .unwrap();
+        conn.read_tls(&mut encode(first).as_slice()).unwrap();
         conn.process_new_packets().unwrap();
 
         // the second hello follows the retry, but offers only a different suite. It shares
         // the retried suite's hash, so the transcript stays valid and nothing else objects.
         let mut second = minimal_client_hello();
         second.cipher_suites = vec![TLS13_AES_128_GCM_SHA256_ALT.suite()];
-        conn.read_tls(&mut encode(second).as_slice())
-            .unwrap();
+        conn.read_tls(&mut encode(second).as_slice()).unwrap();
 
         assert_eq!(
             conn.process_new_packets().unwrap_err(),
@@ -385,10 +375,7 @@ mod tests {
             .load_private_key(server_key())
             .unwrap();
         let public_key_as_cert = vec![CertificateDer::from(
-            key.public_key()
-                .unwrap()
-                .as_ref()
-                .to_vec(),
+            key.public_key().unwrap().as_ref().to_vec(),
         )];
         CertifiedKey::new(public_key_as_cert, key)
     }

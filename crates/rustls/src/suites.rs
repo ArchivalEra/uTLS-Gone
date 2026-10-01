@@ -129,10 +129,7 @@ impl SupportedCipherSuite {
     pub(crate) fn usable_for_protocol(&self, proto: Protocol) -> bool {
         match proto {
             Protocol::Tcp => true,
-            Protocol::Quic => self
-                .tls13()
-                .and_then(|cs| cs.quic)
-                .is_some(),
+            Protocol::Quic => self.tls13().and_then(|cs| cs.quic).is_some(),
         }
     }
 
@@ -257,19 +254,15 @@ mod tests {
 
     #[test]
     fn test_can_resume_to() {
-        assert!(
-            TLS13_AES_128_GCM_SHA256
-                .tls13()
-                .unwrap()
-                .can_resume_from(TLS13_CHACHA20_POLY1305_SHA256_INTERNAL)
-                .is_some()
-        );
-        assert!(
-            TLS13_AES_256_GCM_SHA384
-                .tls13()
-                .unwrap()
-                .can_resume_from(TLS13_CHACHA20_POLY1305_SHA256_INTERNAL)
-                .is_none()
-        );
+        assert!(TLS13_AES_128_GCM_SHA256
+            .tls13()
+            .unwrap()
+            .can_resume_from(TLS13_CHACHA20_POLY1305_SHA256_INTERNAL)
+            .is_some());
+        assert!(TLS13_AES_256_GCM_SHA384
+            .tls13()
+            .unwrap()
+            .can_resume_from(TLS13_CHACHA20_POLY1305_SHA256_INTERNAL)
+            .is_none());
     }
 }

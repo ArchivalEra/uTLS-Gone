@@ -12,9 +12,9 @@ use rcgen::string::Ia5String;
 use rcgen::{
     BasicConstraints, Certificate, CertificateParams, CertificateRevocationListParams,
     DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyIdMethod, KeyPair,
-    KeyUsagePurpose, PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ECDSA_P521_SHA512,
-    PKCS_ED25519, PKCS_RSA_SHA256, PKCS_RSA_SHA384, PKCS_RSA_SHA512, RevocationReason,
-    RevokedCertParams, RsaKeySize, SanType, SerialNumber, SignatureAlgorithm,
+    KeyUsagePurpose, RevocationReason, RevokedCertParams, RsaKeySize, SanType, SerialNumber,
+    SignatureAlgorithm, PKCS_ECDSA_P256_SHA256, PKCS_ECDSA_P384_SHA384, PKCS_ECDSA_P521_SHA512,
+    PKCS_ED25519, PKCS_RSA_SHA256, PKCS_RSA_SHA384, PKCS_RSA_SHA512,
 };
 use time::OffsetDateTime;
 
@@ -41,9 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (params, cert)
                 }
                 Role::Intermediate => {
-                    let issuer = certified_keys
-                        .get(&(Role::TrustAnchor, alg.inner))
-                        .unwrap();
+                    let issuer = certified_keys.get(&(Role::TrustAnchor, alg.inner)).unwrap();
                     let params = role.params(alg);
                     let cert = params.signed_by(&key_pair, &issuer.0)?;
                     (params, cert)
@@ -71,9 +69,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // intermediates this will be the trust anchor, and for client/EE certs this will
                 // be the intermediate.
                 let issuer = match role {
-                    Role::Intermediate => certified_keys
-                        .get(&(Role::TrustAnchor, alg.inner))
-                        .unwrap(),
+                    Role::Intermediate => {
+                        certified_keys.get(&(Role::TrustAnchor, alg.inner)).unwrap()
+                    }
                     Role::EndEntity | Role::Client => certified_keys
                         .get(&(Role::Intermediate, alg.inner))
                         .unwrap(),
@@ -239,8 +237,7 @@ impl Role {
     }
 
     fn key_file_path(&self, alg: &'static SigAlgContext) -> PathBuf {
-        alg.output_directory()
-            .join(format!("{}.key", self.label()))
+        alg.output_directory().join(format!("{}.key", self.label()))
     }
 
     fn cert_pem_file_path(&self, alg: &'static SigAlgContext) -> PathBuf {
@@ -249,8 +246,7 @@ impl Role {
     }
 
     fn cert_der_file_path(&self, alg: &'static SigAlgContext) -> PathBuf {
-        alg.output_directory()
-            .join(format!("{}.der", self.label()))
+        alg.output_directory().join(format!("{}.der", self.label()))
     }
 
     fn label(&self) -> &'static str {
@@ -306,11 +302,7 @@ impl SigAlgContext {
         let output_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("../")
             .join("test-ca")
-            .join(
-                self.issuer_cn
-                    .to_lowercase()
-                    .replace(' ', "-"),
-            );
+            .join(self.issuer_cn.to_lowercase().replace(' ', "-"));
         fs::create_dir_all(&output_dir).unwrap();
         output_dir
     }
