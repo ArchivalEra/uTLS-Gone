@@ -114,26 +114,49 @@ fn every_seed_reproduces_the_utls_reference() {
         let parts: Vec<&str> = ours.split(',').collect();
 
         // JA3 文本逐字 —— 随机化 spec 无 GREASE，所以这四条必须**完全**相同。
-        assert_eq!(parts[0].parse::<u16>().unwrap(), p["legacy_version"].as_u64().unwrap() as u16,
-            "{key}: legacy_version");
+        assert_eq!(
+            parts[0].parse::<u16>().unwrap(),
+            p["legacy_version"].as_u64().unwrap() as u16,
+            "{key}: legacy_version"
+        );
         assert_eq!(
             to_u16_list(parts[1]),
-            p["ciphers"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect::<Vec<_>>(),
+            p["ciphers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as u16)
+                .collect::<Vec<_>>(),
             "{key}: 密码套件（顺序）—— 说明取随机的流在洗牌那一步就对上了"
         );
         assert_eq!(
             to_u16_list(parts[2]),
-            p["extensions"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect::<Vec<_>>(),
+            p["extensions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as u16)
+                .collect::<Vec<_>>(),
             "{key}: 扩展类型（顺序）—— 说明每一次加权掷币的次序与结果都对上了"
         );
         assert_eq!(
             to_u16_list(parts[3]),
-            p["groups"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect::<Vec<_>>(),
+            p["groups"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as u16)
+                .collect::<Vec<_>>(),
             "{key}: 支持组"
         );
         assert_eq!(
             to_u16_list(parts[4]),
-            p["point_formats"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect::<Vec<_>>(),
+            p["point_formats"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as u16)
+                .collect::<Vec<_>>(),
             "{key}: 点格式"
         );
 
@@ -154,11 +177,17 @@ fn every_seed_reproduces_the_utls_reference() {
             .iter()
             .map(|pair| {
                 let a = pair.as_array().unwrap();
-                (a[0].as_u64().unwrap() as u16, a[1].as_u64().unwrap() as usize)
+                (
+                    a[0].as_u64().unwrap() as u16,
+                    a[1].as_u64().unwrap() as usize,
+                )
             })
             .collect();
         ref_lens.sort_unstable();
-        assert_eq!(our_lens, ref_lens, "{key}: 逐扩展体长（含 padding 与 key_share 长度）");
+        assert_eq!(
+            our_lens, ref_lens,
+            "{key}: 逐扩展体长（含 padding 与 key_share 长度）"
+        );
 
         // 总长。
         assert_eq!(

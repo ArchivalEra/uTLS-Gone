@@ -51,7 +51,11 @@ fn inputs_for_firefox(seed: u8) -> HandshakeInputs {
 /// 第一处不同的偏移。比 `assert_eq!(a, b)` 有用得多 —— 后者会打出两千个数字。
 fn first_diff(a: &[u8], b: &[u8]) -> Option<usize> {
     a.iter().zip(b).position(|(x, y)| x != y).or({
-        if a.len() == b.len() { None } else { Some(a.len().min(b.len())) }
+        if a.len() == b.len() {
+            None
+        } else {
+            Some(a.len().min(b.len()))
+        }
     })
 }
 
@@ -119,7 +123,10 @@ fn replay_needs_nothing_but_the_random() {
 #[test]
 fn for_replay_rejects_malformed_input() {
     assert!(HandshakeInputs::for_replay(&[]).is_none());
-    assert!(HandshakeInputs::for_replay(&[2, 0, 0, 34]).is_none(), "不是 ClientHello");
+    assert!(
+        HandshakeInputs::for_replay(&[2, 0, 0, 34]).is_none(),
+        "不是 ClientHello"
+    );
     // 声明长度与实长不符 ⇒ 不猜。
     let good = chrome().marshal(&inputs_with_keys(0)).unwrap();
     let mut bad = good.as_bytes().to_vec();
@@ -160,7 +167,11 @@ fn different_seeds_differ_only_through_grease_ech_payload() {
         seen_bytes.insert(hello.as_bytes().to_vec());
     }
     assert_eq!(seen_bytes.len(), 64, "64 个 seed 竟然没有 64 串不同字节");
-    assert_eq!(payload_lens.len(), 4, "GREASE-ECH 载荷没有覆盖全部 4 个候选长度：{payload_lens:?}");
+    assert_eq!(
+        payload_lens.len(),
+        4,
+        "GREASE-ECH 载荷没有覆盖全部 4 个候选长度：{payload_lens:?}"
+    );
 }
 
 #[test]
@@ -180,7 +191,11 @@ fn shuffle_preserves_the_extension_multiset_and_pinned_positions() {
     assert!(!want.is_empty());
     for seed in 0u8..64 {
         let got = chrome().marshal(&inputs_with_keys(seed)).unwrap();
-        assert_eq!(non_grease_types(got.as_bytes()), want, "seed={seed} 的类型多重集变了");
+        assert_eq!(
+            non_grease_types(got.as_bytes()),
+            want,
+            "seed={seed} 的类型多重集变了"
+        );
     }
 }
 
@@ -193,8 +208,14 @@ fn shuffle_keeps_grease_extensions_at_both_ends() {
         let types = extension_types_in_wire_order(hello.as_bytes());
         let first = types[0];
         let last = *types.last().unwrap();
-        assert!(v::is_grease(first), "seed={seed}：首部不是 GREASE（是 {first}）");
-        assert!(v::is_grease(last), "seed={seed}：尾部不是 GREASE（是 {last}）");
+        assert!(
+            v::is_grease(first),
+            "seed={seed}：首部不是 GREASE（是 {first}）"
+        );
+        assert!(
+            v::is_grease(last),
+            "seed={seed}：尾部不是 GREASE（是 {last}）"
+        );
     }
 }
 
@@ -205,17 +226,33 @@ fn ja3_does_not_depend_on_grease_or_order() {
     // JA3 忽略 GREASE。对 Chrome 133（乱序）它会随顺序变化 —— 这正是要钉住的事实：
     // **乱序预设的 JA3 不稳定是设计，不是缺陷**（真实 Chrome 与 rustls 0.23 都这样）。
     let seen: std::collections::HashSet<String> = (0u8..48)
-        .map(|s| chrome().marshal(&inputs_with_keys(s)).unwrap().ja3().hash_hex())
+        .map(|s| {
+            chrome()
+                .marshal(&inputs_with_keys(s))
+                .unwrap()
+                .ja3()
+                .hash_hex()
+        })
         .collect();
-    assert!(seen.len() > 1, "乱序预设的 JA3 竟然只有一个取值 —— 乱序没生效？");
+    assert!(
+        seen.len() > 1,
+        "乱序预设的 JA3 竟然只有一个取值 —— 乱序没生效？"
+    );
 
     // 但每个取值都必须落在同一个「形状」上：GREASE 一律不出现在任何字段里。
     for seed in 0u8..48 {
-        let text = chrome().marshal(&inputs_with_keys(seed)).unwrap().ja3().text();
+        let text = chrome()
+            .marshal(&inputs_with_keys(seed))
+            .unwrap()
+            .ja3()
+            .text();
         for field in text.split(',') {
             for item in field.split('-') {
                 if let Ok(n) = item.parse::<u16>() {
-                    assert!(!v::is_grease(n), "seed={seed}：JA3 里出现了 GREASE 值 {n:#06x}");
+                    assert!(
+                        !v::is_grease(n),
+                        "seed={seed}：JA3 里出现了 GREASE 值 {n:#06x}"
+                    );
                 }
             }
         }
@@ -229,7 +266,12 @@ fn ja3_of_stable_spec_is_stable() {
     let hello = chrome().marshal(&inputs_with_keys(5)).unwrap();
     let spec = ClientHelloSpec::from_bytes(hello.as_bytes()).unwrap();
     let hashes: std::collections::HashSet<String> = (0u8..32)
-        .map(|s| spec.marshal(&HandshakeInputs::deterministic([s; 32])).unwrap().ja3().hash_hex())
+        .map(|s| {
+            spec.marshal(&HandshakeInputs::deterministic([s; 32]))
+                .unwrap()
+                .ja3()
+                .hash_hex()
+        })
         .collect();
     assert_eq!(hashes.len(), 1, "Stable 的 spec 的 JA3 不稳定：{hashes:?}");
 }
@@ -240,19 +282,20 @@ fn chrome_133_ja3_carries_the_expected_pieces() {
     let j = hello.ja3();
     assert_eq!(j.ssl_version, v::LEGACY_VERSION);
     // 密码套件：GREASE 被滤掉，TLS 1.3 三件套在最前。
-    assert_eq!(&j.cipher_suites[..3], &[
-        v::TLS_AES_128_GCM_SHA256,
-        v::TLS_AES_256_GCM_SHA384,
-        v::TLS_CHACHA20_POLY1305_SHA256
-    ]);
+    assert_eq!(
+        &j.cipher_suites[..3],
+        &[
+            v::TLS_AES_128_GCM_SHA256,
+            v::TLS_AES_256_GCM_SHA384,
+            v::TLS_CHACHA20_POLY1305_SHA256
+        ]
+    );
     assert_eq!(j.cipher_suites.len(), 15, "16 个里滤掉 1 个 GREASE");
     // 支持组：GREASE 滤掉，剩 ML-KEM 混合组 + X25519 + P256 + P384。
-    assert_eq!(j.elliptic_curves, vec![
-        v::X25519_MLKEM768,
-        v::X25519,
-        v::CURVE_P256,
-        v::CURVE_P384
-    ]);
+    assert_eq!(
+        j.elliptic_curves,
+        vec![v::X25519_MLKEM768, v::X25519, v::CURVE_P256, v::CURVE_P384]
+    );
     assert_eq!(j.ec_point_formats, vec![v::POINT_FORMAT_UNCOMPRESSED]);
     // 扩展：GREASE 与 GREASE-ECH 之外的 16 个类型都在（顺序另测）。
     let mut exts = j.extensions.clone();
@@ -281,9 +324,21 @@ fn firefox_is_stable_no_grease_and_fixed_length() {
         lens.insert(hello.len());
         bodies.insert(hello.as_bytes().to_vec());
     }
-    assert_eq!(ja3s.len(), 1, "Firefox 的 JA3 竟然不稳定（它没有 GREASE、也不乱序）：{ja3s:?}");
-    assert_eq!(lens.len(), 1, "Firefox 的总长竟然会变（它的 GREASE-ECH 只有单一载荷长度）");
-    assert_eq!(bodies.len(), 64, "Firefox 的字节竟然完全相同 —— 每连接变化没生效");
+    assert_eq!(
+        ja3s.len(),
+        1,
+        "Firefox 的 JA3 竟然不稳定（它没有 GREASE、也不乱序）：{ja3s:?}"
+    );
+    assert_eq!(
+        lens.len(),
+        1,
+        "Firefox 的总长竟然会变（它的 GREASE-ECH 只有单一载荷长度）"
+    );
+    assert_eq!(
+        bodies.len(),
+        64,
+        "Firefox 的字节竟然完全相同 —— 每连接变化没生效"
+    );
 }
 
 #[test]
@@ -292,16 +347,25 @@ fn firefox_ja3_has_no_grease_at_all() {
     // Firefox 的密码套件里一个 GREASE 都没有 ⇒ 17 个全部计入。
     assert_eq!(j.cipher_suites.len(), 17);
     for x in &j.cipher_suites {
-        assert!(!v::is_grease(*x), "Firefox 的密码套件里出现了 GREASE {x:#06x}");
+        assert!(
+            !v::is_grease(*x),
+            "Firefox 的密码套件里出现了 GREASE {x:#06x}"
+        );
     }
     // 支持组：7 个，含两个 FFDHE 群 —— Chrome 不报它们。
     assert_eq!(j.elliptic_curves.len(), 7);
     assert!(j.elliptic_curves.contains(&v::FFDHE2048));
     assert!(j.elliptic_curves.contains(&v::FFDHE3072));
-    assert!(j.elliptic_curves.contains(&v::CURVE_P521), "Firefox 报 P-521");
+    assert!(
+        j.elliptic_curves.contains(&v::CURVE_P521),
+        "Firefox 报 P-521"
+    );
     // 扩展里也没有 GREASE 类型的占位扩展（Chrome 有 2 个）。
     for x in &j.extensions {
-        assert!(!v::is_grease(*x), "Firefox 的扩展里出现了 GREASE 类型 {x:#06x}");
+        assert!(
+            !v::is_grease(*x),
+            "Firefox 的扩展里出现了 GREASE 类型 {x:#06x}"
+        );
     }
 }
 
@@ -310,7 +374,9 @@ fn firefox_round_trips_byte_exact_too() {
     // 往返契约不是 Chrome 专属的：任何预设都必须满足它。
     let hello = firefox().marshal(&inputs_for_firefox(3)).unwrap();
     let spec = ClientHelloSpec::from_bytes(hello.as_bytes()).expect("反解失败");
-    let out = spec.marshal(&HandshakeInputs::for_replay(hello.as_bytes()).unwrap()).unwrap();
+    let out = spec
+        .marshal(&HandshakeInputs::for_replay(hello.as_bytes()).unwrap())
+        .unwrap();
     assert_eq!(first_diff(out.as_bytes(), hello.as_bytes()), None);
 }
 
@@ -324,7 +390,9 @@ fn empty_psk_marker_is_positional_only() {
     // 它在列表里参与乱序抽取，但一个字节都不写。
     let spec = ClientHelloSpec::from_preset(ClientHelloId::ChromePsk(100)).unwrap();
     assert!(
-        spec.extensions.iter().any(|e| matches!(e, Extension::PreSharedKey(_))),
+        spec.extensions
+            .iter()
+            .any(|e| matches!(e, Extension::PreSharedKey(_))),
         "声明里该有 PSK 标记"
     );
     let hello = spec.marshal(&inputs_with_keys(0)).unwrap();
@@ -338,8 +406,15 @@ fn empty_psk_marker_is_positional_only() {
 
     // 反解出来的 spec 里也不该有它（字节里没有，反解自然没有）—— 所以往返仍然逐字节成立。
     let parsed = ClientHelloSpec::from_bytes(hello.as_bytes()).unwrap();
-    assert!(!parsed.extensions.iter().any(|e| matches!(e, Extension::PreSharedKey(_))));
-    let again = parsed.marshal(&HandshakeInputs::for_replay(hello.as_bytes()).unwrap()).unwrap();
+    assert!(
+        !parsed
+            .extensions
+            .iter()
+            .any(|e| matches!(e, Extension::PreSharedKey(_)))
+    );
+    let again = parsed
+        .marshal(&HandshakeInputs::for_replay(hello.as_bytes()).unwrap())
+        .unwrap();
     assert_eq!(again.as_bytes(), hello.as_bytes());
 }
 
@@ -349,7 +424,11 @@ fn always_add_padding_inserts_before_the_psk() {
     // 有 PSK 时填充要插在它**前面**，否则 PSK 就不是最后一条了。
     let mut s = ClientHelloSpec::from_preset(ClientHelloId::ChromePsk(100)).unwrap();
     assert!(s.psk_position().is_some());
-    assert!(!s.extensions.iter().any(|e| matches!(e, Extension::Padding(_))));
+    assert!(
+        !s.extensions
+            .iter()
+            .any(|e| matches!(e, Extension::Padding(_)))
+    );
     s.always_add_padding();
     let pad = s
         .extensions
@@ -363,13 +442,17 @@ fn always_add_padding_inserts_before_the_psk() {
     // 幂等：再调一次不该变成两条。
     s.always_add_padding();
     assert_eq!(
-        s.extensions.iter().filter(|e| matches!(e, Extension::Padding(_))).count(),
+        s.extensions
+            .iter()
+            .filter(|e| matches!(e, Extension::Padding(_)))
+            .count(),
         1
     );
 
     // 没有 PSK 的 spec：追加到末尾。
     let mut s2 = ClientHelloSpec::from_preset(ClientHelloId::Chrome(133)).unwrap();
-    s2.extensions.retain(|e| !matches!(e, Extension::Padding(_)));
+    s2.extensions
+        .retain(|e| !matches!(e, Extension::Padding(_)));
     assert!(s2.psk_position().is_none());
     s2.always_add_padding();
     assert!(matches!(s2.extensions.last(), Some(Extension::Padding(_))));
@@ -381,10 +464,17 @@ fn always_add_psk_is_idempotent_and_goes_last() {
     let mut s = ClientHelloSpec::from_preset(ClientHelloId::Chrome(133)).unwrap();
     assert!(s.psk_position().is_none());
     assert!(s.always_add_psk(), "没有 PSK 时该补上");
-    assert_eq!(s.psk_position().unwrap(), s.extensions.len() - 1, "补在末尾");
+    assert_eq!(
+        s.psk_position().unwrap(),
+        s.extensions.len() - 1,
+        "补在末尾"
+    );
     assert!(!s.always_add_psk(), "已经有了就不该再补");
     assert_eq!(
-        s.extensions.iter().filter(|e| matches!(e, Extension::PreSharedKey(_))).count(),
+        s.extensions
+            .iter()
+            .filter(|e| matches!(e, Extension::PreSharedKey(_)))
+            .count(),
         1
     );
 }
@@ -421,8 +511,16 @@ fn every_typed_extension_is_the_inverse_of_its_body_writer() {
         RenegotiationInfo, SessionTicket, SignatureAlgorithmsCert,
     };
     let cases: Vec<(Extension, u16, &[u8])> = vec![
-        (Extension::StatusRequest, v::EXT_STATUS_REQUEST, &[1, 0, 0, 0, 0]),
-        (Extension::ExtendedMasterSecret, v::EXT_EXTENDED_MASTER_SECRET, &[]),
+        (
+            Extension::StatusRequest,
+            v::EXT_STATUS_REQUEST,
+            &[1, 0, 0, 0, 0],
+        ),
+        (
+            Extension::ExtendedMasterSecret,
+            v::EXT_EXTENDED_MASTER_SECRET,
+            &[],
+        ),
         (
             Extension::RenegotiationInfo(RenegotiationInfo {
                 renegotiated_connection: vec![],
@@ -443,7 +541,9 @@ fn every_typed_extension_is_the_inverse_of_its_body_writer() {
             &[],
         ),
         (
-            Extension::SessionTicket(SessionTicket { ticket: vec![1, 2, 3] }),
+            Extension::SessionTicket(SessionTicket {
+                ticket: vec![1, 2, 3],
+            }),
             v::EXT_SESSION_TICKET,
             &[1, 2, 3],
         ),
@@ -477,7 +577,9 @@ fn every_typed_extension_is_the_inverse_of_its_body_writer() {
         ),
         (Extension::SignedCertificateTimestamp, v::EXT_SCT, &[]),
         (
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             v::EXT_PSK_KEY_EXCHANGE_MODES,
             &[1, 1],
         ),
@@ -501,8 +603,20 @@ fn every_typed_extension_is_the_inverse_of_its_body_writer() {
             &[0x00, 0x04, 0x04, 0x03, 0x02, 0x03],
         ),
         (Extension::Npn, v::EXT_NPN, &[]),
-        (Extension::ChannelId { old_codepoint: false }, v::EXT_CHANNEL_ID, &[]),
-        (Extension::ChannelId { old_codepoint: true }, v::EXT_CHANNEL_ID_OLD, &[]),
+        (
+            Extension::ChannelId {
+                old_codepoint: false,
+            },
+            v::EXT_CHANNEL_ID,
+            &[],
+        ),
+        (
+            Extension::ChannelId {
+                old_codepoint: true,
+            },
+            v::EXT_CHANNEL_ID_OLD,
+            &[],
+        ),
     ];
 
     for (ext, want_ty, want_body) in cases {
@@ -517,7 +631,11 @@ fn every_typed_extension_is_the_inverse_of_its_body_writer() {
         let again = parsed
             .marshal(&HandshakeInputs::for_replay(&hello).unwrap())
             .unwrap();
-        assert_eq!(again.as_bytes(), &hello[..], "往返不是逐字节相同（{ext:?}）");
+        assert_eq!(
+            again.as_bytes(),
+            &hello[..],
+            "往返不是逐字节相同（{ext:?}）"
+        );
     }
 }
 
@@ -528,9 +646,17 @@ fn non_canonical_bodies_fall_back_to_opaque() {
     use crate::hello::Extension as E;
     let cases: Vec<(&str, u16, Vec<u8>)> = vec![
         // status_request 带上了 responder id —— uTLS 的 `StatusRequestExtension` 表达不了。
-        ("status_request 带 responder", v::EXT_STATUS_REQUEST, vec![1, 0, 2, 0xAA, 0xBB, 0, 0]),
+        (
+            "status_request 带 responder",
+            v::EXT_STATUS_REQUEST,
+            vec![1, 0, 2, 0xAA, 0xBB, 0, 0],
+        ),
         // renegotiation_info 的长度前缀与实长不符。
-        ("reneg 长度前缀不符", v::EXT_RENEGOTIATION_INFO, vec![5, 0xAA]),
+        (
+            "reneg 长度前缀不符",
+            v::EXT_RENEGOTIATION_INFO,
+            vec![5, 0xAA],
+        ),
         // extended_master_secret 本该是空体。
         ("ems 非空体", v::EXT_EXTENDED_MASTER_SECRET, vec![0]),
         // ec_point_formats 的长度前缀不符。
@@ -541,7 +667,10 @@ fn non_canonical_bodies_fall_back_to_opaque() {
         ("rsl 三字节", v::EXT_RECORD_SIZE_LIMIT, vec![1, 2, 3]),
     ];
     for (what, id, body) in cases {
-        let ext = E::Opaque { id, body: body.clone() };
+        let ext = E::Opaque {
+            id,
+            body: body.clone(),
+        };
         let hello = marshal_one(ext);
         let (_, got) = second_ext(&hello);
         assert_eq!(got, body, "{what}: 编码该原样透传");
@@ -629,8 +758,11 @@ fn empty_sni_writes_no_bytes_but_keeps_its_slot() {
     assert!(named.contains(&v::EXT_SERVER_NAME), "正常 SNI 没发出去");
     assert!(!empty.contains(&v::EXT_SERVER_NAME), "空 SNI 竟然写了字节");
     // 同一个置换，**只是少写出那一条** —— 这正是「槽位照占、洗牌照抽」的可观测形式。
-    let named_others: Vec<u16> =
-        named.iter().copied().filter(|t| *t != v::EXT_SERVER_NAME).collect();
+    let named_others: Vec<u16> = named
+        .iter()
+        .copied()
+        .filter(|t| *t != v::EXT_SERVER_NAME)
+        .collect();
     assert_eq!(
         empty, named_others,
         "空 SNI 与长 SNI 的相对顺序不同 —— 说明空 SNI 把槽位从列表里删掉了，\
@@ -667,7 +799,8 @@ fn sni_is_normalised_at_the_moment_it_is_written() {
 fn empty_spec_cannot_be_marshalled() {
     let spec = ClientHelloSpec::from_preset(ClientHelloId::Custom).unwrap();
     assert_eq!(
-        spec.marshal(&HandshakeInputs::deterministic([0; 32])).unwrap_err(),
+        spec.marshal(&HandshakeInputs::deterministic([0; 32]))
+            .unwrap_err(),
         SpecError::EmptyCipherSuites
     );
 }
@@ -732,7 +865,11 @@ fn padding_decision_does_not_disturb_the_shuffle() {
         let has_padding = types.contains(&v::EXT_PADDING);
         saw_emitted |= has_padding;
         saw_omitted |= !has_padding;
-        let others: Vec<u16> = types.iter().copied().filter(|t| *t != v::EXT_PADDING).collect();
+        let others: Vec<u16> = types
+            .iter()
+            .copied()
+            .filter(|t| *t != v::EXT_PADDING)
+            .collect();
         match &reference {
             None => reference = Some(others),
             Some(r) => assert_eq!(
@@ -776,15 +913,25 @@ fn psk_wire_format_is_exactly_rfc8446() {
     // 不依赖任何参照实现 —— 三个字段（两个长度前缀 + 一个 u8 的 binder 长度）里错一个都会红。
     let psk = PreSharedKey {
         identities: vec![
-            PskIdentity { label: vec![0xAA, 0xBB], obfuscated_ticket_age: 0x01020304 },
-            PskIdentity { label: vec![0xCC], obfuscated_ticket_age: 0 },
+            PskIdentity {
+                label: vec![0xAA, 0xBB],
+                obfuscated_ticket_age: 0x01020304,
+            },
+            PskIdentity {
+                label: vec![0xCC],
+                obfuscated_ticket_age: 0,
+            },
         ],
         binders: vec![vec![0x11; 2], vec![0x22; 3]],
     };
     let hello = marshal_psk(psk);
     let (ty, body) = {
         let l = wire_ext_bodies(&hello);
-        let (t, b) = l.iter().find(|(t, _)| *t == v::EXT_PRE_SHARED_KEY).expect("有 PSK").clone();
+        let (t, b) = l
+            .iter()
+            .find(|(t, _)| *t == v::EXT_PRE_SHARED_KEY)
+            .expect("有 PSK")
+            .clone();
         (t, b)
     };
     assert_eq!(ty, v::EXT_PRE_SHARED_KEY);
@@ -792,13 +939,9 @@ fn psk_wire_format_is_exactly_rfc8446() {
         body,
         vec![
             // identities 长度 = (2+2+4) + (2+1+4) = 15
-            0x00, 0x0F,
-            0x00, 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04,
-            0x00, 0x01, 0xCC, 0x00, 0x00, 0x00, 0x00,
-            // binders 长度 = (1+2) + (1+3) = 7
-            0x00, 0x07,
-            0x02, 0x11, 0x11,
-            0x03, 0x22, 0x22, 0x22,
+            0x00, 0x0F, 0x00, 0x02, 0xAA, 0xBB, 0x01, 0x02, 0x03, 0x04, 0x00, 0x01, 0xCC, 0x00,
+            0x00, 0x00, 0x00, // binders 长度 = (1+2) + (1+3) = 7
+            0x00, 0x07, 0x02, 0x11, 0x11, 0x03, 0x22, 0x22, 0x22,
         ],
         "PSK 体与 RFC 8446 §4.2.11 的形状不一致"
     );
@@ -810,16 +953,25 @@ fn psk_without_a_session_writes_nothing_but_keeps_its_slot() {
     // 这一条同时钉住「空 PSK 不再是单独一个变体」：它就是 identities/binders 都空的 `PreSharedKey`。
     let hello = marshal_psk(PreSharedKey::empty());
     assert!(
-        !wire_ext_bodies(&hello).iter().any(|(t, _)| *t == v::EXT_PRE_SHARED_KEY),
+        !wire_ext_bodies(&hello)
+            .iter()
+            .any(|(t, _)| *t == v::EXT_PRE_SHARED_KEY),
         "没有会话时 PSK 不该写字节"
     );
     // 只有 identity 没有 binder（或反过来）也是零字节 —— uTLS 的判据是「任一为空」。
     let only_ids = PreSharedKey {
-        identities: vec![PskIdentity { label: vec![1], obfuscated_ticket_age: 0 }],
+        identities: vec![PskIdentity {
+            label: vec![1],
+            obfuscated_ticket_age: 0,
+        }],
         binders: Vec::new(),
     };
     let hello = marshal_psk(only_ids);
-    assert!(!wire_ext_bodies(&hello).iter().any(|(t, _)| *t == v::EXT_PRE_SHARED_KEY));
+    assert!(
+        !wire_ext_bodies(&hello)
+            .iter()
+            .any(|(t, _)| *t == v::EXT_PRE_SHARED_KEY)
+    );
 }
 
 #[test]
@@ -828,20 +980,35 @@ fn psk_placeholder_and_real_binder_produce_the_same_length_and_same_truncation()
     // 两次的总长必须相同，且**截断点**必须相同（否则要哈希的那段就变了，binder 永远验不过）。
     // 这是 uTLS `InitializeByUtls` + `PatchBuiltHello` 的等价物，也是本仓 PSP/PSK 接线的基础。
     let ids = vec![
-        PskIdentity { label: vec![0x41; 32], obfuscated_ticket_age: 7 },
-        PskIdentity { label: vec![0x42; 48], obfuscated_ticket_age: 9 },
+        PskIdentity {
+            label: vec![0x41; 32],
+            obfuscated_ticket_age: 7,
+        },
+        PskIdentity {
+            label: vec![0x42; 48],
+            obfuscated_ticket_age: 9,
+        },
     ];
     let placeholder = PreSharedKey::placeholder(ids.clone(), 32);
     let c1 = marshalled_psk(placeholder.clone());
     let h1 = c1.as_bytes().to_vec();
 
     let mut real = placeholder.clone();
-    real.set_binders(vec![vec![0x99; 32], vec![0x98; 32]]).unwrap();
+    real.set_binders(vec![vec![0x99; 32], vec![0x98; 32]])
+        .unwrap();
     let c2 = marshalled_psk(real);
     let h2 = c2.as_bytes().to_vec();
 
-    assert_eq!(h1.len(), h2.len(), "两遍序列化的总长不同 ⇒ 整个 hello 的哈希都会变");
-    assert_eq!(c1.psk_transcript_len(), c2.psk_transcript_len(), "截断点变了");
+    assert_eq!(
+        h1.len(),
+        h2.len(),
+        "两遍序列化的总长不同 ⇒ 整个 hello 的哈希都会变"
+    );
+    assert_eq!(
+        c1.psk_transcript_len(),
+        c2.psk_transcript_len(),
+        "截断点变了"
+    );
     let t = c1.psk_transcript_len().unwrap();
     assert!(t < h1.len() && t > 0);
     // 截断点之后的字节**只包含** binders 向量（u16 长度 + 各 binder），
@@ -855,20 +1022,32 @@ fn psk_placeholder_and_real_binder_produce_the_same_length_and_same_truncation()
 #[test]
 fn psk_binder_count_must_match_identity_count() {
     let mut psk = PreSharedKey::placeholder(
-        vec![PskIdentity { label: vec![1], obfuscated_ticket_age: 0 }],
+        vec![PskIdentity {
+            label: vec![1],
+            obfuscated_ticket_age: 0,
+        }],
         32,
     );
     assert_eq!(
         psk.set_binders(vec![vec![0; 32], vec![0; 32]]).unwrap_err(),
-        SpecError::BinderCountMismatch { identities: 1, binders: 2 }
+        SpecError::BinderCountMismatch {
+            identities: 1,
+            binders: 2
+        }
     );
     // 直接构造一个不匹配的 spec 也要在编码时报错（不是静默产出畸形字节）。
-    let bad = PreSharedKey { identities: psk.identities.clone(), binders: vec![vec![0; 32], vec![0; 32]] };
+    let bad = PreSharedKey {
+        identities: psk.identities.clone(),
+        binders: vec![vec![0; 32], vec![0; 32]],
+    };
     let mut i = HandshakeInputs::deterministic([0; 32]);
     i.sni = None;
     assert_eq!(
         psk_spec(bad).marshal(&i).unwrap_err(),
-        SpecError::BinderCountMismatch { identities: 1, binders: 2 }
+        SpecError::BinderCountMismatch {
+            identities: 1,
+            binders: 2
+        }
     );
 }
 
@@ -876,7 +1055,10 @@ fn psk_binder_count_must_match_identity_count() {
 fn psk_round_trips_byte_exact_including_the_binders() {
     // 反解必须能把 identities 与 binders 都还原（于是「回放一条捕获」不需要任何外部输入）。
     let psk = PreSharedKey {
-        identities: vec![PskIdentity { label: vec![0x5A; 20], obfuscated_ticket_age: 1234 }],
+        identities: vec![PskIdentity {
+            label: vec![0x5A; 20],
+            obfuscated_ticket_age: 1234,
+        }],
         binders: vec![vec![0xC3; 32]],
     };
     let hello = marshal_psk(psk.clone());
@@ -913,17 +1095,29 @@ fn for_hello_retry_keeps_only_the_selected_group_and_nothing_else() {
             })
             .expect("有 key_share")
     };
-    assert_eq!(groups(&retry), vec![v::CURVE_P256], "key_share 该只剩选中的那个组");
-    assert_eq!(retry.extensions.len(), spec.extensions.len(), "扩展数量不该变");
+    assert_eq!(
+        groups(&retry),
+        vec![v::CURVE_P256],
+        "key_share 该只剩选中的那个组"
+    );
+    assert_eq!(
+        retry.extensions.len(),
+        spec.extensions.len(),
+        "扩展数量不该变"
+    );
     // 位置也不该变：改的是那一条扩展的**内容**。
     let at = |s: &ClientHelloSpec| {
-        s.extensions.iter().position(|e| matches!(e, Extension::KeyShare(_)))
+        s.extensions
+            .iter()
+            .position(|e| matches!(e, Extension::KeyShare(_)))
     };
     assert_eq!(at(&retry), at(&spec));
 
     // 三条前置检查各有各的报错（对应 uTLS 的三条文案）。
     let mut no_ks = spec.clone();
-    no_ks.extensions.retain(|e| !matches!(e, Extension::KeyShare(_)));
+    no_ks
+        .extensions
+        .retain(|e| !matches!(e, Extension::KeyShare(_)));
     assert_eq!(
         no_ks.for_hello_retry(v::CURVE_P256).unwrap_err(),
         SpecError::HelloRetryWithoutKeyShare
@@ -951,7 +1145,10 @@ fn cookie_is_echoed_and_never_lands_on_the_last_slots() {
 
     let with = spec.with_cookie(b"abc", 3).unwrap();
     assert_eq!(with.extensions.len(), n + 1, "没有 cookie 扩展时该插一条");
-    assert!(matches!(with.extensions[3], Extension::Cookie(_)), "插在给定位置");
+    assert!(
+        matches!(with.extensions[3], Extension::Cookie(_)),
+        "插在给定位置"
+    );
     let at = with
         .extensions
         .iter()
@@ -976,10 +1173,16 @@ fn cookie_is_echoed_and_never_lands_on_the_last_slots() {
     // 越界：uTLS 用 `len - 2` 当上界，为的是不把 PSK 挤下去。
     assert_eq!(
         spec.with_cookie(b"z", n - 1).unwrap_err(),
-        SpecError::CookieIndexOutOfRange { index: n - 1, len: n }
+        SpecError::CookieIndexOutOfRange {
+            index: n - 1,
+            len: n
+        }
     );
     assert!(spec.with_cookie(b"z", n - 2).is_ok(), "倒数第三位是允许的");
-    assert!(matches!(spec.with_cookie(b"z", 0).unwrap().extensions[0], Extension::Cookie(_)));
+    assert!(matches!(
+        spec.with_cookie(b"z", 0).unwrap().extensions[0],
+        Extension::Cookie(_)
+    ));
 }
 
 #[test]
@@ -990,7 +1193,8 @@ fn fill_to_produces_an_exact_total_length() {
     // （ML-KEM 混合组的公钥 1216 字节），再加 255 字节 SNI。
     // 「目标取小了」不是缺陷而是正确的报错 —— 见下一条测试。
     let target = 4096u16;
-    spec.extensions.push(Extension::Padding(Padding::FillTo(target)));
+    spec.extensions
+        .push(Extension::Padding(Padding::FillTo(target)));
     let mut lens = std::collections::BTreeSet::new();
     for sni_len in [0usize, 1, 7, 40, 200, 255] {
         let mut i = inputs_with_keys(1);
@@ -1011,9 +1215,13 @@ fn fill_to_produces_an_exact_total_length() {
 fn unreachable_padding_target_is_an_error() {
     let mut spec = chrome();
     spec.variability = Variability::Stable;
-    spec.extensions.push(Extension::Padding(Padding::FillTo(16)));
+    spec.extensions
+        .push(Extension::Padding(Padding::FillTo(16)));
     let e = spec.marshal(&inputs_with_keys(0)).unwrap_err();
-    assert!(matches!(e, SpecError::PaddingTargetUnreachable { .. }), "拿到的是 {e:?}");
+    assert!(
+        matches!(e, SpecError::PaddingTargetUnreachable { .. }),
+        "拿到的是 {e:?}"
+    );
 }
 
 // ── 反解的健壮性 ───────────────────────────────────────────────────────────

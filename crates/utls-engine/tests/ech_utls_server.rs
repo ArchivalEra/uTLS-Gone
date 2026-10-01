@@ -35,9 +35,9 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
+use rustls::ClientConnection;
 use rustls::client::EchStatus;
 use rustls::pki_types::ServerName;
-use rustls::ClientConnection;
 use utls::hello::{ClientHelloId, ClientHelloSpec};
 use utls_engine::FingerprintClient;
 
@@ -131,12 +131,15 @@ fn our_client_completes_ech_against_the_utls_server() {
         common::shared_verifier(),
         None,
     ));
-    let conn = ClientConnection::new(config, ServerName::try_from(PUBLIC_NAME).unwrap())
-        .expect("建连接");
+    let conn =
+        ClientConnection::new(config, ServerName::try_from(PUBLIC_NAME).unwrap()).expect("建连接");
     let sock = std::net::TcpStream::connect(&addr).expect("连服务端");
     let mut stream = rustls::StreamOwned::new(conn, sock.try_clone().expect("克隆套接字"));
     // 握手循环自己写：`drive_client` 会吞掉「握手失败」之外的信息，而这里失败时要看状态。
-    stream.sock.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
+    stream
+        .sock
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .ok();
     let mut result = Ok(());
     while stream.conn.is_handshaking() {
         if let Err(e) = stream.conn.complete_io(&mut stream.sock) {
@@ -145,7 +148,10 @@ fn our_client_completes_ech_against_the_utls_server() {
         }
     }
     let status = stream.conn.ech_status();
-    let alpn = stream.conn.alpn_protocol().map(|p| String::from_utf8_lossy(p).to_string());
+    let alpn = stream
+        .conn
+        .alpn_protocol()
+        .map(|p| String::from_utf8_lossy(p).to_string());
 
     // ── 服务端那一半：读它的结论 ──
     let mut server_line = String::new();
@@ -173,7 +179,10 @@ fn our_client_completes_ech_against_the_utls_server() {
         .map(|s| s.split('"').next().unwrap_or("").to_string())
         .unwrap_or_default();
     // 判据一（服务器那一半）：它说接受了，而且它看到的是**内层**的真名。
-    assert!(server_accepted, "uTLS 的服务端没有接受我们的 ECH 提议：{server_line}");
+    assert!(
+        server_accepted,
+        "uTLS 的服务端没有接受我们的 ECH 提议：{server_line}"
+    );
     assert_eq!(
         server_sni, INNER_NAME,
         "服务端认证的名字该是内层那个真名（ECH 要保护的就是它）：{server_line}"

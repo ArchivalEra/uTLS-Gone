@@ -37,10 +37,12 @@ use hkdf::Hkdf;
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::{Sha3_256, Shake256};
 
-use super::randomized_tables as t;
-use super::spec::{ApplicationSettingsAlps, ClientHelloSpec, CodePoint, Extension, Padding,
-                   SessionId, SpecError, Variability};
 use super::ClientHelloId;
+use super::randomized_tables as t;
+use super::spec::{
+    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, Extension, Padding, SessionId, SpecError,
+    Variability,
+};
 use crate::values as v;
 
 /// uTLS 的 `Weights`（`u_common.go`）—— 17 个加权掷币的概率。
@@ -103,14 +105,17 @@ impl Prng {
     fn new(seed: &[u8; 32]) -> Self {
         let mut h = Shake256::default();
         h.update(seed);
-        Prng { xof: Box::new(h.finalize_xof()) }
+        Prng {
+            xof: Box::new(h.finalize_xof()),
+        }
     }
 
     /// uTLS 的 `newPRNGWithSaltedSeed(seed, salt)`：HKDF-SHA3-256 派生出的**独立**流。
     fn salted(seed: &[u8; 32], salt: &str) -> Self {
         let hk = Hkdf::<Sha3_256>::new(Some(salt.as_bytes()), seed);
         let mut out = [0u8; 32];
-        hk.expand(&[], &mut out).expect("32 字节在 HKDF 的输出上限内");
+        hk.expand(&[], &mut out)
+            .expect("32 字节在 HKDF 的输出上限内");
         Prng::new(&out)
     }
 
@@ -327,7 +332,11 @@ pub(crate) fn generate(
         (v::VERSION_TLS10, v::VERSION_TLS12)
     };
 
-    remove_random_ciphers(&mut r, &mut suites, weights.cipher_suites_remove_random_ciphers);
+    remove_random_ciphers(
+        &mut r,
+        &mut suites,
+        weights.cipher_suites_remove_random_ciphers,
+    );
 
     // ── 签名算法 ──
     let mut sigalgs: Vec<u16> = vec![
@@ -347,7 +356,8 @@ pub(crate) fn generate(
     // ⚠️ 掷币在 Go 里是 **`||` 的左侧**，所以它**总是**发生；被短路跳过的是右边那个比较
     // （它没有副作用）。第一版把两者写反了 —— 于是 TLS1.3 时少掷一枚币、整条流错位，
     // 而症状是「密码套件全对、扩展全错」。顺序必须与 Go 源码逐字一致。
-    if r.flip(weights.sig_and_hash_algos_append_pss_with_sha256) || tls_vers_max == v::VERSION_TLS13 {
+    if r.flip(weights.sig_and_hash_algos_append_pss_with_sha256) || tls_vers_max == v::VERSION_TLS13
+    {
         sigalgs.push(v::PSS_WITH_SHA256);
         if r.flip(weights.sig_and_hash_algos_append_pss_with_sha384_pss_with_sha512) {
             sigalgs.push(v::PSS_WITH_SHA384);
@@ -375,9 +385,15 @@ pub(crate) fn generate(
     // ── 扩展列表（顺序即 uTLS 的构造顺序；末尾还会整体洗一次牌）──
     let mut exts: Vec<Extension> = vec![
         Extension::ServerName,
-        Extension::Opaque { id: v::EXT_SESSION_TICKET, body: Vec::new() },
+        Extension::Opaque {
+            id: v::EXT_SESSION_TICKET,
+            body: Vec::new(),
+        },
         Extension::SignatureAlgorithms(sigalgs.iter().map(|c| CodePoint::Fixed(*c)).collect()),
-        Extension::Opaque { id: v::EXT_EC_POINT_FORMATS, body: vec![1, v::POINT_FORMAT_UNCOMPRESSED] },
+        Extension::Opaque {
+            id: v::EXT_EC_POINT_FORMATS,
+            body: vec![1, v::POINT_FORMAT_UNCOMPRESSED],
+        },
         Extension::SupportedGroups(curves.iter().map(|c| CodePoint::Fixed(*c)).collect()),
     ];
 
@@ -401,13 +417,22 @@ pub(crate) fn generate(
         });
     }
     if r.flip(weights.extensions_append_sct) {
-        exts.push(Extension::Opaque { id: v::EXT_SCT, body: Vec::new() });
+        exts.push(Extension::Opaque {
+            id: v::EXT_SCT,
+            body: Vec::new(),
+        });
     }
     if r.flip(weights.extensions_append_reneg) {
-        exts.push(Extension::Opaque { id: v::EXT_RENEGOTIATION_INFO, body: vec![0] });
+        exts.push(Extension::Opaque {
+            id: v::EXT_RENEGOTIATION_INFO,
+            body: vec![0],
+        });
     }
     if r.flip(weights.extensions_append_ems) {
-        exts.push(Extension::Opaque { id: v::EXT_EXTENDED_MASTER_SECRET, body: Vec::new() });
+        exts.push(Extension::Opaque {
+            id: v::EXT_EXTENDED_MASTER_SECRET,
+            body: Vec::new(),
+        });
     }
 
     if tls_vers_max == v::VERSION_TLS13 {
@@ -422,7 +447,9 @@ pub(crate) fn generate(
                 shares.insert(0, v::X25519_MLKEM768);
             }
         }
-        exts.push(Extension::KeyShare(shares.iter().map(|g| CodePoint::Fixed(*g)).collect()));
+        exts.push(Extension::KeyShare(
+            shares.iter().map(|g| CodePoint::Fixed(*g)).collect(),
+        ));
         exts.push(Extension::Opaque {
             id: v::EXT_PSK_KEY_EXCHANGE_MODES,
             body: vec![1, v::PSK_MODE_DHE],

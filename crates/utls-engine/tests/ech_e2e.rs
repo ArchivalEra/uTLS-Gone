@@ -46,7 +46,7 @@ use std::sync::Arc;
 use rustls::client::EchStatus;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConnection, StreamOwned};
-use utls::hello::{parse_ech_config_list, pick_ech_config, ClientHelloId, ClientHelloSpec};
+use utls::hello::{ClientHelloId, ClientHelloSpec, parse_ech_config_list, pick_ech_config};
 use utls_engine::FingerprintClient;
 
 /// 从 DNS 的 HTTPS(65) 记录里取 `ech=` SvcParam，base64url 解成 `ECHConfigList` 字节。
@@ -104,7 +104,10 @@ fn ech_handshake(host: &str) -> Result<EchStatus, String> {
     let config_list = fetch_ech_config_list(host)?;
     match ech_attempt(host, config_list.clone()) {
         Err(HandshakeFailed::Retry(Some(configs))) => {
-            eprintln!("{host}: 服务器给了 retry configs（{} 条），用它们再试一次", configs.len());
+            eprintln!(
+                "{host}: 服务器给了 retry configs（{} 条），用它们再试一次",
+                configs.len()
+            );
             let list = rustls::ech_config_list_bytes(&configs);
             ech_attempt(host, list).map_err(|e| e.to_string())
         }
@@ -152,7 +155,9 @@ impl<S: std::io::Write> std::io::Write for Recorder<S> {
 impl core::fmt::Display for HandshakeFailed {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            HandshakeFailed::Retry(Some(c)) => write!(f, "服务器拒绝了 ECH 并给了 {} 条 retry configs", c.len()),
+            HandshakeFailed::Retry(Some(c)) => {
+                write!(f, "服务器拒绝了 ECH 并给了 {} 条 retry configs", c.len())
+            }
             HandshakeFailed::Retry(None) => write!(f, "服务器拒绝了 ECH，没给 retry configs"),
             HandshakeFailed::Other(e) => write!(f, "{e}"),
         }
@@ -174,10 +179,15 @@ fn ech_attempt_with_spec(
     spec: ClientHelloSpec,
 ) -> Result<EchStatus, HandshakeFailed> {
     // 先用**我们的解析器**验一遍：拿不到配置与配置不合法是两回事，混在一起会误导。
-    let list = parse_ech_config_list(&config_list)
-        .map_err(|e| HandshakeFailed::Other(format!("{host} 给的 ECHConfigList 我们解不开：{e}")))?;
-    let picked = pick_ech_config(&list)
-        .ok_or_else(|| HandshakeFailed::Other(format!("{host} 的 {} 条配置里没有一条我们能用的", list.len())))?;
+    let list = parse_ech_config_list(&config_list).map_err(|e| {
+        HandshakeFailed::Other(format!("{host} 给的 ECHConfigList 我们解不开：{e}"))
+    })?;
+    let picked = pick_ech_config(&list).ok_or_else(|| {
+        HandshakeFailed::Other(format!(
+            "{host} 的 {} 条配置里没有一条我们能用的",
+            list.len()
+        ))
+    })?;
     eprintln!(
         "{host}: 配置 {} 条，选中 config_id=0x{:02x} kem=0x{:04x} public_name={}",
         list.len(),
@@ -197,16 +207,27 @@ fn ech_attempt_with_spec(
         .with_ech(config_list)
         .with_record(outer_sink.clone())
         .with_ech_inner_record(inner_sink.clone());
-    let config = utls_engine::client_config(client).map_err(|e| HandshakeFailed::Other(format!("建配置：{e}")))?;
+    let config = utls_engine::client_config(client)
+        .map_err(|e| HandshakeFailed::Other(format!("建配置：{e}")))?;
 
     let addr = format!("{host}:443");
     let tcp = std::net::TcpStream::connect(&addr)
         .map_err(|e| HandshakeFailed::Other(format!("连不上 {addr}：{e}")))?;
-    tcp.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
-    let conn = ClientConnection::new(Arc::new(config), ServerName::try_from(host.to_string()).unwrap())
-        .map_err(|e| HandshakeFailed::Other(format!("建连接：{e}")))?;
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .ok();
+    let conn = ClientConnection::new(
+        Arc::new(config),
+        ServerName::try_from(host.to_string()).unwrap(),
+    )
+    .map_err(|e| HandshakeFailed::Other(format!("建连接：{e}")))?;
     let log = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut stream = StreamOwned::new(conn, Recorder { inner: tcp, log: log.clone() });
+    let mut stream = StreamOwned::new(
+        conn,
+        Recorder {
+            inner: tcp,
+            log: log.clone(),
+        },
+    );
     while stream.conn.is_handshaking() {
         if let Err(e) = stream.conn.complete_io(&mut stream.sock) {
             // 拒绝且带 retry configs ⇒ 交给调用方再试一次（RFC 9849 §6.1.6）。
@@ -233,9 +254,8 @@ fn ech_attempt_with_spec(
             );
             // 把发出去的字节打出来（十六进制）—— 失败时要能拿它们去问 uTLS 的解码器。
             let hex = |v: &Vec<Vec<u8>>| {
-                v.first().map(|b| {
-                    b.iter().map(|x| format!("{x:02x}")).collect::<String>()
-                })
+                v.first()
+                    .map(|b| b.iter().map(|x| format!("{x:02x}")).collect::<String>())
             };
             if let Ok(o) = outer_sink.lock() {
                 eprintln!("{host}: OUTER_HEX={}", hex(&o).unwrap_or_default());
@@ -306,7 +326,9 @@ fn stock_rustls_ech_client_is_the_control() {
         .unwrap_or_else(|e| panic!("{host}: 挑配置：{e}"));
 
         // 与 `ech_attempt` 尽量同参：同 ALPN、同端点。
-        let roots = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+        let roots = rustls::RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+        };
         let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
             rustls::crypto::aws_lc_rs::default_provider(),
         ))
@@ -318,7 +340,8 @@ fn stock_rustls_ech_client_is_the_control() {
 
         let addr = format!("{host}:443");
         let tcp = std::net::TcpStream::connect(&addr).expect("连不上");
-        tcp.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
+        tcp.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .ok();
         let conn = ClientConnection::new(
             Arc::new(config),
             ServerName::try_from(host.to_string()).unwrap(),
@@ -373,7 +396,11 @@ fn try_each_defo_ie_config() {
 #[ignore = "要真网络：同上"]
 fn defo_ie_accepts_our_ech_offer() {
     let status = ech_handshake("test.defo.ie").expect("端到端该跑通");
-    assert_eq!(status, EchStatus::Accepted, "defo.ie 没有接受我们的 ECH 提议");
+    assert_eq!(
+        status,
+        EchStatus::Accepted,
+        "defo.ie 没有接受我们的 ECH 提议"
+    );
 }
 
 /// 离线判据：DNS 那一段的解析（base64url + SvcParam 提取）不依赖网络的部分。
@@ -432,17 +459,15 @@ fn bisect_what_the_openssl_family_rejects() {
     ];
     minimal.extensions = vec![
         utls::hello::Extension::ServerName,
-        utls::hello::Extension::SupportedGroups(vec![
-            utls::hello::CodePoint::Fixed(utls::values::X25519),
-        ]),
+        utls::hello::Extension::SupportedGroups(vec![utls::hello::CodePoint::Fixed(
+            utls::values::X25519,
+        )]),
         utls::hello::Extension::SignatureAlgorithms(vec![
             utls::hello::CodePoint::Fixed(0x0403),
             utls::hello::CodePoint::Fixed(0x0804),
             utls::hello::CodePoint::Fixed(0x0401),
         ]),
-        utls::hello::Extension::KeyShare(vec![utls::hello::CodePoint::Fixed(
-            utls::values::X25519,
-        )]),
+        utls::hello::Extension::KeyShare(vec![utls::hello::CodePoint::Fixed(utls::values::X25519)]),
         utls::hello::Extension::PskKeyExchangeModes { modes: vec![1] },
         utls::hello::Extension::SupportedVersions(vec![utls::hello::CodePoint::Fixed(0x0304)]),
     ];
@@ -469,11 +494,13 @@ fn bisect_2_which_preset_ornament_offends_openssl() {
     let chrome = ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).unwrap();
 
     let drop_grease_exts = |mut s: ClientHelloSpec| {
-        s.extensions.retain(|e| !matches!(e, utls::hello::Extension::Grease));
+        s.extensions
+            .retain(|e| !matches!(e, utls::hello::Extension::Grease));
         s
     };
     let drop_grease_suites = |mut s: ClientHelloSpec| {
-        s.cipher_suites.retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
+        s.cipher_suites
+            .retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
         s
     };
     let drop_grease_points = |mut s: ClientHelloSpec| {
@@ -491,18 +518,23 @@ fn bisect_2_which_preset_ornament_offends_openssl() {
     };
     let drop_ornaments = |mut s: ClientHelloSpec| {
         let drop = [0x7550u16, 27, 21]; // ChannelID / compress_certificate / padding
-        s.extensions.retain(|e| !e.wire_type().is_some_and(|t| drop.contains(&t)));
+        s.extensions
+            .retain(|e| !e.wire_type().is_some_and(|t| drop.contains(&t)));
         s
     };
     let drop_tls12_relics = |mut s: ClientHelloSpec| {
         let drop = [23u16, 35, 11, 65281, 18]; // EMS / ticket / ec_point_formats / reneg / SCT
-        s.extensions.retain(|e| !e.wire_type().is_some_and(|t| drop.contains(&t)));
+        s.extensions
+            .retain(|e| !e.wire_type().is_some_and(|t| drop.contains(&t)));
         s
     };
 
     let mut s = chrome.clone();
     eprintln!("bisect2[0] chrome-70 原样");
-    type SpecTransform = (&'static str, Box<dyn Fn(ClientHelloSpec) -> ClientHelloSpec>);
+    type SpecTransform = (
+        &'static str,
+        Box<dyn Fn(ClientHelloSpec) -> ClientHelloSpec>,
+    );
     let steps: [SpecTransform; 5] = [
         ("−GREASE 扩展", Box::new(drop_grease_exts)),
         ("−GREASE 套件", Box::new(drop_grease_suites)),

@@ -45,9 +45,17 @@ impl Ja3 {
     /// 哈希只告诉你「不一样」，文本告诉你「哪一段不一样」。
     pub fn text(&self) -> String {
         let join_u16 = |xs: &[u16]| {
-            xs.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("-")
+            xs.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
         };
-        let join_u8 = |xs: &[u8]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("-");
+        let join_u8 = |xs: &[u8]| {
+            xs.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
+        };
         format!(
             "{},{},{},{},{}",
             self.ssl_version,
@@ -151,7 +159,13 @@ fn parse(b: &[u8]) -> Option<Ja3> {
         }
     }
 
-    Some(Ja3 { ssl_version, cipher_suites, extensions, elliptic_curves, ec_point_formats })
+    Some(Ja3 {
+        ssl_version,
+        cipher_suites,
+        extensions,
+        elliptic_curves,
+        ec_point_formats,
+    })
 }
 
 struct Parser<'a> {
@@ -211,7 +225,10 @@ mod tests {
         };
         let h = j.hash_hex();
         assert_eq!(h.len(), 32);
-        assert!(h.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            h.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
         assert_eq!(h, j.hash_hex());
     }
 
@@ -226,7 +243,10 @@ mod tests {
             ec_point_formats: vec![0],
         };
         assert!(j.text().contains("4865"));
-        assert!(j.text().contains("2570"), "本测试只检查 parse 的过滤，构造出的对象不过滤");
+        assert!(
+            j.text().contains("2570"),
+            "本测试只检查 parse 的过滤，构造出的对象不过滤"
+        );
     }
 
     #[test]

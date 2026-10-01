@@ -57,7 +57,11 @@ pub fn canonical_inputs_with_seed(
 ///
 /// GREASE 的具体取值每连接都不同（那是它的用途），所以拿它当映射的键必然配错。
 pub fn normalize_ext_type(t: u16) -> u16 {
-    if v::is_grease(t) { v::GREASE_PLACEHOLDER } else { t }
+    if v::is_grease(t) {
+        v::GREASE_PLACEHOLDER
+    } else {
+        t
+    }
 }
 
 /// 按 IANA 值判断一个 u16 是不是 GREASE。
@@ -69,7 +73,11 @@ pub fn is_grease_value(x: u16) -> bool {
 /// 所以「我们抽到 0xEAEA、夹具里是 0x0A0A」不是缺陷，而两边都折成同一个值之后，
 /// 剩下的差异才是缺陷。
 pub fn normalize_u16(x: u16) -> u16 {
-    if is_grease_value(x) { v::GREASE_PLACEHOLDER } else { x }
+    if is_grease_value(x) {
+        v::GREASE_PLACEHOLDER
+    } else {
+        x
+    }
 }
 
 /// 折一个 u16 列表（密码套件、支持组、支持版本……都走它）。
@@ -143,12 +151,20 @@ pub fn layout(hello: &[u8]) -> Layout<'_> {
 /// 这类错误在 JA3 对账里完全隐形 —— 本仓就是这么漏过 `status_request` 少写 2 字节
 /// 和第二个 GREASE 扩展少写 1 字节的。只有逐扩展体长能抓到。
 pub fn wire_ext_lengths(hello: &[u8]) -> Vec<(u16, usize)> {
-    layout(hello).extensions.iter().map(|(t, b)| (*t, b.len())).collect()
+    layout(hello)
+        .extensions
+        .iter()
+        .map(|(t, b)| (*t, b.len()))
+        .collect()
 }
 
 /// 从线字节里读出每个扩展的 `(类型, 体)`。
 pub fn wire_ext_bodies(hello: &[u8]) -> Vec<(u16, Vec<u8>)> {
-    layout(hello).extensions.iter().map(|(t, b)| (*t, b.to_vec())).collect()
+    layout(hello)
+        .extensions
+        .iter()
+        .map(|(t, b)| (*t, b.to_vec()))
+        .collect()
 }
 
 /// 把**每连接变化**的字节折成哨兵，好让两侧的体内容可比。
@@ -164,7 +180,13 @@ pub fn wire_ext_bodies(hello: &[u8]) -> Vec<(u16, Vec<u8>)> {
 /// 而这些正是「把 Opaque 升级成有类型的变体」可能弄错的地方。
 pub fn normalize_body(ty: u16, body: &[u8]) -> Vec<u8> {
     const GREASE_SENTINEL: u16 = 0x0a0a;
-    let norm_u16 = |x: u16| if is_grease_value(x) { GREASE_SENTINEL } else { x };
+    let norm_u16 = |x: u16| {
+        if is_grease_value(x) {
+            GREASE_SENTINEL
+        } else {
+            x
+        }
+    };
     match ty {
         x if x == v::EXT_SUPPORTED_GROUPS => {
             // u16 长度前缀 + u16 组
@@ -212,11 +234,7 @@ pub fn normalize_body(ty: u16, body: &[u8]) -> Vec<u8> {
 /// 其余逐字节保留。
 ///
 /// `random` 与 `session_id` 传 `None` 表示**原样保留**（夹具里它们是固定值，可以直接比）。
-pub fn comparable_shape(
-    hello: &[u8],
-    zero_random: bool,
-    zero_session_id: bool,
-) -> ComparableHello {
+pub fn comparable_shape(hello: &[u8], zero_random: bool, zero_session_id: bool) -> ComparableHello {
     let l = layout(hello);
     let mut ciphers = l.cipher_suites.clone();
     for c in ciphers.iter_mut() {
@@ -226,7 +244,11 @@ pub fn comparable_shape(
     }
     ComparableHello {
         legacy_version: l.legacy_version,
-        random: if zero_random { vec![0u8; l.random.len()] } else { l.random.to_vec() },
+        random: if zero_random {
+            vec![0u8; l.random.len()]
+        } else {
+            l.random.to_vec()
+        },
         session_id: if zero_session_id {
             vec![0u8; l.session_id.len()]
         } else {

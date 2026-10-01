@@ -168,8 +168,16 @@ impl rustls::client::ClientSessionStore for RecordingStore {
     fn kx_hint(&self, _: &rustls::pki_types::ServerName<'_>) -> Option<rustls::NamedGroup> {
         None
     }
-    fn set_tls12_session(&self, _: rustls::pki_types::ServerName<'static>, _: rustls::client::Tls12ClientSessionValue) {}
-    fn tls12_session(&self, _: &rustls::pki_types::ServerName<'_>) -> Option<rustls::client::Tls12ClientSessionValue> {
+    fn set_tls12_session(
+        &self,
+        _: rustls::pki_types::ServerName<'static>,
+        _: rustls::client::Tls12ClientSessionValue,
+    ) {
+    }
+    fn tls12_session(
+        &self,
+        _: &rustls::pki_types::ServerName<'_>,
+    ) -> Option<rustls::client::Tls12ClientSessionValue> {
         None
     }
     fn remove_tls12_session(&self, _: &rustls::pki_types::ServerName<'_>) {}
@@ -209,7 +217,8 @@ pub fn drive_client(
         .expect("设读超时");
     while conn.is_handshaking() {
         // `complete_io` 的 io 错误在握手阶段是**真错误**（超时/连接断），传出去。
-        conn.complete_io(sock).map_err(|e| std::io::Error::other(e.to_string()))?;
+        conn.complete_io(sock)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
     // 收 NewSessionTicket（最多两轮，超时即停）。
     // 读超时是预期的（服务端可能已经写完、暂时没数据）；**其它**错误必须说出来 ——
@@ -311,7 +320,11 @@ struct Tee {
 
 impl Tee {
     fn new(inner: TcpStream) -> Self {
-        Tee { inner, pending: Vec::new(), hellos: Arc::new(Mutex::new(Vec::new())) }
+        Tee {
+            inner,
+            pending: Vec::new(),
+            hellos: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     fn client_hellos(&self) -> Vec<Vec<u8>> {

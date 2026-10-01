@@ -45,9 +45,10 @@
 //! 3. 与 Go 逐字节对照只能在真实环境做（`AGENTS.md` 第二条）：本仓没有 Go 工具链，
 //!    所以第 1、2 层是本地能证伪的全部，不要把它们的全绿当成「指纹对」。
 
-
 use super::spec::{
-    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials, EcPointFormats, Extension, GreaseEchOptions, Padding, RenegotiationInfo, SessionId, SessionTicket, Variability,
+    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials,
+    EcPointFormats, Extension, GreaseEchOptions, Padding, RenegotiationInfo, SessionId,
+    SessionTicket, Variability,
 };
 use crate::values as v;
 
@@ -87,7 +88,9 @@ pub(crate) fn chrome_58_62() -> ClientHelloSpec {
             // &UtlsGREASEExtension{}
             Extension::Grease,
             // &RenegotiationInfoExtension{RenegotiateOnceAsClient} —— 体是「长度 0 的连接串」
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // &SNIExtension{}
             Extension::ServerName,
             // &ExtendedMasterSecretExtension{}
@@ -113,9 +116,13 @@ pub(crate) fn chrome_58_62() -> ClientHelloSpec {
             // &ALPNExtension{"h2","http/1.1"}
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             // &FakeChannelIDExtension{} —— 新码点 30032，**体为空**
-            Extension::ChannelId { old_codepoint: false },
+            Extension::ChannelId {
+                old_codepoint: false,
+            },
             // &SupportedPointsExtension{[]byte{0}}
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             // &SupportedCurvesExtension{GREASE, X25519, P256, P384}（:88-89）
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
@@ -168,7 +175,9 @@ pub(crate) fn chrome_70() -> ClientHelloSpec {
         // u_parrots.go:121-165
         extensions: vec![
             Extension::Grease,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
@@ -187,12 +196,18 @@ pub(crate) fn chrome_70() -> ClientHelloSpec {
             Extension::StatusRequest,
             Extension::SignedCertificateTimestamp,
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
-            Extension::ChannelId { old_codepoint: false },
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::ChannelId {
+                old_codepoint: false,
+            },
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             // &KeyShareExtension{GREASE{0}, X25519}（:145-148）
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
             // &PSKKeyExchangeModesExtension{psk_dhe_ke}
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             // &SupportedVersionsExtension{GREASE, 1.3, 1.2, 1.1, 1.0}（:150-155）
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
@@ -209,7 +224,9 @@ pub(crate) fn chrome_70() -> ClientHelloSpec {
                 v::CURVE_P384.into(),
             ]),
             // &UtlsCompressCertExtension{brotli}
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             // &UtlsPaddingExtension{BoringPaddingStyle}（:164）—— 落在 (0xff, 0x200) 区间内，
             // 所以按 Go 实际行为填到 512 字节握手消息。
@@ -256,14 +273,18 @@ pub(crate) fn chrome_72() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -280,7 +301,9 @@ pub(crate) fn chrome_72() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -288,7 +311,9 @@ pub(crate) fn chrome_72() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -330,14 +355,18 @@ pub(crate) fn chrome_83() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -354,7 +383,9 @@ pub(crate) fn chrome_83() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -362,7 +393,9 @@ pub(crate) fn chrome_83() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -404,14 +437,18 @@ pub(crate) fn chrome_87() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -427,7 +464,9 @@ pub(crate) fn chrome_87() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -435,7 +474,9 @@ pub(crate) fn chrome_87() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -478,14 +519,18 @@ pub(crate) fn chrome_96() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -501,7 +546,9 @@ pub(crate) fn chrome_96() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -509,9 +556,13 @@ pub(crate) fn chrome_96() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             // ALPS 旧码点 17513（:453）
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -553,14 +604,18 @@ pub(crate) fn chrome_100_102() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -576,15 +631,21 @@ pub(crate) fn chrome_100_102() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             // 只报 1.3 与 1.2（:516-520）
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -631,14 +692,18 @@ pub(crate) fn chrome_106_shuffle() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -654,14 +719,20 @@ pub(crate) fn chrome_106_shuffle() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -711,7 +782,9 @@ pub(crate) fn chrome_115_pq() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // &SupportedCurvesExtension{GREASE, X25519Kyber768Draft00, X25519, P256, P384}
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
@@ -720,7 +793,9 @@ pub(crate) fn chrome_115_pq() -> ClientHelloSpec {
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -741,14 +816,20 @@ pub(crate) fn chrome_115_pq() -> ClientHelloSpec {
                 v::X25519_KYBER768_DRAFT00.into(),
                 v::X25519.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             // &UtlsPaddingExtension{BoringPaddingStyle}（:671）
             Extension::Padding(Padding::BoringStyle),
@@ -796,14 +877,18 @@ pub(crate) fn chrome_120() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -819,14 +904,20 @@ pub(crate) fn chrome_120() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             // BoringGREASEECH()（:742）
             Extension::GreaseEch(GreaseEchOptions::chrome()),
             Extension::Grease,
@@ -875,7 +966,9 @@ pub(crate) fn chrome_120_pq() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519_KYBER768_DRAFT00.into(),
@@ -883,7 +976,9 @@ pub(crate) fn chrome_120_pq() -> ClientHelloSpec {
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -903,14 +998,20 @@ pub(crate) fn chrome_120_pq() -> ClientHelloSpec {
                 v::X25519_KYBER768_DRAFT00.into(),
                 v::X25519.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::GreaseEch(GreaseEchOptions::chrome()),
             Extension::Grease,
         ],
@@ -956,7 +1057,9 @@ pub(crate) fn chrome_131() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519_MLKEM768.into(),
@@ -964,7 +1067,9 @@ pub(crate) fn chrome_131() -> ClientHelloSpec {
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -984,15 +1089,21 @@ pub(crate) fn chrome_131() -> ClientHelloSpec {
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             // ALPS **旧**码点 17513（:889）—— 133 用的是新码点，别抄混。
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::GreaseEch(GreaseEchOptions::chrome()),
             Extension::Grease,
         ],
@@ -1039,7 +1150,9 @@ pub(crate) fn firefox_55_56() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // &SupportedCurvesExtension{X25519, P256, P384, P521}（:993）—— **无 GREASE**
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
@@ -1047,7 +1160,9 @@ pub(crate) fn firefox_55_56() -> ClientHelloSpec {
                 v::CURVE_P384.into(),
                 v::CURVE_P521.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -1110,7 +1225,9 @@ pub(crate) fn firefox_63_65() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1119,7 +1236,9 @@ pub(crate) fn firefox_63_65() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -1145,7 +1264,9 @@ pub(crate) fn firefox_63_65() -> ClientHelloSpec {
                 v::ECDSA_WITH_SHA1.into(),
                 v::PKCS1_WITH_SHA1.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             // &FakeRecordSizeLimitExtension{Limit: 0x4001} —— 只广播，不受支持
             Extension::RecordSizeLimit { limit: 0x4001 },
             Extension::Padding(Padding::BoringStyle),
@@ -1191,7 +1312,9 @@ pub(crate) fn firefox_99() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1200,12 +1323,21 @@ pub(crate) fn firefox_99() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
             // &FakeDelegatedCredentialsExtension{4 项}（:1131-1138）
-            Extension::DelegatedCredentials(DelegatedCredentials { schemes: vec![v::ECDSA_WITH_P256_AND_SHA256, v::ECDSA_WITH_P384_AND_SHA384, v::ECDSA_WITH_P521_AND_SHA512, v::ECDSA_WITH_SHA1,] }),
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: vec![
+                    v::ECDSA_WITH_P256_AND_SHA256,
+                    v::ECDSA_WITH_P384_AND_SHA384,
+                    v::ECDSA_WITH_P521_AND_SHA512,
+                    v::ECDSA_WITH_SHA1,
+                ],
+            }),
             Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
             Extension::SupportedVersions(vec![
                 v::VERSION_TLS13.into(),
@@ -1226,7 +1358,9 @@ pub(crate) fn firefox_99() -> ClientHelloSpec {
                 v::ECDSA_WITH_SHA1.into(),
                 v::PKCS1_WITH_SHA1.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::RecordSizeLimit { limit: 0x4001 },
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -1269,7 +1403,9 @@ pub(crate) fn firefox_102() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1278,12 +1414,21 @@ pub(crate) fn firefox_102() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             // ALPN 只有 h2（:1210）
             Extension::Alpn(vec![b"h2".to_vec()]),
             Extension::StatusRequest,
-            Extension::DelegatedCredentials(DelegatedCredentials { schemes: vec![v::ECDSA_WITH_P256_AND_SHA256, v::ECDSA_WITH_P384_AND_SHA384, v::ECDSA_WITH_P521_AND_SHA512, v::ECDSA_WITH_SHA1,] }),
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: vec![
+                    v::ECDSA_WITH_P256_AND_SHA256,
+                    v::ECDSA_WITH_P384_AND_SHA384,
+                    v::ECDSA_WITH_P521_AND_SHA512,
+                    v::ECDSA_WITH_SHA1,
+                ],
+            }),
             Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
@@ -1299,7 +1444,9 @@ pub(crate) fn firefox_102() -> ClientHelloSpec {
                 v::ECDSA_WITH_SHA1.into(),
                 v::PKCS1_WITH_SHA1.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::RecordSizeLimit { limit: 0x4001 },
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -1348,7 +1495,9 @@ pub(crate) fn firefox_105() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // 256/257 就是 0x0100/0x0101（:1285-1286）
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
@@ -1358,11 +1507,20 @@ pub(crate) fn firefox_105() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
-            Extension::DelegatedCredentials(DelegatedCredentials { schemes: vec![v::ECDSA_WITH_P256_AND_SHA256, v::ECDSA_WITH_P384_AND_SHA384, v::ECDSA_WITH_P521_AND_SHA512, v::ECDSA_WITH_SHA1,] }),
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: vec![
+                    v::ECDSA_WITH_P256_AND_SHA256,
+                    v::ECDSA_WITH_P384_AND_SHA384,
+                    v::ECDSA_WITH_P521_AND_SHA512,
+                    v::ECDSA_WITH_SHA1,
+                ],
+            }),
             Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
@@ -1378,7 +1536,9 @@ pub(crate) fn firefox_105() -> ClientHelloSpec {
                 v::ECDSA_WITH_SHA1.into(),
                 v::PKCS1_WITH_SHA1.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::RecordSizeLimit { limit: 0x4001 },
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -1424,7 +1584,9 @@ pub(crate) fn firefox_120() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1433,11 +1595,20 @@ pub(crate) fn firefox_120() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
-            Extension::DelegatedCredentials(DelegatedCredentials { schemes: vec![v::ECDSA_WITH_P256_AND_SHA256, v::ECDSA_WITH_P384_AND_SHA384, v::ECDSA_WITH_P521_AND_SHA512, v::ECDSA_WITH_SHA1,] }),
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: vec![
+                    v::ECDSA_WITH_P256_AND_SHA256,
+                    v::ECDSA_WITH_P384_AND_SHA384,
+                    v::ECDSA_WITH_P521_AND_SHA512,
+                    v::ECDSA_WITH_SHA1,
+                ],
+            }),
             Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
@@ -1453,7 +1624,9 @@ pub(crate) fn firefox_120() -> ClientHelloSpec {
                 v::ECDSA_WITH_SHA1.into(),
                 v::PKCS1_WITH_SHA1.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::RecordSizeLimit { limit: 0x4001 },
             // &GREASEEncryptedClientHelloExtension{2 套件, 载荷 223}（:1454-1466）
             Extension::GreaseEch(GreaseEchOptions::firefox()),
@@ -1504,7 +1677,9 @@ pub(crate) fn ios_11_1() -> ClientHelloSpec {
         // u_parrots.go:1621-1649
         extensions: vec![
             // RenegotiationInfo 在 SNI **之前** —— 与 Chrome 家族的顺序相反
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
             // 9 项，含 PKCS1WithSHA1（:1625-1635）
@@ -1532,7 +1707,9 @@ pub(crate) fn ios_11_1() -> ClientHelloSpec {
                 b"spdy/3".to_vec(),
                 b"http/1.1".to_vec(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1585,7 +1762,9 @@ pub(crate) fn ios_12_1() -> ClientHelloSpec {
         compression_methods: vec![v::COMPRESSION_NONE],
         // u_parrots.go:1681-1711
         extensions: vec![
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
             // 11 项，其中 PSSWithSHA384 重复（:1685-1697）
@@ -1614,7 +1793,9 @@ pub(crate) fn ios_12_1() -> ClientHelloSpec {
                 b"spdy/3".to_vec(),
                 b"http/1.1".to_vec(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
@@ -1669,7 +1850,9 @@ pub(crate) fn ios_13() -> ClientHelloSpec {
         compression_methods: vec![v::COMPRESSION_NONE],
         // u_parrots.go:1746-1788
         extensions: vec![
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
             Extension::SignatureAlgorithms(vec![
@@ -1688,10 +1871,14 @@ pub(crate) fn ios_13() -> ClientHelloSpec {
             Extension::StatusRequest,
             Extension::SignedCertificateTimestamp,
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             // 只有一个组、且只有 X25519（:1769-1771）
             Extension::KeyShare(vec![v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
@@ -1746,13 +1933,17 @@ pub(crate) fn android_11_okhttp() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::StatusRequest,
             Extension::SignatureAlgorithms(vec![
                 v::ECDSA_WITH_P256_AND_SHA256.into(),
@@ -1806,14 +1997,18 @@ pub(crate) fn edge_85() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -1829,7 +2024,9 @@ pub(crate) fn edge_85() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             // GREASE + 1.3/1.2/1.1/1.0（:2003-2010）—— 与 Chrome 96 相同
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
@@ -1838,7 +2035,9 @@ pub(crate) fn edge_85() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -1881,14 +2080,18 @@ pub(crate) fn edge_106() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -1904,14 +2107,20 @@ pub(crate) fn edge_106() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -1961,7 +2170,9 @@ pub(crate) fn safari_16_0() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // GREASE 之后是 X25519, P256, P384, **P521**（:2167-2174）
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
@@ -1970,7 +2181,9 @@ pub(crate) fn safari_16_0() -> ClientHelloSpec {
                 v::CURVE_P384.into(),
                 v::CURVE_P521.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
             // 11 项，PSSWithSHA384 重复（:2188-2202）
@@ -1989,7 +2202,9 @@ pub(crate) fn safari_16_0() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -1998,7 +2213,9 @@ pub(crate) fn safari_16_0() -> ClientHelloSpec {
                 v::VERSION_TLS10.into(),
             ]),
             // 只报 zlib（:2231-2235）
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_ZLIB] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_ZLIB],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -2049,7 +2266,9 @@ pub(crate) fn safari_26_3() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519_MLKEM768.into(),
@@ -2058,7 +2277,9 @@ pub(crate) fn safari_26_3() -> ClientHelloSpec {
                 v::CURVE_P384.into(),
                 v::CURVE_P521.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
             // **10 项**（比 16.0 少一个 PKCS1WithSHA1），PSSWithSHA384 仍重复（:2301-2313）
@@ -2080,13 +2301,17 @@ pub(crate) fn safari_26_3() -> ClientHelloSpec {
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
             ]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_ZLIB] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_ZLIB],
+            }),
             Extension::Grease,
         ],
         session_id: SessionId::Random(32),
@@ -2131,14 +2356,18 @@ pub(crate) fn browser360_7_5() -> ClientHelloSpec {
         // u_parrots.go:2379-2422
         extensions: vec![
             Extension::ServerName,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // 只有三个朴素曲线（:2384-2389）
             Extension::SupportedGroups(vec![
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
                 v::CURVE_P521.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Npn,
             Extension::Alpn(vec![
@@ -2148,7 +2377,9 @@ pub(crate) fn browser360_7_5() -> ClientHelloSpec {
                 b"http/1.1".to_vec(),
             ]),
             // &FakeChannelIDExtension{OldExtensionID: true} ⇒ **30031**（:2406-2408）
-            Extension::ChannelId { old_codepoint: true },
+            Extension::ChannelId {
+                old_codepoint: true,
+            },
             Extension::StatusRequest,
             // 8 项：RSA 在前，两个 DSA 在末尾（:2410-2421）
             Extension::SignatureAlgorithms(vec![
@@ -2203,14 +2434,18 @@ pub(crate) fn browser360_11_0() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -2228,9 +2463,13 @@ pub(crate) fn browser360_11_0() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             // &FakeChannelIDExtension{OldExtensionID: false} ⇒ **30032**（:2492-2494）
-            Extension::ChannelId { old_codepoint: false },
+            Extension::ChannelId {
+                old_codepoint: false,
+            },
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -2238,7 +2477,9 @@ pub(crate) fn browser360_11_0() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -2281,14 +2522,18 @@ pub(crate) fn qq_11_1() -> ClientHelloSpec {
             Extension::Grease,
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
                 v::X25519.into(),
                 v::CURVE_P256.into(),
                 v::CURVE_P384.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
@@ -2305,7 +2550,9 @@ pub(crate) fn qq_11_1() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
                 v::VERSION_TLS13.into(),
@@ -2313,8 +2560,12 @@ pub(crate) fn qq_11_1() -> ClientHelloSpec {
                 v::VERSION_TLS11.into(),
                 v::VERSION_TLS10.into(),
             ]),
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
-            Extension::ApplicationSettings(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
+            Extension::ApplicationSettings(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             Extension::Grease,
             Extension::Padding(Padding::BoringStyle),
         ],
@@ -2335,8 +2586,10 @@ pub(crate) fn qq_11_1() -> ClientHelloSpec {
 /// 在 `spec_of` 里分派（见那里的 100|112 分支与 112 的乱序覆盖）。
 fn chrome_psk_common() -> ClientHelloSpec {
     let mut spec = chrome_100_102();
-    spec.extensions.retain(|e| !matches!(e, Extension::Padding(_)));
-    spec.extensions.push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
+    spec.extensions
+        .retain(|e| !matches!(e, Extension::Padding(_)));
+    spec.extensions
+        .push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
     spec
 }
 
@@ -2349,7 +2602,8 @@ pub(crate) fn chrome_psk_stable() -> ClientHelloSpec {
 /// 末尾加一条空 PSK 标记。填充在 PSK **之前**（RFC 8446 §4.2.11 要求 PSK 最后）。
 pub(crate) fn chrome_psk_padding() -> ClientHelloSpec {
     let mut spec = chrome_106_shuffle();
-    spec.extensions.push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
+    spec.extensions
+        .push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
     spec
 }
 
@@ -2357,6 +2611,7 @@ pub(crate) fn chrome_psk_padding() -> ClientHelloSpec {
 /// 末尾加一条空 PSK 标记。
 pub(crate) fn chrome_psk_pq() -> ClientHelloSpec {
     let mut spec = chrome_115_pq();
-    spec.extensions.push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
+    spec.extensions
+        .push(Extension::PreSharedKey(super::spec::PreSharedKey::empty()));
     spec
 }

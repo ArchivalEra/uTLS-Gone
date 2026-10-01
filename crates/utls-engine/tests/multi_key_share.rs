@@ -23,12 +23,12 @@ mod common;
 
 use std::sync::Arc;
 
+use rustls::client::{PlanRequest, SuppliesClientHello};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConnection, HandshakeKind, NamedGroup};
 use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension};
 use utls::values as v;
 use utls_engine::FingerprintClient;
-use rustls::client::{PlanRequest, SuppliesClientHello};
 
 /// Chrome-70 的 spec，但 `key_share` 换成 **[X25519, P-384]**（两组，P-384 在后）。
 ///
@@ -63,7 +63,10 @@ fn the_engine_hands_over_one_exchange_per_declared_group() {
         .map(|g| u16::from(g.name()))
         .collect::<Vec<u16>>();
     let plan = client
-        .plan(&PlanRequest { groups, resumption: None })
+        .plan(&PlanRequest {
+            groups,
+            resumption: None,
+        })
         .expect("该能产出 plan");
 
     let got: Vec<u16> = plan.key_exchanges.iter().map(|kx| kx.group()).collect();
@@ -90,8 +93,8 @@ fn a_server_selecting_the_second_offered_group_completes_the_handshake() {
         common::shared_verifier(),
         None,
     ));
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     common::drive_client(&mut conn, &mut sock)
         .expect("服务器选第二组也该能谈成 —— 修好前这里是 WrongGroupForKeyShare");
@@ -142,8 +145,8 @@ fn a_single_share_the_server_cannot_use_gets_a_retry_request_instead() {
         common::shared_verifier(),
         None,
     ));
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     let _ = common::drive_client(&mut conn, &mut sock);
     let served = server.join().expect("服务端线程");

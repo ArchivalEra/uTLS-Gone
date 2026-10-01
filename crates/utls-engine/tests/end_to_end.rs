@@ -73,7 +73,11 @@ fn check(name: &str) {
     };
 
     let ours = utls::ja3::ja3_of_client_hello(&hs.client_hello);
-    println!("{name}: 发出 {} 字节，JA3 {}", hs.client_hello.len(), ours.hash_hex());
+    println!(
+        "{name}: 发出 {} 字节，JA3 {}",
+        hs.client_hello.len(),
+        ours.hash_hex()
+    );
     assert!(hs.reached_server, "{name}: 没读到任何响应");
 
     // 从 JSON 里抠 ja3_hash（不引 JSON 依赖，够用即可）。
@@ -81,7 +85,12 @@ fn check(name: &str) {
         .split_once('{')
         .and_then(|(_, rest)| rest.find("\"ja3_hash\"").map(|i| (i, rest)))
         .map(|(i, rest)| &rest[i..])
-        .unwrap_or_else(|| panic!("{name}: 响应里没有 ja3_hash。前 300 字节：\n{}", &body[..body.len().min(300)]));
+        .unwrap_or_else(|| {
+            panic!(
+                "{name}: 响应里没有 ja3_hash。前 300 字节：\n{}",
+                &body[..body.len().min(300)]
+            )
+        });
     let theirs = json
         .split('"')
         .nth(3)
@@ -142,7 +151,9 @@ fn uclient_api_reaches_the_server_and_matches() {
             .connect("tls.browserleaks.com", "tls.browserleaks.com:443");
         match built {
             Ok((mut conn, hello)) => {
-                let body = conn.http_get("tls.browserleaks.com", "/json").unwrap_or_default();
+                let body = conn
+                    .http_get("tls.browserleaks.com", "/json")
+                    .unwrap_or_default();
                 assert!(!body.is_empty(), "没读到响应");
 
                 let ours = utls::ja3::ja3_of_client_hello(&hello);
@@ -151,7 +162,11 @@ fn uclient_api_reaches_the_server_and_matches() {
                     .and_then(|(_, rest)| rest.find("\"ja3_hash\"").map(|i| (i, rest)))
                     .map(|(i, rest)| &rest[i..])
                     .expect("响应里没有 ja3_hash");
-                let theirs = json.split('"').nth(3).expect("ja3_hash 解析失败").to_string();
+                let theirs = json
+                    .split('"')
+                    .nth(3)
+                    .expect("ja3_hash 解析失败")
+                    .to_string();
                 assert_eq!(
                     theirs,
                     ours.hash_hex(),

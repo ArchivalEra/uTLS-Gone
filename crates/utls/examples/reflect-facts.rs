@@ -101,10 +101,16 @@ fn report(id: ClientHelloId, spec: &ClientHelloSpec) {
         lens.insert(h.len());
         ja3s.insert(h.ja3().hash_hex());
     }
-    println!("{name}_len_stable={}", if lens.len() == 1 { "yes" } else { "NO" });
+    println!(
+        "{name}_len_stable={}",
+        if lens.len() == 1 { "yes" } else { "NO" }
+    );
     // 乱序预设的 JA3 本来就会变（真实 Chrome 与 rustls 0.23 都如此）。
     // 这条事实把这个性质**写进台账**，免得有人把它当缺陷去「修」。
-    println!("{name}_ja3_stable={}", if ja3s.len() == 1 { "yes" } else { "no" });
+    println!(
+        "{name}_ja3_stable={}",
+        if ja3s.len() == 1 { "yes" } else { "no" }
+    );
 }
 
 /// 按 spec 里的 `key_share` 组给出**长度正确**的哑公钥。
@@ -124,17 +130,15 @@ fn inputs_for(spec: &ClientHelloSpec, seed: u8) -> HandshakeInputs {
             }
         }
     }
-    inputs.key_exchange =
-        groups
-            .into_iter()
-            .map(|g| {
-                // 长度必须真：它决定 ClientHello 总长，进而决定 BoringPaddingStyle 要不要填充。
-                // 用 values 里那个公开的、**唯一**的长度表 —— 两处各写一份就会漂。
-                let len = v::group_public_key_len(g)
-                    .unwrap_or_else(|| panic!("values::group_public_key_len 不认组 {g}"));
-                (g, vec![0x5A; len])
-            })
-            .collect();
+    inputs.key_exchange = groups
+        .into_iter()
+        .map(|g| {
+            // 长度必须真：它决定 ClientHello 总长，进而决定 BoringPaddingStyle 要不要填充。
+            // 用 values 里那个公开的、**唯一**的长度表 —— 两处各写一份就会漂。
+            let len = v::group_public_key_len(g)
+                .unwrap_or_else(|| panic!("values::group_public_key_len 不认组 {g}"));
+            (g, vec![0x5A; len])
+        })
+        .collect();
     inputs
 }
-

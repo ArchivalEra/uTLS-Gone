@@ -149,8 +149,12 @@ impl<'a> Reader<'a> {
 /// 那**不是**错误。`Err` 才是真的坏了。
 fn parse_one(enc: &[u8]) -> Result<Option<EchConfig>, EchParseError> {
     let mut r = Reader::new(enc);
-    let version = r.u16().ok_or(EchParseError::InvalidField { field: "version" })?;
-    let length = r.u16().ok_or(EchParseError::InvalidField { field: "length" })?;
+    let version = r
+        .u16()
+        .ok_or(EchParseError::InvalidField { field: "version" })?;
+    let length = r
+        .u16()
+        .ok_or(EchParseError::InvalidField { field: "length" })?;
     if enc.len() < usize::from(length) + 4 {
         return Err(EchParseError::InvalidField { field: "length" });
     }
@@ -162,7 +166,10 @@ fn parse_one(enc: &[u8]) -> Result<Option<EchConfig>, EchParseError> {
     let field = |f: &'static str| EchParseError::InvalidField { field: f };
     let config_id = r.u8().ok_or_else(|| field("config_id"))?;
     let kem_id = r.u16().ok_or_else(|| field("kem_id"))?;
-    let public_key = r.u16_prefixed().ok_or_else(|| field("public_key"))?.to_vec();
+    let public_key = r
+        .u16_prefixed()
+        .ok_or_else(|| field("public_key"))?
+        .to_vec();
 
     let suites_raw = r.u16_prefixed().ok_or_else(|| field("cipher_suites"))?;
     let mut sr = Reader::new(suites_raw);
@@ -174,14 +181,20 @@ fn parse_one(enc: &[u8]) -> Result<Option<EchConfig>, EchParseError> {
     }
 
     let maximum_name_length = r.u8().ok_or_else(|| field("maximum_name_length"))?;
-    let public_name = r.u8_prefixed().ok_or_else(|| field("public_name"))?.to_vec();
+    let public_name = r
+        .u8_prefixed()
+        .ok_or_else(|| field("public_name"))?
+        .to_vec();
 
     let exts_raw = r.u16_prefixed().ok_or_else(|| field("extensions"))?;
     let mut er = Reader::new(exts_raw);
     let mut extensions = Vec::new();
     while !er.is_empty() {
         let ext_type = er.u16().ok_or_else(|| field("extensions type"))?;
-        let data = er.u16_prefixed().ok_or_else(|| field("extensions data"))?.to_vec();
+        let data = er
+            .u16_prefixed()
+            .ok_or_else(|| field("extensions data"))?
+            .to_vec();
         extensions.push(EchExtension { ext_type, data });
     }
 
@@ -221,7 +234,8 @@ pub fn parse_ech_config_list(data: &[u8]) -> Result<Vec<EchConfig>, EchParseErro
         }
         // ⚠️ 前进的是**声明长度**，不是实际消费的长度：跳过的配置根本没被解析，
         // 只能按它自己声明的长度走（uTLS 的 `s = s[configLen+4:]`）。
-        r.take(config_len + 4).ok_or(EchParseError::TruncatedConfig)?;
+        r.take(config_len + 4)
+            .ok_or(EchParseError::TruncatedConfig)?;
     }
     Ok(out)
 }
@@ -354,8 +368,8 @@ mod tests {
     fn utls_vectors_parse_to_the_same_config_count() {
         // 判据就是 uTLS 自己的断言：**解析出的配置条数**。
         for (hex_list, want) in UTLS_VECTORS {
-            let list = parse_ech_config_list(&unhex(hex_list))
-                .unwrap_or_else(|e| panic!("解析失败：{e}"));
+            let list =
+                parse_ech_config_list(&unhex(hex_list)).unwrap_or_else(|e| panic!("解析失败：{e}"));
             assert_eq!(list.len(), *want, "配置条数与 uTLS 的不一致");
         }
     }
@@ -372,7 +386,10 @@ mod tests {
         assert_eq!(c.public_key.len(), 32);
         assert_eq!(
             c.cipher_suites,
-            vec![HpkeSymmetricCipherSuite { kdf_id: 0x0001, aead_id: 0x0001 }],
+            vec![HpkeSymmetricCipherSuite {
+                kdf_id: 0x0001,
+                aead_id: 0x0001
+            }],
             "一个套件：HKDF-SHA256 + AES-128-GCM"
         );
         assert_eq!(c.maximum_name_length, 0);
@@ -413,8 +430,12 @@ mod tests {
         // 逐条说明为什么都不能用（这样失败时不用再猜是哪一条）。
         for (i, c) in list.iter().enumerate() {
             let reasons = [
-                (!valid_dns_name(core::str::from_utf8(&c.public_name).unwrap_or(""))).then_some("public_name"),
-                c.extensions.iter().any(|e| e.is_mandatory()).then_some("强制扩展"),
+                (!valid_dns_name(core::str::from_utf8(&c.public_name).unwrap_or("")))
+                    .then_some("public_name"),
+                c.extensions
+                    .iter()
+                    .any(|e| e.is_mandatory())
+                    .then_some("强制扩展"),
                 (kem_public_key_len(c.kem_id) != Some(c.public_key.len())).then_some("公钥长度"),
                 (c.first_usable_suite().is_none()).then_some("没有可用套件"),
             ]
@@ -432,7 +453,10 @@ mod tests {
         assert_eq!(e, EchParseError::MalformedList);
         assert_eq!(format!("{e}"), "tls: malformed ECHConfigList");
         // 空输入连长度字段都没有 ⇒ 同一条错误。
-        assert_eq!(parse_ech_config_list(&[]).unwrap_err(), EchParseError::MalformedList);
+        assert_eq!(
+            parse_ech_config_list(&[]).unwrap_err(),
+            EchParseError::MalformedList
+        );
         // 长度对得上但没有配置 ⇒ 空列表（不是错误）。
         assert!(parse_ech_config_list(&[0x00, 0x00]).unwrap().is_empty());
         // 列表里剩不足 4 字节 ⇒ `malformed ECHConfig`。
@@ -446,13 +470,19 @@ mod tests {
         let bad = [0x00, 0x06, 0xfe, 0x0d, 0x00, 0x04, 0xaa, 0xbb];
         let e = parse_ech_config_list(&bad).unwrap_err();
         assert_eq!(e, EchParseError::InvalidField { field: "length" });
-        assert_eq!(format!("{e}"), "tls: malformed ECHConfig, invalid length field");
+        assert_eq!(
+            format!("{e}"),
+            "tls: malformed ECHConfig, invalid length field"
+        );
         // 同理，`kem_id` 缺失：version/length 说这条配置有 1 字节，而后面什么都没有，
         // 于是 `config_id` 读不出来。
         let bad = [0x00, 0x04, 0xfe, 0x0d, 0x00, 0x00];
         let e = parse_ech_config_list(&bad).unwrap_err();
         assert_eq!(e, EchParseError::InvalidField { field: "config_id" });
-        assert_eq!(format!("{e}"), "tls: malformed ECHConfig, invalid config_id field");
+        assert_eq!(
+            format!("{e}"),
+            "tls: malformed ECHConfig, invalid config_id field"
+        );
     }
 
     #[test]
@@ -473,15 +503,43 @@ mod tests {
         assert!(!valid_dns_name("a_b.c"), "下划线不在字符集合里");
         assert!(!valid_dns_name(""), "空名");
         let too_long = format!("{}com", "a.".repeat(130));
-        assert!(too_long.len() > 253, "这条测试的构造该超过 253：{}", too_long.len());
+        assert!(
+            too_long.len() > 253,
+            "这条测试的构造该超过 253：{}",
+            too_long.len()
+        );
         assert!(!valid_dns_name(&too_long), "整体超过 253");
     }
 
     #[test]
     fn mandatory_extensions_are_recognised_by_the_high_bit() {
-        assert!(EchExtension { ext_type: 0xaaaa, data: vec![] }.is_mandatory());
-        assert!(EchExtension { ext_type: 0x8000, data: vec![] }.is_mandatory());
-        assert!(!EchExtension { ext_type: 0x0001, data: vec![] }.is_mandatory());
-        assert!(!EchExtension { ext_type: 0x7fff, data: vec![] }.is_mandatory());
+        assert!(
+            EchExtension {
+                ext_type: 0xaaaa,
+                data: vec![]
+            }
+            .is_mandatory()
+        );
+        assert!(
+            EchExtension {
+                ext_type: 0x8000,
+                data: vec![]
+            }
+            .is_mandatory()
+        );
+        assert!(
+            !EchExtension {
+                ext_type: 0x0001,
+                data: vec![]
+            }
+            .is_mandatory()
+        );
+        assert!(
+            !EchExtension {
+                ext_type: 0x7fff,
+                data: vec![]
+            }
+            .is_mandatory()
+        );
     }
 }

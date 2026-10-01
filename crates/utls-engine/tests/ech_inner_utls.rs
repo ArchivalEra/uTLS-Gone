@@ -49,8 +49,8 @@ mod common;
 
 use std::sync::{Arc, Mutex};
 
-use rustls::pki_types::ServerName;
 use rustls::ClientConnection;
+use rustls::pki_types::ServerName;
 use utls::hello::{ClientHelloId, ClientHelloSpec, HandshakeInputs};
 use utls::values as v;
 use utls_engine::FingerprintClient;
@@ -176,8 +176,8 @@ fn dump_outer_and_inner_for_the_utls_decoder() {
         common::shared_verifier(),
         None,
     ));
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     // 本机服务端不接受 ECH ⇒ 必然报错；我们要的是**发出去的那串字节**。
     let _ = common::drive_client(&mut conn, &mut sock);
@@ -185,7 +185,11 @@ fn dump_outer_and_inner_for_the_utls_decoder() {
 
     let outer = outer_sink.lock().unwrap()[0].clone();
     let inner_records = inner_sink.lock().unwrap().clone();
-    assert_eq!(inner_records.len(), 2, "每次提议该记两条：密封形态 + 转录形态");
+    assert_eq!(
+        inner_records.len(),
+        2,
+        "每次提议该记两条：密封形态 + 转录形态"
+    );
     let inner = inner_records[0].clone();
     let expanded = inner_records[1].clone();
     // 记录槽里放的**就是握手消息本身**（`plan()` 记的是它，不含 5 字节记录头）——
@@ -213,8 +217,11 @@ fn our_inner_hello_is_byte_identical_to_utls_chrome70() {
     // uTLS 的 Chrome-70 预设不乱序（106+ 才乱序），所以外层线序 = spec 顺序。
     // GREASE 的类型每连接才定（`wire_type() == None`），但它们不进 marker，
     // 所以这里给不给出都一样。
-    let outer_ext_order: Vec<u16> =
-        spec.extensions.iter().filter_map(|e| e.wire_type()).collect();
+    let outer_ext_order: Vec<u16> = spec
+        .extensions
+        .iter()
+        .filter_map(|e| e.wire_type())
+        .collect();
 
     // cipher suites 是内层的**输入**（uTLS 取 `config.cipherSuites()`），不是本函数的产物；
     // 这里钉成探针那台机器上 uTLS 实际产出的清单（`defaultCipherSuitesTLS13NoAES` 的顺序），

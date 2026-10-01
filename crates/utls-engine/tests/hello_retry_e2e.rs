@@ -21,7 +21,7 @@ use rustls::ClientConnection;
 use rustls::pki_types::ServerName;
 use utls::hello::{ClientHelloId, ClientHelloSpec};
 use utls::values as v;
-use utls_engine::{client_config, FingerprintClient};
+use utls_engine::{FingerprintClient, client_config};
 
 /// 上游夹具路径（同一份录音，指纹层那边用来做逐字节对账）。
 const FIXTURE: &str = concat!(
@@ -187,10 +187,20 @@ fn a_real_hello_retry_request_goes_through_the_fork_and_the_second_flight_matche
     //    这里要证的是「真实的 fork 路径确实把第一飞原样发了出去」。
     assert_eq!(first.len(), expected_first.len(), "第一飞长度与录音不符");
     let norm = |ts: Vec<u16>| -> Vec<u16> {
-        ts.into_iter().map(|t| if v::is_grease(t) { 0x0a0a } else { t }).collect()
+        ts.into_iter()
+            .map(|t| if v::is_grease(t) { 0x0a0a } else { t })
+            .collect()
     };
-    assert_eq!(norm(ext_types(&first)), norm(ext_types(&expected_first)), "第一飞的扩展类型序列与录音不符");
-    assert_eq!(&first[..6], &expected_first[..6], "第一飞的握手头/legacy_version 不符");
+    assert_eq!(
+        norm(ext_types(&first)),
+        norm(ext_types(&expected_first)),
+        "第一飞的扩展类型序列与录音不符"
+    );
+    assert_eq!(
+        &first[..6],
+        &expected_first[..6],
+        "第一飞的握手头/legacy_version 不符"
+    );
 
     // ② 第二飞：**真的发出去了**，且结构等于夹具的 Flow 3。
     assert_eq!(
@@ -198,8 +208,16 @@ fn a_real_hello_retry_request_goes_through_the_fork_and_the_second_flight_matche
         expected_second.len(),
         "第二飞长度与录音不符（填充算术或 key_share 长度错了）"
     );
-    assert_eq!(session_id_of(&first), session_id_of(&second), "第二飞换了 session id");
-    assert_eq!(&first[6..38], &second[6..38], "第二飞换了客户端随机数（RFC 8446 §4.1.2 禁止）");
+    assert_eq!(
+        session_id_of(&first),
+        session_id_of(&second),
+        "第二飞换了 session id"
+    );
+    assert_eq!(
+        &first[6..38],
+        &second[6..38],
+        "第二飞换了客户端随机数（RFC 8446 §4.1.2 禁止）"
+    );
     assert_eq!(
         norm(ext_types(&second)),
         norm(ext_types(&expected_second)),
@@ -230,9 +248,21 @@ fn a_real_hello_retry_request_goes_through_the_fork_and_the_second_flight_matche
         }
         panic!("没有 key_share");
     };
-    assert_eq!(&ks(&second)[..4], &[0x00, 0x45, 0x00, 0x17], "第二飞该只报 P-256 一项");
-    assert_eq!(ks(&second).len(), ks(&expected_second).len(), "key_share 体长该与录音相同");
-    assert_ne!(ks(&first), ks(&second), "key_share 没变说明第二飞没换密钥交换");
+    assert_eq!(
+        &ks(&second)[..4],
+        &[0x00, 0x45, 0x00, 0x17],
+        "第二飞该只报 P-256 一项"
+    );
+    assert_eq!(
+        ks(&second).len(),
+        ks(&expected_second).len(),
+        "key_share 体长该与录音相同"
+    );
+    assert_ne!(
+        ks(&first),
+        ks(&second),
+        "key_share 没变说明第二飞没换密钥交换"
+    );
 
     // ④ 第二飞**不是**第一飞的复制（那是最容易犯的错：fork 里早返回用错了 plan）。
     assert_ne!(second, first);

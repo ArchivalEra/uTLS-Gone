@@ -41,9 +41,17 @@ fn a_local_rustls_server_completes_a_handshake_with_our_client() {
         Some(rustls::ProtocolVersion::TLSv1_3),
         "客户端侧该谈成 TLS 1.3"
     );
-    assert_eq!(served.version, Some(rustls::ProtocolVersion::TLSv1_3), "服务端侧同上");
+    assert_eq!(
+        served.version,
+        Some(rustls::ProtocolVersion::TLSv1_3),
+        "服务端侧同上"
+    );
     assert_eq!(served.alpn.as_deref(), Some(&b"h2"[..]), "ALPN 该谈成 h2");
-    assert_eq!(served.handshake_kind, Some(HandshakeKind::Full), "第一次连接是完整握手");
+    assert_eq!(
+        served.handshake_kind,
+        Some(HandshakeKind::Full),
+        "第一次连接是完整握手"
+    );
     assert!(!served.resumed, "第一次连接不该是复用的");
     // 服务端收到的第一条记录必须是 ClientHello，且长度自洽。
     let rec = &served.client_hello;
@@ -71,7 +79,11 @@ fn a_full_hello_retry_request_handshake_completes() {
         Some(HandshakeKind::FullWithHelloRetryRequest),
         "服务端说这次不是「带 HRR 的完整握手」—— 说明 HRR 没发生（那就没测到东西）"
     );
-    assert_eq!(served.version, Some(rustls::ProtocolVersion::TLSv1_3), "HRR 之后该谈成 TLS 1.3");
+    assert_eq!(
+        served.version,
+        Some(rustls::ProtocolVersion::TLSv1_3),
+        "HRR 之后该谈成 TLS 1.3"
+    );
     assert_eq!(
         conn.protocol_version(),
         Some(rustls::ProtocolVersion::TLSv1_3),

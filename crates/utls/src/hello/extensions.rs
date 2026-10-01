@@ -14,9 +14,11 @@
 //!
 //! 出处：每个 `body()` 的注释都指向 Go `u_tls_extensions.go` 里对应的 `Read()`。
 
-use super::spec::{ApplicationSettingsAlps, CompressCertificate, CookieExtension,
-                   DelegatedCredentials, EcPointFormats, Extension, PreSharedKey, PskIdentity,
-                   RenegotiationInfo, SessionTicket, SignatureAlgorithmsCert};
+use super::spec::{
+    ApplicationSettingsAlps, CompressCertificate, CookieExtension, DelegatedCredentials,
+    EcPointFormats, Extension, PreSharedKey, PskIdentity, RenegotiationInfo, SessionTicket,
+    SignatureAlgorithmsCert,
+};
 
 /// 把 `(类型, 体)` 分类成一个有类型的变体；**只有在重新编码逐字节相同时才返回 `Some`**。
 ///
@@ -50,7 +52,9 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
         }
         x if x == v::EXT_SESSION_TICKET => {
             // 体就是 ticket 本身，没有长度前缀 ⇒ 任意字节都能无损表达。
-            Extension::SessionTicket(SessionTicket { ticket: body.to_vec() })
+            Extension::SessionTicket(SessionTicket {
+                ticket: body.to_vec(),
+            })
         }
         x if x == v::EXT_PRE_SHARED_KEY => {
             // 体必须是**恰好**被这两个长度字段吃干净，否则退回 Opaque ——
@@ -84,7 +88,10 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
                 binders.push(b.to_vec());
                 q += 1 + blen;
             }
-            Extension::PreSharedKey(PreSharedKey { identities, binders })
+            Extension::PreSharedKey(PreSharedKey {
+                identities,
+                binders,
+            })
         }
         x if x == v::EXT_COOKIE => {
             // `u16 长度 + cookie`：长度必须**恰好**等于剩余字节数，否则退回 Opaque
@@ -93,14 +100,18 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
             if usize::from(u16::from_be_bytes([len_bytes[0], len_bytes[1]])) != rest.len() {
                 return None;
             }
-            Extension::Cookie(CookieExtension { cookie: rest.to_vec() })
+            Extension::Cookie(CookieExtension {
+                cookie: rest.to_vec(),
+            })
         }
         x if x == v::EXT_EC_POINT_FORMATS => {
             let (n, rest) = body.split_first()?;
             if usize::from(*n) != rest.len() {
                 return None;
             }
-            Extension::EcPointFormats(EcPointFormats { formats: rest.to_vec() })
+            Extension::EcPointFormats(EcPointFormats {
+                formats: rest.to_vec(),
+            })
         }
         x if x == v::EXT_COMPRESS_CERTIFICATE => {
             let (n, rest) = body.split_first()?;
@@ -108,7 +119,12 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
                 return None;
             }
             Extension::CompressCertificate(CompressCertificate {
-                algorithms: rest.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect(),
+                algorithms: rest
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| u16::from_be_bytes(*c))
+                    .collect(),
             })
         }
         x if x == v::EXT_APPLICATION_SETTINGS || x == v::EXT_APPLICATION_SETTINGS_NEW => {
@@ -131,18 +147,26 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
             if usize::from(*n) != rest.len() {
                 return None;
             }
-            Extension::PskKeyExchangeModes { modes: rest.to_vec() }
+            Extension::PskKeyExchangeModes {
+                modes: rest.to_vec(),
+            }
         }
         x if x == v::EXT_RECORD_SIZE_LIMIT => {
             let b: [u8; 2] = body.try_into().ok()?;
-            Extension::RecordSizeLimit { limit: u16::from_be_bytes(b) }
+            Extension::RecordSizeLimit {
+                limit: u16::from_be_bytes(b),
+            }
         }
-        x if x == v::EXT_SIGNATURE_ALGORITHMS_CERT => Extension::SignatureAlgorithmsCert(
-            SignatureAlgorithmsCert { schemes: u16_list(body)? },
-        ),
-        x if x == v::EXT_DELEGATED_CREDENTIALS => Extension::DelegatedCredentials(
-            DelegatedCredentials { schemes: u16_list(body)? },
-        ),
+        x if x == v::EXT_SIGNATURE_ALGORITHMS_CERT => {
+            Extension::SignatureAlgorithmsCert(SignatureAlgorithmsCert {
+                schemes: u16_list(body)?,
+            })
+        }
+        x if x == v::EXT_DELEGATED_CREDENTIALS => {
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: u16_list(body)?,
+            })
+        }
         // NPN 与 ChannelID 的体在 uTLS 里**恒为空**（`Len()` 就是 4，即只有头）。
         // 所以只认空体，别的形状回落。
         x if x == v::EXT_NPN => {
@@ -155,13 +179,17 @@ pub(crate) fn classify(id: u16, body: &[u8]) -> Option<Extension> {
             if !body.is_empty() {
                 return None;
             }
-            Extension::ChannelId { old_codepoint: false }
+            Extension::ChannelId {
+                old_codepoint: false,
+            }
         }
         x if x == v::EXT_CHANNEL_ID_OLD => {
             if !body.is_empty() {
                 return None;
             }
-            Extension::ChannelId { old_codepoint: true }
+            Extension::ChannelId {
+                old_codepoint: true,
+            }
         }
         _ => return None,
     })
@@ -174,7 +202,13 @@ fn u16_list(body: &[u8]) -> Option<Vec<u16>> {
     if n != rest.len() || !n.is_multiple_of(2) {
         return None;
     }
-    Some(rest.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect())
+    Some(
+        rest.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_be_bytes(*c))
+            .collect(),
+    )
 }
 
 /// ALPS 的体：`u16 ALPS 长度 | (u8 长度 + 协议名)*`。

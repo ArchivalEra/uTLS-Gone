@@ -43,20 +43,22 @@ mod stream;
 #[cfg(test)]
 mod tests;
 
-pub use ech::{aead_supported, hpke_aead_tag_len, kdf_supported, kem_public_key_len,
-               parse_ech_config_list,
-               pick_ech_config, valid_dns_name, EchConfig, EchExtension, EchParseError,
-               HpkeSymmetricCipherSuite};
+pub use ech::{
+    EchConfig, EchExtension, EchParseError, HpkeSymmetricCipherSuite, aead_supported,
+    hpke_aead_tag_len, kdf_supported, kem_public_key_len, parse_ech_config_list, pick_ech_config,
+    valid_dns_name,
+};
 // `hostname_in_sni` 是「写字节之前」的语义步骤；ECH 的内层（引擎侧构造）也要用它
 // 决定「内层带不带 SNI 扩展」—— 见 `encode` 里它自己的说明。
 pub use encode::hostname_in_sni;
 pub use preset::ClientHelloId;
-pub use randomized::{Weights, DEFAULT_WEIGHTS};
-pub use spec::{ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate,
-               CookieExtension, DelegatedCredentials, EcPointFormats, ExtendedMasterSecret,
-               Extension, GreaseEchOptions, Padding, ParseError, PreSharedKey, PskIdentity,
-               RenegotiationInfo, SessionId, SessionTicket, SignedCertificateTimestamp,
-               SignatureAlgorithmsCert, SpecError, StatusRequest, Variability};
+pub use randomized::{DEFAULT_WEIGHTS, Weights};
+pub use spec::{
+    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, CookieExtension,
+    DelegatedCredentials, EcPointFormats, ExtendedMasterSecret, Extension, GreaseEchOptions,
+    Padding, ParseError, PreSharedKey, PskIdentity, RenegotiationInfo, SessionId, SessionTicket,
+    SignatureAlgorithmsCert, SignedCertificateTimestamp, SpecError, StatusRequest, Variability,
+};
 
 /// 一条已序列化的 ClientHello：`type(1) || u24 长度 || 体`。
 ///
@@ -205,7 +207,13 @@ impl HandshakeInputs {
         let mut seed = [0u8; 32];
         getrandom::fill(&mut client_random).expect("OS 熵源不可用，无法产生客户端随机数");
         getrandom::fill(&mut seed).expect("OS 熵源不可用，无法产生每连接变化");
-        HandshakeInputs { sni: None, alpn: Vec::new(), key_exchange: Vec::new(), client_random, seed }
+        HandshakeInputs {
+            sni: None,
+            alpn: Vec::new(),
+            key_exchange: Vec::new(),
+            client_random,
+            seed,
+        }
     }
 
     /// **回放**一条已捕获的 ClientHello 所需的输入。
@@ -249,7 +257,13 @@ impl HandshakeInputs {
         let mut s = stream::Stream::new(&seed);
         let mut client_random = [0u8; 32];
         s.fill(&mut client_random);
-        HandshakeInputs { sni: None, alpn: Vec::new(), key_exchange: Vec::new(), client_random, seed }
+        HandshakeInputs {
+            sni: None,
+            alpn: Vec::new(),
+            key_exchange: Vec::new(),
+            client_random,
+            seed,
+        }
     }
 
     pub(crate) fn stream(&self) -> stream::Stream {

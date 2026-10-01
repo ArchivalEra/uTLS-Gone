@@ -9,21 +9,34 @@ use utls_engine::UClient;
 #[test]
 fn apply_preset_by_id_covers_every_form_of_id() {
     // ① 静态预设：直接取。
-    let c = UClient::new().apply_preset_by_id(ClientHelloId::Chrome(133)).unwrap();
+    let c = UClient::new()
+        .apply_preset_by_id(ClientHelloId::Chrome(133))
+        .unwrap();
     assert!(!c.spec().cipher_suites.is_empty());
 
     // ② 随机化：`applyPresetByID` 在 `Seed == nil` 时现取一个种子 ⇒ 每次不同。
-    let a = UClient::new().apply_preset_by_id(ClientHelloId::Randomized).unwrap();
-    let b = UClient::new().apply_preset_by_id(ClientHelloId::Randomized).unwrap();
+    let a = UClient::new()
+        .apply_preset_by_id(ClientHelloId::Randomized)
+        .unwrap();
+    let b = UClient::new()
+        .apply_preset_by_id(ClientHelloId::Randomized)
+        .unwrap();
     assert_ne!(a.spec(), b.spec(), "随机化 ID 每次该产出不同的 spec");
 
     // ③ `Golang`：不是「未实现」，是「在本架构里不适用」（见 SpecError::EngineDefined）。
-    let e = UClient::new().apply_preset_by_id(ClientHelloId::Golang).unwrap_err();
-    assert!(matches!(e, SpecError::EngineDefined(ClientHelloId::Golang)), "拿到的是 {e:?}");
+    let e = UClient::new()
+        .apply_preset_by_id(ClientHelloId::Golang)
+        .unwrap_err();
+    assert!(
+        matches!(e, SpecError::EngineDefined(ClientHelloId::Golang)),
+        "拿到的是 {e:?}"
+    );
 
     // ④ 随机化 ID **不**能走 from_preset —— 那条路没有种子。
     assert!(matches!(
-        UClient::new().apply_preset_by_id(ClientHelloId::RandomizedAlpn).map(|_| ()),
+        UClient::new()
+            .apply_preset_by_id(ClientHelloId::RandomizedAlpn)
+            .map(|_| ()),
         Ok(())
     ));
     assert!(matches!(

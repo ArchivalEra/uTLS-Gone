@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use rustls::crypto::hpke::{HpkePrivateKey, HpkePublicKey};
-use utls::hello::{parse_ech_config_list, pick_ech_config, EchConfig};
+use utls::hello::{EchConfig, parse_ech_config_list, pick_ech_config};
 use utls_engine::ech::EchSealer;
 
 mod common;
@@ -49,7 +49,11 @@ fn sealing_round_trips_through_the_hpke_implementation_that_did_not_seal_it() {
     assert_eq!(sealer.config_id(), 0x42);
     assert_eq!(sealer.cipher_suite().kdf_id, 0x0001);
     assert_eq!(sealer.cipher_suite().aead_id, 0x0001);
-    assert_eq!(sealer.encapsulated_key().len(), 32, "X25519 的封装密钥是 32 字节");
+    assert_eq!(
+        sealer.encapsulated_key().len(),
+        32,
+        "X25519 的封装密钥是 32 字节"
+    );
 
     // AAD = 外层 ClientHello 的编码（其中 payload 是等长全零）。这里用一段假的
     // 「外层字节」：判据是**两端用同一个 AAD**，而不是它长得像不像 hello。
@@ -59,8 +63,16 @@ fn sealing_round_trips_through_the_hpke_implementation_that_did_not_seal_it() {
     aad.extend(std::iter::repeat_n(0u8, payload_len));
 
     let sealed = sealer.seal(&aad, &inner).expect("密封");
-    assert_eq!(sealed.len(), payload_len, "密封结果长度必须等于预约的载荷长度");
-    assert_ne!(&sealed[..inner.len().min(32)], &inner[..inner.len().min(32)], "密文该与明文不同");
+    assert_eq!(
+        sealed.len(),
+        payload_len,
+        "密封结果长度必须等于预约的载荷长度"
+    );
+    assert_ne!(
+        &sealed[..inner.len().min(32)],
+        &inner[..inner.len().min(32)],
+        "密文该与明文不同"
+    );
 
     // ── 判据：用**另一套实现**（rustls 的 `open`）解回来 ──
     let enc = rustls::crypto::hpke::EncapsulatedSecret(sealer.encapsulated_key().to_vec());
@@ -99,13 +111,17 @@ fn a_wrong_aad_or_info_fails_to_open() {
     let mut wrong_aad = aad.clone();
     wrong_aad[0] ^= 1;
     assert!(
-        suite.open(&enc, &info, &wrong_aad, &sealed, &private_key).is_err(),
+        suite
+            .open(&enc, &info, &wrong_aad, &sealed, &private_key)
+            .is_err(),
         "改一个字节的 AAD 竟然解得开 —— 那说明 AAD 根本没进 AEAD"
     );
     let mut wrong_info = info.clone();
     wrong_info[0] ^= 1;
     assert!(
-        suite.open(&enc, &wrong_info, &aad, &sealed, &private_key).is_err(),
+        suite
+            .open(&enc, &wrong_info, &aad, &sealed, &private_key)
+            .is_err(),
         "改一个字节的 info 竟然解得开 —— 那说明 info 根本没进 HPKE"
     );
     let wrong_key = HpkePrivateKey::from(vec![0u8; 32]);
@@ -138,7 +154,10 @@ fn a_config_with_a_mandatory_extension_is_refused_by_the_sealer_too() {
     let (public_key, _private) = suite.generate_key_pair().unwrap();
     let bytes = config_list(&public_key.0, 3, &[(0x8001, b"mandatory")]);
     let list = parse_ech_config_list(&bytes).unwrap();
-    assert!(pick_ech_config(&list).is_none(), "带强制扩展的配置不该被选中");
+    assert!(
+        pick_ech_config(&list).is_none(),
+        "带强制扩展的配置不该被选中"
+    );
 }
 
 /// `HpkePublicKey` 只是给上面那几条测试用的（`generate_key_pair` 的返回类型）。

@@ -126,9 +126,18 @@ pub(crate) fn marshal(
                 // ⚠️ 这 1 个字节不进 JA3（JA3 只看扩展**类型**），所以它错了也不会让
                 // 任何 JA3 对账变红 —— 只有**总长**对账能抓到。本仓就是这么抓到的：
                 // Chrome 115_PQ 的总长比参照少 1 字节，而所有 JA3 字段都对得上。
-                let body = if grease_used == 1 { vec![0u8] } else { Vec::new() };
+                let body = if grease_used == 1 {
+                    vec![0u8]
+                } else {
+                    Vec::new()
+                };
                 grease_used += 1;
-                resolved.push(Resolved { ty, body, pinned: true, emit: true });
+                resolved.push(Resolved {
+                    ty,
+                    body,
+                    pinned: true,
+                    emit: true,
+                });
             }
             Extension::Padding(p) => {
                 if padding.is_some() {
@@ -168,8 +177,11 @@ pub(crate) fn marshal(
                 // `inputs.alpn` 覆盖预设的建议列表。两处都空 ⇒ **省略整个扩展**，
                 // 而不是发一个空列表：两者指纹不同，而「省略」是真实浏览器在
                 // 没有可谈协议时（以及 Go 在没设 NextProtos 时）的行为。
-                let list: &[Vec<u8>] =
-                    if inputs.alpn.is_empty() { default.as_slice() } else { &inputs.alpn };
+                let list: &[Vec<u8>] = if inputs.alpn.is_empty() {
+                    default.as_slice()
+                } else {
+                    &inputs.alpn
+                };
                 if list.is_empty() {
                     continue;
                 }
@@ -177,7 +189,7 @@ pub(crate) fn marshal(
                     ty: v::EXT_ALPN,
                     body: alpn_body(list)?,
                     pinned: false,
-                emit: true,
+                    emit: true,
                 });
             }
             Extension::SupportedVersions(cps) => {
@@ -186,7 +198,7 @@ pub(crate) fn marshal(
                     ty: v::EXT_SUPPORTED_VERSIONS,
                     body: supported_versions_body(&vals)?,
                     pinned: false,
-                emit: true,
+                    emit: true,
                 });
             }
             Extension::SupportedGroups(cps) => {
@@ -195,7 +207,7 @@ pub(crate) fn marshal(
                     ty: v::EXT_SUPPORTED_GROUPS,
                     body: u16_list_body(&vals)?,
                     pinned: false,
-                emit: true,
+                    emit: true,
                 });
             }
             Extension::SignatureAlgorithms(cps) => {
@@ -204,7 +216,7 @@ pub(crate) fn marshal(
                     ty: v::EXT_SIGNATURE_ALGORITHMS,
                     body: u16_list_body(&vals)?,
                     pinned: false,
-                emit: true,
+                    emit: true,
                 });
             }
             Extension::KeyShare(cps) => {
@@ -228,7 +240,7 @@ pub(crate) fn marshal(
                     ty: v::EXT_KEY_SHARE,
                     body: key_share_body(&entries)?,
                     pinned: false,
-                emit: true,
+                    emit: true,
                 });
             }
             Extension::PreSharedKey(psk) => {
@@ -287,7 +299,10 @@ pub(crate) fn marshal(
             Extension::Cookie(c) => {
                 // RFC 8446 §4.2.2：`opaque cookie<1..2^16-1>` ⇒ `u16 长度 + cookie`。
                 if c.cookie.len() > u16::MAX as usize {
-                    return Err(SpecError::TooLong { what: "cookie", len: c.cookie.len() });
+                    return Err(SpecError::TooLong {
+                        what: "cookie",
+                        len: c.cookie.len(),
+                    });
                 }
                 let mut body = (c.cookie.len() as u16).to_be_bytes().to_vec();
                 body.extend_from_slice(&c.cookie);
@@ -300,7 +315,10 @@ pub(crate) fn marshal(
             }
             Extension::EcPointFormats(p) => {
                 if p.formats.len() > u8::MAX as usize {
-                    return Err(SpecError::TooLong { what: "ec_point_formats", len: p.formats.len() });
+                    return Err(SpecError::TooLong {
+                        what: "ec_point_formats",
+                        len: p.formats.len(),
+                    });
                 }
                 let mut body = vec![p.formats.len() as u8];
                 body.extend_from_slice(&p.formats);
@@ -339,7 +357,10 @@ pub(crate) fn marshal(
             }),
             Extension::PskKeyExchangeModes { modes } => {
                 if modes.len() > u8::MAX as usize {
-                    return Err(SpecError::TooLong { what: "psk_key_exchange_modes", len: modes.len() });
+                    return Err(SpecError::TooLong {
+                        what: "psk_key_exchange_modes",
+                        len: modes.len(),
+                    });
                 }
                 let mut body = vec![modes.len() as u8];
                 body.extend_from_slice(modes);
@@ -379,7 +400,11 @@ pub(crate) fn marshal(
                 emit: true,
             }),
             Extension::ChannelId { old_codepoint } => resolved.push(Resolved {
-                ty: if *old_codepoint { v::EXT_CHANNEL_ID_OLD } else { v::EXT_CHANNEL_ID },
+                ty: if *old_codepoint {
+                    v::EXT_CHANNEL_ID_OLD
+                } else {
+                    v::EXT_CHANNEL_ID
+                },
                 body: Vec::new(),
                 pinned: false,
                 emit: true,
@@ -412,7 +437,9 @@ pub(crate) fn marshal(
                 let base = body_len(spec, &session_id, &resolved)?;
                 let target = target as usize;
                 if target < base {
-                    return Err(SpecError::PaddingTargetUnreachable { target: target as u16 });
+                    return Err(SpecError::PaddingTargetUnreachable {
+                        target: target as u16,
+                    });
                 }
                 resolved[at].body = vec![0u8; target - base];
             }
@@ -459,7 +486,10 @@ pub(crate) fn marshal(
 
     let ciphers = resolve_list(&spec.cipher_suites, grease.cipher);
     if ciphers.len() * 2 > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "密码套件列表", len: ciphers.len() * 2 });
+        return Err(SpecError::TooLong {
+            what: "密码套件列表",
+            len: ciphers.len() * 2,
+        });
     }
     body.extend_from_slice(&((ciphers.len() * 2) as u16).to_be_bytes());
     for c in &ciphers {
@@ -472,24 +502,37 @@ pub(crate) fn marshal(
     let mut exts: Vec<u8> = Vec::with_capacity(256);
     for r in resolved.iter().filter(|r| r.emit) {
         if r.body.len() > u16::MAX as usize {
-            return Err(SpecError::TooLong { what: "扩展体", len: r.body.len() });
+            return Err(SpecError::TooLong {
+                what: "扩展体",
+                len: r.body.len(),
+            });
         }
         exts.extend_from_slice(&r.ty.to_be_bytes());
         exts.extend_from_slice(&(r.body.len() as u16).to_be_bytes());
         exts.extend_from_slice(&r.body);
     }
     if exts.len() > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "扩展区", len: exts.len() });
+        return Err(SpecError::TooLong {
+            what: "扩展区",
+            len: exts.len(),
+        });
     }
     body.extend_from_slice(&(exts.len() as u16).to_be_bytes());
     body.extend_from_slice(&exts);
 
     if body.len() > 0x00ff_ffff {
-        return Err(SpecError::TooLong { what: "握手消息", len: body.len() });
+        return Err(SpecError::TooLong {
+            what: "握手消息",
+            len: body.len(),
+        });
     }
     let mut out: Vec<u8> = Vec::with_capacity(4 + body.len());
     out.push(1u8); // handshake type = ClientHello
-    out.extend_from_slice(&[(body.len() >> 16) as u8, (body.len() >> 8) as u8, body.len() as u8]);
+    out.extend_from_slice(&[
+        (body.len() >> 16) as u8,
+        (body.len() >> 8) as u8,
+        body.len() as u8,
+    ]);
     out.extend_from_slice(&body);
     Ok(ClientHello::from_bytes_unchecked(out))
 }
@@ -535,7 +578,10 @@ fn check_shape(spec: &ClientHelloSpec) -> Result<(), SpecError> {
         .position(|e| matches!(e, Extension::PreSharedKey(_)))
         && i + 1 != spec.extensions.len()
     {
-        return Err(SpecError::PreSharedKeyNotLast { index: i, len: spec.extensions.len() });
+        return Err(SpecError::PreSharedKeyNotLast {
+            index: i,
+            len: spec.extensions.len(),
+        });
     }
     Ok(())
 }
@@ -642,14 +688,20 @@ fn psk_body(psk: &super::spec::PreSharedKey) -> Result<Vec<u8>, SpecError> {
     let mut ids: Vec<u8> = Vec::new();
     for id in &psk.identities {
         if id.label.len() > u16::MAX as usize {
-            return Err(SpecError::TooLong { what: "PSK identity", len: id.label.len() });
+            return Err(SpecError::TooLong {
+                what: "PSK identity",
+                len: id.label.len(),
+            });
         }
         ids.extend_from_slice(&(id.label.len() as u16).to_be_bytes());
         ids.extend_from_slice(&id.label);
         ids.extend_from_slice(&id.obfuscated_ticket_age.to_be_bytes());
     }
     if ids.len() > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "PSK identities", len: ids.len() });
+        return Err(SpecError::TooLong {
+            what: "PSK identities",
+            len: ids.len(),
+        });
     }
     b.extend_from_slice(&(ids.len() as u16).to_be_bytes());
     b.extend_from_slice(&ids);
@@ -657,13 +709,19 @@ fn psk_body(psk: &super::spec::PreSharedKey) -> Result<Vec<u8>, SpecError> {
     let mut bs: Vec<u8> = Vec::new();
     for binder in &psk.binders {
         if binder.len() > u8::MAX as usize {
-            return Err(SpecError::TooLong { what: "PSK binder", len: binder.len() });
+            return Err(SpecError::TooLong {
+                what: "PSK binder",
+                len: binder.len(),
+            });
         }
         bs.push(binder.len() as u8);
         bs.extend_from_slice(binder);
     }
     if bs.len() > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "PSK binders", len: bs.len() });
+        return Err(SpecError::TooLong {
+            what: "PSK binders",
+            len: bs.len(),
+        });
     }
     b.extend_from_slice(&(bs.len() as u16).to_be_bytes());
     b.extend_from_slice(&bs);
@@ -693,7 +751,10 @@ fn alpn_body(protocols: &[Vec<u8>]) -> Result<Vec<u8>, SpecError> {
         inner.extend_from_slice(p);
     }
     if inner.len() > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "ALPN 列表", len: inner.len() });
+        return Err(SpecError::TooLong {
+            what: "ALPN 列表",
+            len: inner.len(),
+        });
     }
     let mut b = Vec::with_capacity(2 + inner.len());
     b.extend_from_slice(&(inner.len() as u16).to_be_bytes());
@@ -706,7 +767,10 @@ fn alpn_body(protocols: &[Vec<u8>]) -> Result<Vec<u8>, SpecError> {
 fn compress_certificate_body(algos: &[u16]) -> Result<Vec<u8>, SpecError> {
     let n = 2 * algos.len();
     if n > u8::MAX as usize {
-        return Err(SpecError::TooLong { what: "compress_certificate 算法表", len: n });
+        return Err(SpecError::TooLong {
+            what: "compress_certificate 算法表",
+            len: n,
+        });
     }
     let mut b = Vec::with_capacity(1 + n);
     b.push(n as u8);
@@ -719,7 +783,10 @@ fn compress_certificate_body(algos: &[u16]) -> Result<Vec<u8>, SpecError> {
 fn u16_list_body(vals: &[u16]) -> Result<Vec<u8>, SpecError> {
     let n = vals.len() * 2;
     if n > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "u16 列表", len: n });
+        return Err(SpecError::TooLong {
+            what: "u16 列表",
+            len: n,
+        });
     }
     let mut b = Vec::with_capacity(2 + n);
     b.extend_from_slice(&(n as u16).to_be_bytes());
@@ -733,7 +800,10 @@ fn u16_list_body(vals: &[u16]) -> Result<Vec<u8>, SpecError> {
 fn supported_versions_body(vals: &[u16]) -> Result<Vec<u8>, SpecError> {
     let n = vals.len() * 2;
     if n > u8::MAX as usize {
-        return Err(SpecError::TooLong { what: "supported_versions 列表", len: n });
+        return Err(SpecError::TooLong {
+            what: "supported_versions 列表",
+            len: n,
+        });
     }
     let mut b = Vec::with_capacity(1 + n);
     b.push(n as u8);
@@ -747,14 +817,20 @@ fn key_share_body(entries: &[(u16, Vec<u8>)]) -> Result<Vec<u8>, SpecError> {
     let mut inner: Vec<u8> = Vec::new();
     for (g, k) in entries {
         if k.len() > u16::MAX as usize {
-            return Err(SpecError::TooLong { what: "key_share 条目", len: k.len() });
+            return Err(SpecError::TooLong {
+                what: "key_share 条目",
+                len: k.len(),
+            });
         }
         inner.extend_from_slice(&g.to_be_bytes());
         inner.extend_from_slice(&(k.len() as u16).to_be_bytes());
         inner.extend_from_slice(k);
     }
     if inner.len() > u16::MAX as usize {
-        return Err(SpecError::TooLong { what: "key_share 列表", len: inner.len() });
+        return Err(SpecError::TooLong {
+            what: "key_share 列表",
+            len: inner.len(),
+        });
     }
     let mut b = Vec::with_capacity(2 + inner.len());
     b.extend_from_slice(&(inner.len() as u16).to_be_bytes());

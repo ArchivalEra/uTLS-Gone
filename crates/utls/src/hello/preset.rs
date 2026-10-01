@@ -42,7 +42,9 @@
 
 use super::preset_data as pd;
 use super::spec::{
-    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials, EcPointFormats, Extension, GreaseEchOptions, RenegotiationInfo, SessionId, SessionTicket, SpecError, Variability,
+    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials,
+    EcPointFormats, Extension, GreaseEchOptions, RenegotiationInfo, SessionId, SessionTicket,
+    SpecError, Variability,
 };
 use crate::values as v;
 
@@ -299,7 +301,9 @@ fn chrome_133() -> ClientHelloSpec {
             // &ExtendedMasterSecretExtension{} —— 体为空
             Extension::ExtendedMasterSecret,
             // &RenegotiationInfoExtension{RenegotiateOnceAsClient} —— 体是「长度为 0 的连接串」
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             // &SupportedCurvesExtension{[]CurveID{GREASE, X25519MLKEM768, X25519, P256, P384}}
             Extension::SupportedGroups(vec![
                 CodePoint::Grease,
@@ -309,7 +313,9 @@ fn chrome_133() -> ClientHelloSpec {
                 v::CURVE_P384.into(),
             ]),
             // &SupportedPointsExtension{[]byte{0}} —— 体是「长度 1 + pointFormatUncompressed」
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             // &SessionTicketExtension{} —— 无 ticket，体为空
             Extension::SessionTicket(SessionTicket { ticket: Vec::new() }),
             // &ALPNExtension{"h2","http/1.1"}
@@ -336,7 +342,9 @@ fn chrome_133() -> ClientHelloSpec {
                 v::X25519.into(),
             ]),
             // &PSKKeyExchangeModesExtension{psk_dhe_ke}
-            Extension::PskKeyExchangeModes { modes: vec![v::PSK_MODE_DHE] },
+            Extension::PskKeyExchangeModes {
+                modes: vec![v::PSK_MODE_DHE],
+            },
             // &SupportedVersionsExtension{GREASE, TLS1.3, TLS1.2}
             Extension::SupportedVersions(vec![
                 CodePoint::Grease,
@@ -344,9 +352,13 @@ fn chrome_133() -> ClientHelloSpec {
                 v::VERSION_TLS12.into(),
             ]),
             // &UtlsCompressCertExtension{brotli}
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![v::CERT_COMPRESSION_BROTLI] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![v::CERT_COMPRESSION_BROTLI],
+            }),
             // &ApplicationSettingsExtensionNew{"h2"}（ALPS，码点 17613）
-            Extension::ApplicationSettingsNew(ApplicationSettingsAlps { protocols: vec![b"h2".to_vec()] }),
+            Extension::ApplicationSettingsNew(ApplicationSettingsAlps {
+                protocols: vec![b"h2".to_vec()],
+            }),
             // BoringGREASEECH()
             Extension::GreaseEch(GreaseEchOptions::chrome()),
             // &UtlsGREASEExtension{}
@@ -400,7 +412,9 @@ fn firefox_148() -> ClientHelloSpec {
         extensions: vec![
             Extension::ServerName,
             Extension::ExtendedMasterSecret,
-            Extension::RenegotiationInfo(RenegotiationInfo { renegotiated_connection: Vec::new() }),
+            Extension::RenegotiationInfo(RenegotiationInfo {
+                renegotiated_connection: Vec::new(),
+            }),
             Extension::SupportedGroups(vec![
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
@@ -410,11 +424,20 @@ fn firefox_148() -> ClientHelloSpec {
                 v::FFDHE2048.into(),
                 v::FFDHE3072.into(),
             ]),
-            Extension::EcPointFormats(EcPointFormats { formats: vec![v::POINT_FORMAT_UNCOMPRESSED] }),
+            Extension::EcPointFormats(EcPointFormats {
+                formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
+            }),
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
             // &FakeDelegatedCredentialsExtension{4 个签名算法}
-            Extension::DelegatedCredentials(DelegatedCredentials { schemes: vec![v::ECDSA_WITH_P256_AND_SHA256, v::ECDSA_WITH_P384_AND_SHA384, v::ECDSA_WITH_P521_AND_SHA512, v::ECDSA_WITH_SHA1,] }),
+            Extension::DelegatedCredentials(DelegatedCredentials {
+                schemes: vec![
+                    v::ECDSA_WITH_P256_AND_SHA256,
+                    v::ECDSA_WITH_P384_AND_SHA384,
+                    v::ECDSA_WITH_P521_AND_SHA512,
+                    v::ECDSA_WITH_SHA1,
+                ],
+            }),
             Extension::SignedCertificateTimestamp,
             Extension::KeyShare(vec![
                 v::X25519_MLKEM768.into(),
@@ -422,10 +445,7 @@ fn firefox_148() -> ClientHelloSpec {
                 v::CURVE_P256.into(),
             ]),
             // Firefox **不**在版本列表里放 GREASE。
-            Extension::SupportedVersions(vec![
-                v::VERSION_TLS13.into(),
-                v::VERSION_TLS12.into(),
-            ]),
+            Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
                 v::ECDSA_WITH_P256_AND_SHA256.into(),
                 v::ECDSA_WITH_P384_AND_SHA384.into(),
@@ -442,7 +462,13 @@ fn firefox_148() -> ClientHelloSpec {
             // &FakeRecordSizeLimitExtension{Limit: 0x4001} —— 只广播，不受支持。
             Extension::RecordSizeLimit { limit: 0x4001 },
             // &UtlsCompressCertExtension{zlib, brotli, zstd}
-            Extension::CompressCertificate(CompressCertificate { algorithms: vec![ v::CERT_COMPRESSION_ZLIB, v::CERT_COMPRESSION_BROTLI, v::CERT_COMPRESSION_ZSTD, ] }),
+            Extension::CompressCertificate(CompressCertificate {
+                algorithms: vec![
+                    v::CERT_COMPRESSION_ZLIB,
+                    v::CERT_COMPRESSION_BROTLI,
+                    v::CERT_COMPRESSION_ZSTD,
+                ],
+            }),
             // GREASEEncryptedClientHelloExtension：2 个候选套件、**单一**载荷长度。
             // 与 Chrome 的 4 个候选长度相比，这一条决定了 Firefox 的总长是恒定的。
             Extension::GreaseEch(GreaseEchOptions::firefox()),
@@ -452,9 +478,6 @@ fn firefox_148() -> ClientHelloSpec {
     }
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,29 +486,28 @@ mod tests {
     fn chrome_133_has_the_expected_extension_types() {
         // 打乱之前的规范顺序（对照 uTLS `u_parrots.go` 的 HelloChrome_133）。
         let spec = chrome_133();
-        let types: Vec<Option<u16>> =
-            spec.extensions.iter().map(|e| e.wire_type()).collect();
+        let types: Vec<Option<u16>> = spec.extensions.iter().map(|e| e.wire_type()).collect();
         assert_eq!(
             types,
             vec![
-                None,                                // GREASE（类型每连接才定）
-                Some(v::EXT_SERVER_NAME),            // 0
-                Some(v::EXT_EXTENDED_MASTER_SECRET), // 23
-                Some(v::EXT_RENEGOTIATION_INFO),     // 0xff01
-                Some(v::EXT_SUPPORTED_GROUPS),       // 10
-                Some(v::EXT_EC_POINT_FORMATS),       // 11
-                Some(v::EXT_SESSION_TICKET),         // 35
-                Some(v::EXT_ALPN),                   // 16
-                Some(v::EXT_STATUS_REQUEST),         // 5
-                Some(v::EXT_SIGNATURE_ALGORITHMS),   // 13
-                Some(v::EXT_SCT),                    // 18
-                Some(v::EXT_KEY_SHARE),              // 51
-                Some(v::EXT_PSK_KEY_EXCHANGE_MODES), // 45
-                Some(v::EXT_SUPPORTED_VERSIONS),     // 43
-                Some(v::EXT_COMPRESS_CERTIFICATE),   // 27
+                None,                                  // GREASE（类型每连接才定）
+                Some(v::EXT_SERVER_NAME),              // 0
+                Some(v::EXT_EXTENDED_MASTER_SECRET),   // 23
+                Some(v::EXT_RENEGOTIATION_INFO),       // 0xff01
+                Some(v::EXT_SUPPORTED_GROUPS),         // 10
+                Some(v::EXT_EC_POINT_FORMATS),         // 11
+                Some(v::EXT_SESSION_TICKET),           // 35
+                Some(v::EXT_ALPN),                     // 16
+                Some(v::EXT_STATUS_REQUEST),           // 5
+                Some(v::EXT_SIGNATURE_ALGORITHMS),     // 13
+                Some(v::EXT_SCT),                      // 18
+                Some(v::EXT_KEY_SHARE),                // 51
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),   // 45
+                Some(v::EXT_SUPPORTED_VERSIONS),       // 43
+                Some(v::EXT_COMPRESS_CERTIFICATE),     // 27
                 Some(v::EXT_APPLICATION_SETTINGS_NEW), // 17613
-                Some(v::EXT_ENCRYPTED_CLIENT_HELLO), // 0xfe0d（GREASE ECH）
-                None,                                // GREASE
+                Some(v::EXT_ENCRYPTED_CLIENT_HELLO),   // 0xfe0d（GREASE ECH）
+                None,                                  // GREASE
             ]
         );
     }
@@ -495,8 +517,14 @@ mod tests {
         let spec = chrome_133();
         assert_eq!(spec.cipher_suites.len(), 16);
         assert_eq!(spec.cipher_suites[0], CodePoint::Grease);
-        assert_eq!(spec.cipher_suites[1], CodePoint::Fixed(v::TLS_AES_128_GCM_SHA256));
-        assert_eq!(spec.cipher_suites[15], CodePoint::Fixed(v::TLS_RSA_WITH_AES_256_CBC_SHA));
+        assert_eq!(
+            spec.cipher_suites[1],
+            CodePoint::Fixed(v::TLS_AES_128_GCM_SHA256)
+        );
+        assert_eq!(
+            spec.cipher_suites[15],
+            CodePoint::Fixed(v::TLS_RSA_WITH_AES_256_CBC_SHA)
+        );
     }
 
     #[test]
@@ -574,21 +602,32 @@ mod tests {
         let mut want106: Vec<Option<u16>> = p106.extensions.iter().map(|e| e.wire_type()).collect();
         want106.push(Some(v::EXT_PRE_SHARED_KEY));
         assert_eq!(t114, want106, "chrome_114_psk 应当是 106 加一条末尾 PSK");
-        let pad = t114.iter().position(|t| *t == Some(v::EXT_PADDING)).unwrap();
+        let pad = t114
+            .iter()
+            .position(|t| *t == Some(v::EXT_PADDING))
+            .unwrap();
         assert_eq!(
             t114.len() - 1,
-            t114.iter().rposition(|t| *t == Some(v::EXT_PRE_SHARED_KEY)).unwrap(),
+            t114.iter()
+                .rposition(|t| *t == Some(v::EXT_PRE_SHARED_KEY))
+                .unwrap(),
             "PSK 必须在最后"
         );
         assert!(pad < t114.len() - 1, "填充必须在 PSK 之前");
 
         // 115_PQ：与 chrome_115_pq 相同（无填充），末尾加 PSK。
         let p115 = pd::chrome_psk_pq();
-        let mut want115: Vec<Option<u16>> =
-            pd::chrome_115_pq().extensions.iter().map(|e| e.wire_type()).collect();
+        let mut want115: Vec<Option<u16>> = pd::chrome_115_pq()
+            .extensions
+            .iter()
+            .map(|e| e.wire_type())
+            .collect();
         want115.push(Some(v::EXT_PRE_SHARED_KEY));
         assert_eq!(
-            p115.extensions.iter().map(|e| e.wire_type()).collect::<Vec<_>>(),
+            p115.extensions
+                .iter()
+                .map(|e| e.wire_type())
+                .collect::<Vec<_>>(),
             want115
         );
     }
@@ -597,10 +636,18 @@ mod tests {
     fn psk_variants_have_the_right_variability() {
         // 实测（参照产出）：100_PSK 的 `ja3_stable=true`（Stable），112/114/115 都是 Shuffled。
         let stable = spec_of(ClientHelloId::ChromePsk(100)).unwrap();
-        assert_eq!(stable.variability, Variability::Stable, "HelloChrome_100_PSK 没有包乱序");
+        assert_eq!(
+            stable.variability,
+            Variability::Stable,
+            "HelloChrome_100_PSK 没有包乱序"
+        );
         for v in [112u16, 114, 115] {
             let s = spec_of(ClientHelloId::ChromePsk(v)).unwrap();
-            assert_eq!(s.variability, Variability::Shuffled, "chrome_{v}_psk 该是乱序的");
+            assert_eq!(
+                s.variability,
+                Variability::Shuffled,
+                "chrome_{v}_psk 该是乱序的"
+            );
         }
     }
 
@@ -610,7 +657,9 @@ mod tests {
         let mut spec = pd::chrome_psk_stable();
         let psk = spec.extensions.pop().unwrap();
         spec.extensions.insert(0, psk);
-        let err = spec.marshal(&crate::hello::HandshakeInputs::deterministic([0; 32])).unwrap_err();
+        let err = spec
+            .marshal(&crate::hello::HandshakeInputs::deterministic([0; 32]))
+            .unwrap_err();
         assert!(
             matches!(err, SpecError::PreSharedKeyNotLast { index: 0, .. }),
             "PSK 挪到最前面该报位置错，实际是 {err:?}"
@@ -622,7 +671,10 @@ mod tests {
         // 未实现的**具体版本**（uTLS 里没有这些版本串）与引擎侧的两个：
         // `Golang` 在 Rust 侧对应「用 rustls 自己的 ClientHello」，本 crate 产不出来。
         let e = spec_of(ClientHelloId::Chrome(999)).unwrap_err();
-        assert!(matches!(e, SpecError::PresetUnavailable(ClientHelloId::Chrome(999))));
+        assert!(matches!(
+            e,
+            SpecError::PresetUnavailable(ClientHelloId::Chrome(999))
+        ));
         assert!(matches!(
             spec_of(ClientHelloId::Ios(14)).unwrap_err(),
             SpecError::PresetUnavailable(ClientHelloId::Ios(14))
@@ -640,10 +692,17 @@ mod tests {
         // 只有正向断言的话，往清单里加一个「声明了但没实现」的名字不会被发现 ——
         // 而那正是这份清单存在的理由。
         for id in ClientHelloId::implemented() {
-            assert!(spec_of(*id).is_ok(), "implemented() 声明了 {id}，但 spec_of 产不出来");
+            assert!(
+                spec_of(*id).is_ok(),
+                "implemented() 声明了 {id}，但 spec_of 产不出来"
+            );
         }
         // 清单里**没有**的相邻版本必须报错（不许静默降级）。
-        for id in [ClientHelloId::Chrome(999), ClientHelloId::Firefox(999), ClientHelloId::Ios(14)] {
+        for id in [
+            ClientHelloId::Chrome(999),
+            ClientHelloId::Firefox(999),
+            ClientHelloId::Ios(14),
+        ] {
             assert!(!ClientHelloId::implemented().contains(&id));
             assert!(spec_of(id).is_err(), "{id} 不在清单里，却产出了 spec");
         }
@@ -658,7 +717,10 @@ mod tests {
     fn preset_names_are_unique_and_stable() {
         // 台账键名是事实系统的键：两个预设撞名 ⇒ 后一个覆盖前一个，
         // 而覆盖后的台账看起来完全正常。`ChromePq` 这个变体就是为它加的。
-        let mut names: Vec<String> = ClientHelloId::implemented().iter().map(|i| i.name()).collect();
+        let mut names: Vec<String> = ClientHelloId::implemented()
+            .iter()
+            .map(|i| i.name())
+            .collect();
         let before = names.len();
         names.sort();
         names.dedup();
@@ -675,8 +737,8 @@ mod tests {
     // 而扩展类型序列是本地能证伪的那一半（另一半是与 Go 的逐字节对照，
     // 只能在真实环境里做，见 AGENTS.md 第二条）。
 
-    use crate::hello::preset_data as pd;
     use crate::hello::Padding;
+    use crate::hello::preset_data as pd;
     /// 打乱**之前**的规范扩展类型序列。`None` = GREASE（类型每连接才定）。
     fn types(spec: &ClientHelloSpec) -> Vec<Option<u16>> {
         spec.extensions.iter().map(|e| e.wire_type()).collect()
@@ -693,71 +755,80 @@ mod tests {
     #[test]
     fn chrome_58_62_has_the_expected_extension_types() {
         // u_parrots.go:66-92。末尾的 padding 在该预置下永不发出（见 preset_data 的函数头）。
-        assert_ext_types!(pd::chrome_58_62(), [
-            None,                                  // :67  GREASE
-            Some(v::EXT_RENEGOTIATION_INFO),       // :68
-            Some(v::EXT_SERVER_NAME),              // :69
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :70
-            Some(v::EXT_SESSION_TICKET),           // :71
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :72
-            Some(v::EXT_STATUS_REQUEST),           // :83
-            Some(v::EXT_SCT),                      // :84
-            Some(v::EXT_ALPN),                     // :85
-            Some(v::EXT_CHANNEL_ID),               // :86  新码点 30032
-            Some(v::EXT_EC_POINT_FORMATS),         // :87
-            Some(v::EXT_SUPPORTED_GROUPS),         // :88
-            None,                                  // :90  GREASE
-                    Some(v::EXT_PADDING),                  // Go 的 case 末尾列了 BoringPaddingStyle
-]);
+        assert_ext_types!(
+            pd::chrome_58_62(),
+            [
+                None,                                // :67  GREASE
+                Some(v::EXT_RENEGOTIATION_INFO),     // :68
+                Some(v::EXT_SERVER_NAME),            // :69
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :70
+                Some(v::EXT_SESSION_TICKET),         // :71
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :72
+                Some(v::EXT_STATUS_REQUEST),         // :83
+                Some(v::EXT_SCT),                    // :84
+                Some(v::EXT_ALPN),                   // :85
+                Some(v::EXT_CHANNEL_ID),             // :86  新码点 30032
+                Some(v::EXT_EC_POINT_FORMATS),       // :87
+                Some(v::EXT_SUPPORTED_GROUPS),       // :88
+                None,                                // :90  GREASE
+                Some(v::EXT_PADDING),                // Go 的 case 末尾列了 BoringPaddingStyle
+            ]
+        );
     }
 
     #[test]
     fn chrome_70_has_the_expected_extension_types() {
         // u_parrots.go:121-165
-        assert_ext_types!(pd::chrome_70(), [
-            None,                                  // :122 GREASE
-            Some(v::EXT_RENEGOTIATION_INFO),       // :123
-            Some(v::EXT_SERVER_NAME),              // :124
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :125
-            Some(v::EXT_SESSION_TICKET),           // :126
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :127
-            Some(v::EXT_STATUS_REQUEST),           // :138
-            Some(v::EXT_SCT),                      // :139
-            Some(v::EXT_ALPN),                     // :140
-            Some(v::EXT_CHANNEL_ID),               // :141
-            Some(v::EXT_EC_POINT_FORMATS),         // :142
-            Some(v::EXT_KEY_SHARE),                // :145
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),   // :149
-            Some(v::EXT_SUPPORTED_VERSIONS),       // :150
-            Some(v::EXT_SUPPORTED_GROUPS),         // :156
-            Some(v::EXT_COMPRESS_CERTIFICATE),     // :162
-            None,                                  // :163 GREASE
-            Some(v::EXT_PADDING),                  // :164
-        ]);
+        assert_ext_types!(
+            pd::chrome_70(),
+            [
+                None,                                // :122 GREASE
+                Some(v::EXT_RENEGOTIATION_INFO),     // :123
+                Some(v::EXT_SERVER_NAME),            // :124
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :125
+                Some(v::EXT_SESSION_TICKET),         // :126
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :127
+                Some(v::EXT_STATUS_REQUEST),         // :138
+                Some(v::EXT_SCT),                    // :139
+                Some(v::EXT_ALPN),                   // :140
+                Some(v::EXT_CHANNEL_ID),             // :141
+                Some(v::EXT_EC_POINT_FORMATS),       // :142
+                Some(v::EXT_KEY_SHARE),              // :145
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES), // :149
+                Some(v::EXT_SUPPORTED_VERSIONS),     // :150
+                Some(v::EXT_SUPPORTED_GROUPS),       // :156
+                Some(v::EXT_COMPRESS_CERTIFICATE),   // :162
+                None,                                // :163 GREASE
+                Some(v::EXT_PADDING),                // :164
+            ]
+        );
     }
 
     #[test]
     fn chrome_72_has_the_expected_extension_types() {
         // u_parrots.go:191-239 —— 与 Chrome 70 是同一堆扩展的**另一个顺序**
-        assert_ext_types!(pd::chrome_72(), [
-            None,                                  // :192 GREASE
-            Some(v::EXT_SERVER_NAME),              // :193
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :194
-            Some(v::EXT_RENEGOTIATION_INFO),       // :195
-            Some(v::EXT_SUPPORTED_GROUPS),         // :196
-            Some(v::EXT_EC_POINT_FORMATS),         // :202
-            Some(v::EXT_SESSION_TICKET),           // :205
-            Some(v::EXT_ALPN),                     // :206
-            Some(v::EXT_STATUS_REQUEST),           // :207
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :208
-            Some(v::EXT_SCT),                      // :219
-            Some(v::EXT_KEY_SHARE),                // :220
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),   // :224
-            Some(v::EXT_SUPPORTED_VERSIONS),       // :227
-            Some(v::EXT_COMPRESS_CERTIFICATE),     // :234
-            None,                                  // :237 GREASE
-            Some(v::EXT_PADDING),                  // :238
-        ]);
+        assert_ext_types!(
+            pd::chrome_72(),
+            [
+                None,                                // :192 GREASE
+                Some(v::EXT_SERVER_NAME),            // :193
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :194
+                Some(v::EXT_RENEGOTIATION_INFO),     // :195
+                Some(v::EXT_SUPPORTED_GROUPS),       // :196
+                Some(v::EXT_EC_POINT_FORMATS),       // :202
+                Some(v::EXT_SESSION_TICKET),         // :205
+                Some(v::EXT_ALPN),                   // :206
+                Some(v::EXT_STATUS_REQUEST),         // :207
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :208
+                Some(v::EXT_SCT),                    // :219
+                Some(v::EXT_KEY_SHARE),              // :220
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES), // :224
+                Some(v::EXT_SUPPORTED_VERSIONS),     // :227
+                Some(v::EXT_COMPRESS_CERTIFICATE),   // :234
+                None,                                // :237 GREASE
+                Some(v::EXT_PADDING),                // :238
+            ]
+        );
     }
 
     #[test]
@@ -813,7 +884,11 @@ mod tests {
         ];
         assert_eq!(types(&pd::chrome_96()), expected, "chrome_96");
         assert_eq!(types(&pd::chrome_100_102()), expected, "chrome_100_102");
-        assert_eq!(types(&pd::chrome_106_shuffle()), expected, "chrome_106_shuffle");
+        assert_eq!(
+            types(&pd::chrome_106_shuffle()),
+            expected,
+            "chrome_106_shuffle"
+        );
 
         // 96 报 GREASE+1.3/1.2/1.1/1.0；100/102/106 缩到 GREASE+1.3/1.2。
         let versions = |spec: &ClientHelloSpec| -> Option<Vec<CodePoint>> {
@@ -834,26 +909,29 @@ mod tests {
     #[test]
     fn chrome_115_pq_has_the_expected_extension_types() {
         // u_parrots.go:624-672。注意**没有 padding**（Kyber 公钥 1216 字节 ⇒ 超出 0x200）。
-        assert_ext_types!(pd::chrome_115_pq(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            Some(v::EXT_APPLICATION_SETTINGS),
-            None,
-                    Some(v::EXT_PADDING),                  // Go 的 case 末尾列了 BoringPaddingStyle
-]);
+        assert_ext_types!(
+            pd::chrome_115_pq(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                Some(v::EXT_APPLICATION_SETTINGS),
+                None,
+                Some(v::EXT_PADDING), // Go 的 case 末尾列了 BoringPaddingStyle
+            ]
+        );
     }
 
     #[test]
@@ -878,7 +956,7 @@ mod tests {
             Some(v::EXT_APPLICATION_SETTINGS),
             Some(v::EXT_ENCRYPTED_CLIENT_HELLO),
             None,
-            Some(v::EXT_PADDING),                  // BoringPaddingStyle，条件由模型判断
+            Some(v::EXT_PADDING), // BoringPaddingStyle，条件由模型判断
         ];
         // ⚠️ 两个 case **不是**只差 GREASE-ECH：`chrome_120` 的 case 末尾列了
         // `UtlsPaddingExtension`（:744），而 `chrome_120_PQ` 的 case（:771-819）
@@ -897,26 +975,29 @@ mod tests {
         // `diff` 两个 case 体只差这一行 —— 这条测试就是那个 diff 的可编译版本。
         let c131 = pd::chrome_131();
         let c133 = chrome_133();
-        assert_ext_types!(c131, [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            Some(v::EXT_APPLICATION_SETTINGS), // :889 旧码点！
-            Some(v::EXT_ENCRYPTED_CLIENT_HELLO),
-            None,
-        ]);
+        assert_ext_types!(
+            c131,
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                Some(v::EXT_APPLICATION_SETTINGS), // :889 旧码点！
+                Some(v::EXT_ENCRYPTED_CLIENT_HELLO),
+                None,
+            ]
+        );
         assert_eq!(
             c133.extensions[15].wire_type(),
             Some(v::EXT_APPLICATION_SETTINGS_NEW),
@@ -932,39 +1013,45 @@ mod tests {
     #[test]
     fn firefox_55_56_has_the_expected_extension_types() {
         // u_parrots.go:989-1012。末尾 padding 在该预置下永不发出（见 preset_data 的函数头）。
-        assert_ext_types!(pd::firefox_55_56(), [
-            Some(v::EXT_SERVER_NAME),              // :990
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :991
-            Some(v::EXT_RENEGOTIATION_INFO),       // :992
-            Some(v::EXT_SUPPORTED_GROUPS),         // :993
-            Some(v::EXT_EC_POINT_FORMATS),         // :994
-            Some(v::EXT_SESSION_TICKET),           // :995
-            Some(v::EXT_ALPN),                     // :996
-            Some(v::EXT_STATUS_REQUEST),           // :997
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :998
-                    Some(v::EXT_PADDING),                  // Go 的 case 末尾列了 BoringPaddingStyle
-]);
+        assert_ext_types!(
+            pd::firefox_55_56(),
+            [
+                Some(v::EXT_SERVER_NAME),            // :990
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :991
+                Some(v::EXT_RENEGOTIATION_INFO),     // :992
+                Some(v::EXT_SUPPORTED_GROUPS),       // :993
+                Some(v::EXT_EC_POINT_FORMATS),       // :994
+                Some(v::EXT_SESSION_TICKET),         // :995
+                Some(v::EXT_ALPN),                   // :996
+                Some(v::EXT_STATUS_REQUEST),         // :997
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :998
+                Some(v::EXT_PADDING),                // Go 的 case 末尾列了 BoringPaddingStyle
+            ]
+        );
     }
 
     #[test]
     fn firefox_63_65_has_the_expected_extension_types() {
         // u_parrots.go:1042-1084 —— key_share 在 signature_algorithms **之前**
-        assert_ext_types!(pd::firefox_63_65(), [
-            Some(v::EXT_SERVER_NAME),              // :1043
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :1044
-            Some(v::EXT_RENEGOTIATION_INFO),       // :1045
-            Some(v::EXT_SUPPORTED_GROUPS),         // :1046
-            Some(v::EXT_EC_POINT_FORMATS),         // :1054
-            Some(v::EXT_SESSION_TICKET),           // :1057
-            Some(v::EXT_ALPN),                     // :1058
-            Some(v::EXT_STATUS_REQUEST),           // :1059
-            Some(v::EXT_KEY_SHARE),                // :1060
-            Some(v::EXT_SUPPORTED_VERSIONS),       // :1064
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :1069
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),   // :1082
-            Some(v::EXT_RECORD_SIZE_LIMIT),        // :1083
-            Some(v::EXT_PADDING),                  // :1084
-        ]);
+        assert_ext_types!(
+            pd::firefox_63_65(),
+            [
+                Some(v::EXT_SERVER_NAME),            // :1043
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :1044
+                Some(v::EXT_RENEGOTIATION_INFO),     // :1045
+                Some(v::EXT_SUPPORTED_GROUPS),       // :1046
+                Some(v::EXT_EC_POINT_FORMATS),       // :1054
+                Some(v::EXT_SESSION_TICKET),         // :1057
+                Some(v::EXT_ALPN),                   // :1058
+                Some(v::EXT_STATUS_REQUEST),         // :1059
+                Some(v::EXT_KEY_SHARE),              // :1060
+                Some(v::EXT_SUPPORTED_VERSIONS),     // :1064
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :1069
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES), // :1082
+                Some(v::EXT_RECORD_SIZE_LIMIT),      // :1083
+                Some(v::EXT_PADDING),                // :1084
+            ]
+        );
     }
 
     #[test]
@@ -1008,23 +1095,26 @@ mod tests {
     #[test]
     fn firefox_120_has_the_expected_extension_types() {
         // u_parrots.go:1380-1467 —— 末尾是 GREASE ECH，**没有 padding**
-        assert_ext_types!(pd::firefox_120(), [
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_DELEGATED_CREDENTIALS),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_RECORD_SIZE_LIMIT),
-            Some(v::EXT_ENCRYPTED_CLIENT_HELLO), // :1454
-        ]);
+        assert_ext_types!(
+            pd::firefox_120(),
+            [
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_DELEGATED_CREDENTIALS),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_RECORD_SIZE_LIMIT),
+                Some(v::EXT_ENCRYPTED_CLIENT_HELLO), // :1454
+            ]
+        );
     }
 
     #[test]
@@ -1051,200 +1141,233 @@ mod tests {
     #[test]
     fn ios_13_has_the_expected_extension_types() {
         // u_parrots.go:1746-1788 —— supported_groups 排在 supported_versions **之后**
-        assert_ext_types!(pd::ios_13(), [
-            Some(v::EXT_RENEGOTIATION_INFO),       // :1747
-            Some(v::EXT_SERVER_NAME),              // :1748
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :1749
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :1750
-            Some(v::EXT_STATUS_REQUEST),           // :1763
-            Some(v::EXT_SCT),                      // :1764
-            Some(v::EXT_ALPN),                     // :1765
-            Some(v::EXT_EC_POINT_FORMATS),         // :1766
-            Some(v::EXT_KEY_SHARE),                // :1769
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),   // :1772
-            Some(v::EXT_SUPPORTED_VERSIONS),       // :1775
-            Some(v::EXT_SUPPORTED_GROUPS),         // :1781
-            Some(v::EXT_PADDING),                  // :1787
-        ]);
+        assert_ext_types!(
+            pd::ios_13(),
+            [
+                Some(v::EXT_RENEGOTIATION_INFO),     // :1747
+                Some(v::EXT_SERVER_NAME),            // :1748
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :1749
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :1750
+                Some(v::EXT_STATUS_REQUEST),         // :1763
+                Some(v::EXT_SCT),                    // :1764
+                Some(v::EXT_ALPN),                   // :1765
+                Some(v::EXT_EC_POINT_FORMATS),       // :1766
+                Some(v::EXT_KEY_SHARE),              // :1769
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES), // :1772
+                Some(v::EXT_SUPPORTED_VERSIONS),     // :1775
+                Some(v::EXT_SUPPORTED_GROUPS),       // :1781
+                Some(v::EXT_PADDING),                // :1787
+            ]
+        );
     }
 
     #[test]
     fn android_11_okhttp_has_the_expected_extension_types() {
         // u_parrots.go:1894-1919 —— 7 条，**没有 ALPN / SCT / supported_versions / GREASE**
-        assert_ext_types!(pd::android_11_okhttp(), [
-            Some(v::EXT_SERVER_NAME),              // :1895
-            Some(v::EXT_EXTENDED_MASTER_SECRET),   // :1896
-            Some(v::EXT_RENEGOTIATION_INFO),       // :1897
-            Some(v::EXT_SUPPORTED_GROUPS),         // :1899
-            Some(v::EXT_EC_POINT_FORMATS),         // :1904
-            Some(v::EXT_STATUS_REQUEST),           // :1907
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :1908
-        ]);
+        assert_ext_types!(
+            pd::android_11_okhttp(),
+            [
+                Some(v::EXT_SERVER_NAME),            // :1895
+                Some(v::EXT_EXTENDED_MASTER_SECRET), // :1896
+                Some(v::EXT_RENEGOTIATION_INFO),     // :1897
+                Some(v::EXT_SUPPORTED_GROUPS),       // :1899
+                Some(v::EXT_EC_POINT_FORMATS),       // :1904
+                Some(v::EXT_STATUS_REQUEST),         // :1907
+                Some(v::EXT_SIGNATURE_ALGORITHMS),   // :1908
+            ]
+        );
     }
 
     #[test]
     fn edge_85_has_the_expected_extension_types() {
         // u_parrots.go:1944-2021 —— 与 Chrome 96 只差 supported_versions 的内容与没有 ALPS
-        assert_ext_types!(pd::edge_85(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            None,
-            Some(v::EXT_PADDING),
-        ]);
+        assert_ext_types!(
+            pd::edge_85(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                None,
+                Some(v::EXT_PADDING),
+            ]
+        );
     }
 
     #[test]
     fn edge_106_has_the_expected_extension_types() {
         // u_parrots.go:2048-2128 —— 与 Chrome 100/102 逐条相同
-        assert_ext_types!(pd::edge_106(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            Some(v::EXT_APPLICATION_SETTINGS),
-            None,
-            Some(v::EXT_PADDING),
-        ]);
+        assert_ext_types!(
+            pd::edge_106(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                Some(v::EXT_APPLICATION_SETTINGS),
+                None,
+                Some(v::EXT_PADDING),
+            ]
+        );
     }
 
     #[test]
     fn safari_16_0_has_the_expected_extension_types() {
         // u_parrots.go:2160-2240 —— **没有 session_ticket**，padding 在最后
-        assert_ext_types!(pd::safari_16_0(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            None,
-            Some(v::EXT_PADDING),
-        ]);
+        assert_ext_types!(
+            pd::safari_16_0(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                None,
+                Some(v::EXT_PADDING),
+            ]
+        );
     }
 
     #[test]
     fn safari_26_3_has_the_expected_extension_types() {
         // u_parrots.go:2272-2350 —— 末尾是 compress_certificate + GREASE，**没有 padding**
-        assert_ext_types!(pd::safari_26_3(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            None,
-        ]);
+        assert_ext_types!(
+            pd::safari_26_3(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                None,
+            ]
+        );
         // Safari 26.3 的两个独有记号：1.3 套件里 AES-256 在 AES-128 **之前**，
         // 且 compress_certificate 只报 zlib。
-        assert_eq!(pd::safari_26_3().cipher_suites[1], CodePoint::Fixed(v::TLS_AES_256_GCM_SHA384));
-        assert_eq!(pd::safari_16_0().cipher_suites[1], CodePoint::Fixed(v::TLS_AES_128_GCM_SHA256));
+        assert_eq!(
+            pd::safari_26_3().cipher_suites[1],
+            CodePoint::Fixed(v::TLS_AES_256_GCM_SHA384)
+        );
+        assert_eq!(
+            pd::safari_16_0().cipher_suites[1],
+            CodePoint::Fixed(v::TLS_AES_128_GCM_SHA256)
+        );
     }
 
     #[test]
     fn browser360_7_5_has_the_expected_extension_types() {
         // u_parrots.go:2379-2422 —— 无 GREASE、无 padding、老码点 channel_id
-        assert_ext_types!(pd::browser360_7_5(), [
-            Some(v::EXT_SERVER_NAME),              // :2380
-            Some(v::EXT_RENEGOTIATION_INFO),       // :2381
-            Some(v::EXT_SUPPORTED_GROUPS),         // :2384
-            Some(v::EXT_EC_POINT_FORMATS),         // :2391
-            Some(v::EXT_SESSION_TICKET),           // :2396
-            Some(v::EXT_NPN),                      // :2397
-            Some(v::EXT_ALPN),                     // :2398
-            Some(v::EXT_CHANNEL_ID_OLD),           // :2406 码点 30031
-            Some(v::EXT_STATUS_REQUEST),           // :2409
-            Some(v::EXT_SIGNATURE_ALGORITHMS),     // :2410
-        ]);
+        assert_ext_types!(
+            pd::browser360_7_5(),
+            [
+                Some(v::EXT_SERVER_NAME),          // :2380
+                Some(v::EXT_RENEGOTIATION_INFO),   // :2381
+                Some(v::EXT_SUPPORTED_GROUPS),     // :2384
+                Some(v::EXT_EC_POINT_FORMATS),     // :2391
+                Some(v::EXT_SESSION_TICKET),       // :2396
+                Some(v::EXT_NPN),                  // :2397
+                Some(v::EXT_ALPN),                 // :2398
+                Some(v::EXT_CHANNEL_ID_OLD),       // :2406 码点 30031
+                Some(v::EXT_STATUS_REQUEST),       // :2409
+                Some(v::EXT_SIGNATURE_ALGORITHMS), // :2410
+            ]
+        );
     }
 
     #[test]
     fn browser360_11_0_has_the_expected_extension_types() {
         // u_parrots.go:2450-2531 —— channel_id（新码点）夹在 SCT 与 key_share 之间
-        assert_ext_types!(pd::browser360_11_0(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_CHANNEL_ID),               // :2492 码点 30032
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            None,
-            Some(v::EXT_PADDING),
-        ]);
+        assert_ext_types!(
+            pd::browser360_11_0(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_CHANNEL_ID), // :2492 码点 30032
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                None,
+                Some(v::EXT_PADDING),
+            ]
+        );
     }
 
     #[test]
     fn qq_11_1_has_the_expected_extension_types() {
         // u_parrots.go:2558-2640 —— 与 Chrome 96 同形，**没有** channel_id
-        assert_ext_types!(pd::qq_11_1(), [
-            None,
-            Some(v::EXT_SERVER_NAME),
-            Some(v::EXT_EXTENDED_MASTER_SECRET),
-            Some(v::EXT_RENEGOTIATION_INFO),
-            Some(v::EXT_SUPPORTED_GROUPS),
-            Some(v::EXT_EC_POINT_FORMATS),
-            Some(v::EXT_SESSION_TICKET),
-            Some(v::EXT_ALPN),
-            Some(v::EXT_STATUS_REQUEST),
-            Some(v::EXT_SIGNATURE_ALGORITHMS),
-            Some(v::EXT_SCT),
-            Some(v::EXT_KEY_SHARE),
-            Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
-            Some(v::EXT_SUPPORTED_VERSIONS),
-            Some(v::EXT_COMPRESS_CERTIFICATE),
-            Some(v::EXT_APPLICATION_SETTINGS),
-            None,
-            Some(v::EXT_PADDING),
-        ]);
+        assert_ext_types!(
+            pd::qq_11_1(),
+            [
+                None,
+                Some(v::EXT_SERVER_NAME),
+                Some(v::EXT_EXTENDED_MASTER_SECRET),
+                Some(v::EXT_RENEGOTIATION_INFO),
+                Some(v::EXT_SUPPORTED_GROUPS),
+                Some(v::EXT_EC_POINT_FORMATS),
+                Some(v::EXT_SESSION_TICKET),
+                Some(v::EXT_ALPN),
+                Some(v::EXT_STATUS_REQUEST),
+                Some(v::EXT_SIGNATURE_ALGORITHMS),
+                Some(v::EXT_SCT),
+                Some(v::EXT_KEY_SHARE),
+                Some(v::EXT_PSK_KEY_EXCHANGE_MODES),
+                Some(v::EXT_SUPPORTED_VERSIONS),
+                Some(v::EXT_COMPRESS_CERTIFICATE),
+                Some(v::EXT_APPLICATION_SETTINGS),
+                None,
+                Some(v::EXT_PADDING),
+            ]
+        );
         // 与 Chrome 96 的唯一数据差别：签名算法少一个 PKCS1WithSHA1。
         assert_eq!(pd::qq_11_1().cipher_suites, pd::chrome_96().cipher_suites);
         let sigs = |spec: &ClientHelloSpec| -> Vec<CodePoint> {
@@ -1281,7 +1404,10 @@ mod tests {
                 }
             }
         }
-        inputs.key_exchange = groups.into_iter().map(|g| (g, vec![0x5A; key_len(g)])).collect();
+        inputs.key_exchange = groups
+            .into_iter()
+            .map(|g| (g, vec![0x5A; key_len(g)]))
+            .collect();
         inputs
     }
 
@@ -1363,13 +1489,16 @@ mod tests {
             ("qq_11_1", true, pd::qq_11_1()),
         ];
         for (name, go_lists_padding, spec) in all {
-            let has_padding =
-                spec.extensions.iter().any(|e| matches!(e, Extension::Padding(_)));
+            let has_padding = spec
+                .extensions
+                .iter()
+                .any(|e| matches!(e, Extension::Padding(_)));
             let base = unpadded_len(&spec).unwrap_or_else(|| panic!("{name}: 未填充长算不出来"));
             // 规范里的**存在性**：Go 的 case 列了 `BoringPaddingStyle` ⇒ 本预置也必须列一条
             // `Padding::BoringStyle`（发不发由条件本身在 encode 时决定，不由预置预先判定）。
             assert_eq!(
-                has_padding, go_lists_padding,
+                has_padding,
+                go_lists_padding,
                 "{name}: 未填充长 {base}，Go 的 case {}列 padding，而本预置里{} \
                  —— 存在性必须与规范一致，发不发是另一件事",
                 if go_lists_padding { "有" } else { "没有" },
@@ -1466,13 +1595,21 @@ mod tests {
     #[test]
     fn ios_signature_algorithms_keep_the_duplicate_pss_with_sha384() {
         for (name, spec) in [("ios_12_1", pd::ios_12_1()), ("ios_13", pd::ios_13())] {
-            let Some(Extension::SignatureAlgorithms(list)) =
-                spec.extensions.iter().find(|e| matches!(e, Extension::SignatureAlgorithms(_)))
+            let Some(Extension::SignatureAlgorithms(list)) = spec
+                .extensions
+                .iter()
+                .find(|e| matches!(e, Extension::SignatureAlgorithms(_)))
             else {
                 panic!("{name}: 没有签名算法扩展");
             };
-            let dup = list.iter().filter(|c| **c == CodePoint::Fixed(v::PSS_WITH_SHA384)).count();
-            assert_eq!(dup, 2, "{name}: PSSWithSHA384 应当出现两次（uTLS 源里就是两次）");
+            let dup = list
+                .iter()
+                .filter(|c| **c == CodePoint::Fixed(v::PSS_WITH_SHA384))
+                .count();
+            assert_eq!(
+                dup, 2,
+                "{name}: PSSWithSHA384 应当出现两次（uTLS 源里就是两次）"
+            );
         }
     }
 }

@@ -15,11 +15,11 @@ mod common;
 
 use std::sync::Arc;
 
-use rustls::pki_types::ServerName;
 use rustls::ClientConnection;
+use rustls::pki_types::ServerName;
 use utls::hello::ClientHelloId;
 use utls_engine::roller::Roller;
-use utls_engine::{UConn, FingerprintClient};
+use utls_engine::{FingerprintClient, UConn};
 
 fn provider() -> Arc<rustls::crypto::CryptoProvider> {
     Arc::new(rustls::crypto::aws_lc_rs::default_provider())
@@ -81,10 +81,16 @@ fn it_tries_candidates_in_order_remembers_the_winner_and_reuses_it_first() {
     // 第一条连接：会先试 Golang（失败、不产字节），再试 Chrome-70（谈成）。
     let (addr, handle) = common::spawn_server(common::server_config(false, None), 1);
     let (_conn, winner) = roller
-        .dial(addr, "localhost", &mut |sock, client, name| local_tls(sock, client, name))
+        .dial(addr, "localhost", &mut |sock, client, name| {
+            local_tls(sock, client, name)
+        })
         .expect("至少有一条候选能通");
     assert_eq!(winner, ClientHelloId::Chrome(70), "能通的该是 Chrome-70");
-    assert_eq!(roller.working_hello_id(), Some(ClientHelloId::Chrome(70)), "该记住它");
+    assert_eq!(
+        roller.working_hello_id(),
+        Some(ClientHelloId::Chrome(70)),
+        "该记住它"
+    );
     // 顺序：记住的那条在最前（uTLS 的 `push working hello ID first`）。
     assert_eq!(
         roller.candidate_order().first().copied(),
@@ -93,7 +99,11 @@ fn it_tries_candidates_in_order_remembers_the_winner_and_reuses_it_first() {
     );
 
     let served = handle.join().expect("服务端线程");
-    assert_eq!(served.len(), 1, "只该建立一条 TCP 连接（Golang 那条在 build 阶段就失败了）");
+    assert_eq!(
+        served.len(),
+        1,
+        "只该建立一条 TCP 连接（Golang 那条在 build 阶段就失败了）"
+    );
     let hellos = &served[0].client_hellos;
     assert_eq!(hellos.len(), 1, "只该发出**一条** ClientHello");
     assert!(
@@ -104,7 +114,9 @@ fn it_tries_candidates_in_order_remembers_the_winner_and_reuses_it_first() {
     // ── 第二条连接：必须先试记住的那条，一次谈成 ──
     let (addr, handle) = common::spawn_server(common::server_config(false, None), 1);
     let (_conn, winner2) = roller
-        .dial(addr, "localhost", &mut |sock, client, name| local_tls(sock, client, name))
+        .dial(addr, "localhost", &mut |sock, client, name| {
+            local_tls(sock, client, name)
+        })
         .expect("第二轮该一次谈成");
     assert_eq!(winner2, ClientHelloId::Chrome(70));
     let served = handle.join().expect("服务端线程");
@@ -125,14 +137,20 @@ fn all_candidates_failing_leaves_no_working_id() {
     // 注意：Golang 在 `from_preset` 就失败 ⇒ 连 TCP 都不建 ⇒ 服务端不会收到连接。
     // 所以这里**不能** `join()`（它会一直等在 `accept()` 上）；拿到地址就够了。
     let err = roller
-        .dial(addr, "localhost", &mut |sock, client, name| local_tls(sock, client, name))
+        .dial(addr, "localhost", &mut |sock, client, name| {
+            local_tls(sock, client, name)
+        })
         .expect_err("全是坏候选时该报错");
     let text = err.to_string();
     assert!(
         text.contains("golang") || text.contains("没有 spec"),
         "错误该来自最后那条候选的 build 失败（`golang` 在本架构里没有 spec）：{text}"
     );
-    assert_eq!(roller.working_hello_id(), None, "一条都没通，不该记住任何预设");
+    assert_eq!(
+        roller.working_hello_id(),
+        None,
+        "一条都没通，不该记住任何预设"
+    );
     drop(handle);
 }
 

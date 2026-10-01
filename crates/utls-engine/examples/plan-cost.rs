@@ -64,7 +64,10 @@ use utls_engine::FingerprintClient;
 /// 可用 `PLANCOST_RUNS` 覆盖 —— 用来把「每进程固定开销」与「每条 hello 的边际成本」分开量：
 /// 同一个进程跑 0 条（预设名拼错即可）量固定开销，跑 n 条与 10n 条各量一次解出边际成本。
 fn runs() -> usize {
-    std::env::var("PLANCOST_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(48)
+    std::env::var("PLANCOST_RUNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(48)
 }
 
 fn main() {
@@ -96,7 +99,10 @@ fn main() {
         let client = FingerprintClient::new(spec, provider.clone()).with_sni("example.com");
         let mut ok = true;
         for _ in 0..runs() {
-            let plan = match client.plan(&PlanRequest { groups: groups.clone(), resumption: None }) {
+            let plan = match client.plan(&PlanRequest {
+                groups: groups.clone(),
+                resumption: None,
+            }) {
                 Ok(p) => p,
                 Err(_) => {
                     ok = false;

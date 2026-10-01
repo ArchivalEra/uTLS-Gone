@@ -33,13 +33,17 @@ use std::sync::{Arc, Mutex};
 pub mod ech;
 pub mod roller;
 
-use rustls::client::{ClientHelloPlan, EchOffer, ExternalKeyExchange, HelloRetryRequestPlan,
-                     PlanRequest, PskBinderSlot, ResumptionOffer, SuppliesClientHello};
+use rustls::client::{
+    ClientHelloPlan, EchOffer, ExternalKeyExchange, HelloRetryRequestPlan, PlanRequest,
+    PskBinderSlot, ResumptionOffer, SuppliesClientHello,
+};
 use rustls::crypto::{ActiveKeyExchange, CryptoProvider, SupportedKxGroup};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, Error, RootCertStore, StreamOwned};
-use utls::hello::{parse_ech_config_list, pick_ech_config, ClientHelloSpec, CodePoint,
-                   Extension, HandshakeInputs, PreSharedKey, PskIdentity, Variability};
+use utls::hello::{
+    ClientHelloSpec, CodePoint, Extension, HandshakeInputs, PreSharedKey, PskIdentity, Variability,
+    parse_ech_config_list, pick_ech_config,
+};
 use utls::values as v;
 
 /// 把 rustls 自己的 `ActiveKeyExchange` 包成 fork 要的 [`ExternalKeyExchange`]。
@@ -83,8 +87,15 @@ impl RustlsKx {
             })?;
         let kx = skxg.start()?;
         let pub_key = kx.pub_key().to_vec();
-        let hybrid_pub = kx.hybrid_component().map(|(g, k)| (u16::from(g), k.to_vec()));
-        Ok(RustlsKx { group, pub_key, hybrid_pub, inner: Mutex::new(Some(kx)) })
+        let hybrid_pub = kx
+            .hybrid_component()
+            .map(|(g, k)| (u16::from(g), k.to_vec()));
+        Ok(RustlsKx {
+            group,
+            pub_key,
+            hybrid_pub,
+            inner: Mutex::new(Some(kx)),
+        })
     }
 
     fn take_inner(&self) -> Result<Box<dyn ActiveKeyExchange>, Error> {
@@ -116,7 +127,10 @@ impl ExternalKeyExchange for RustlsKx {
 
     fn complete_hybrid_component(&self, peer_pub_key: &[u8]) -> Result<Vec<u8>, Error> {
         let inner = self.take_inner()?;
-        Ok(inner.complete_hybrid_component(peer_pub_key)?.secret_bytes().to_vec())
+        Ok(inner
+            .complete_hybrid_component(peer_pub_key)?
+            .secret_bytes()
+            .to_vec())
     }
 }
 
@@ -209,11 +223,7 @@ impl FingerprintClient {
     /// 自己的字节（`tls ech\0 || 配置` 当 info、外层编码当 aad —— 见 `ech.rs` 的模块头）。
     /// 生成那条外层的接线（内层的形状有五条规范细节：去掉 EMS/session_ticket/ec_point_formats、
     /// 内层带自己的 ECH 形态、按压缩规则整理……）是下一步，见 STATE.md 的已知缺口。
-    pub fn with_ech_offer(
-        mut self,
-        config_list: Vec<u8>,
-        inner_client_hello: Vec<u8>,
-    ) -> Self {
+    pub fn with_ech_offer(mut self, config_list: Vec<u8>, inner_client_hello: Vec<u8>) -> Self {
         self.ech_offer = Some((config_list, inner_client_hello));
         self
     }
@@ -457,8 +467,11 @@ impl SuppliesClientHello for FingerprintClient {
         // ① 为 spec 要的、且引擎能完成的每个组生成密钥交换。
         //    **每连接一次** —— 复用私钥是缺陷不是特性。
         let want = self.keyshare_groups();
-        let usable: Vec<u16> =
-            want.iter().copied().filter(|g| engine_groups.contains(g)).collect();
+        let usable: Vec<u16> = want
+            .iter()
+            .copied()
+            .filter(|g| engine_groups.contains(g))
+            .collect();
         if usable.is_empty() {
             return Err(Error::General(format!(
                 "utls-engine: spec 的 key_share 组 {want:?} 与引擎能完成的组 {engine_groups:?} \
@@ -536,7 +549,10 @@ impl SuppliesClientHello for FingerprintClient {
         let (bytes, ech_offer) = match ech {
             Some((outer, list, inner_body)) => (
                 outer,
-                Some(EchOffer { config_list: list, inner_client_hello: inner_body }),
+                Some(EchOffer {
+                    config_list: list,
+                    inner_client_hello: inner_body,
+                }),
             ),
             None => (
                 spec.marshal(&inputs)
@@ -623,9 +639,9 @@ impl SuppliesClientHello for FingerprintClient {
         //    再按需把 cookie 插进去。
         let mut spec = self.spec.clone();
         if let Some(group) = req.selected_group {
-            spec = spec.for_hello_retry(group).map_err(|e| {
-                Error::General(format!("utls-engine: 指纹层不接受这次 HRR：{e}"))
-            })?;
+            spec = spec
+                .for_hello_retry(group)
+                .map_err(|e| Error::General(format!("utls-engine: 指纹层不接受这次 HRR：{e}")))?;
         }
         if let Some(cookie) = &req.cookie {
             // uTLS 从一条**独立的** OS 熵流里抽 `Intn(len - 2)`（即 `[0, len-3]`），
@@ -634,9 +650,9 @@ impl SuppliesClientHello for FingerprintClient {
             // 而且从连接流里抽会多消耗随机数，把 GREASE 与乱序推离第一飞（RFC 不允许）。
             let n = spec.extensions.len();
             let index = n.saturating_sub(3);
-            spec = spec.with_cookie(cookie, index).map_err(|e| {
-                Error::General(format!("utls-engine: cookie 插不进去：{e}"))
-            })?;
+            spec = spec
+                .with_cookie(cookie, index)
+                .map_err(|e| Error::General(format!("utls-engine: cookie 插不进去：{e}")))?;
         }
 
         // ② 新组的密钥交换（只有 HRR 选了组才需要）。
@@ -742,12 +758,12 @@ fn patch_ech_payload(mut outer: Vec<u8>, p: &mut PreparedEch) -> Result<Vec<u8>,
 /// 把字节重新包成 `ClientHello` 再问它 —— 判据仍然只有一份，在指纹层。
 fn hello_psk_transcript_len(bytes: &[u8]) -> Result<usize, Error> {
     utls::hello::psk_transcript_len(bytes).ok_or_else(|| {
-            Error::General(
-                "utls-engine: 我们刚写出去的 ClientHello 里找不到 pre_shared_key 的截断点 —— \
+        Error::General(
+            "utls-engine: 我们刚写出去的 ClientHello 里找不到 pre_shared_key 的截断点 —— \
                  填了 PSK 却没写出去"
-                    .into(),
-            )
-        })
+                .into(),
+        )
+    })
 }
 
 /// 从线字节里读出全部扩展类型（含引擎不认识的）。fork 需要它做「服务器回了我们没提供的
@@ -787,7 +803,10 @@ fn put_or_replace_ech_ext(spec: &mut ClientHelloSpec, body: Vec<u8>) {
     {
         Some(Extension::Opaque { body: b, .. }) => *b = body,
         Some(e) => {
-            *e = Extension::Opaque { id: v::EXT_ENCRYPTED_CLIENT_HELLO, body };
+            *e = Extension::Opaque {
+                id: v::EXT_ENCRYPTED_CLIENT_HELLO,
+                body,
+            };
         }
         None => spec.extensions.push(Extension::Opaque {
             id: v::EXT_ENCRYPTED_CLIENT_HELLO,
@@ -799,7 +818,9 @@ fn put_or_replace_ech_ext(spec: &mut ClientHelloSpec, body: Vec<u8>) {
 /// 用一份指纹 spec 建 `ClientConfig`。信任锚用 `webpki-roots`（纯数据，不碰系统证书库）。
 pub fn client_config(client: FingerprintClient) -> Result<ClientConfig, Error> {
     let provider = client.provider.clone();
-    let roots = RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+    let roots = RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
     let mut config = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()?
         .with_root_certificates(roots)
@@ -830,7 +851,10 @@ pub fn connect(
     addr: &str,
     alpn: Vec<Vec<u8>>,
 ) -> Result<(Handshake, Vec<u8>), Box<dyn std::error::Error>> {
-    let (conn, hello) = UClient::new().apply_preset(spec).set_alpn(alpn).connect(host, addr)?;
+    let (conn, hello) = UClient::new()
+        .apply_preset(spec)
+        .set_alpn(alpn)
+        .connect(host, addr)?;
     let hs = Handshake {
         client_hello: hello.clone(),
         negotiated_alpn: conn.negotiated_alpn(),
@@ -905,7 +929,12 @@ impl UClient {
     pub fn with_provider(provider: Arc<CryptoProvider>) -> Self {
         // 起点是一份空 spec（uTLS 的 `HelloCustom`）：`apply_preset` 之前它 marshal 会失败，
         // 那是刻意的 —— 空 spec 不是一条能用的 ClientHello。
-        UClient { spec: ClientHelloSpec::empty(), sni: None, alpn: Vec::new(), provider }
+        UClient {
+            spec: ClientHelloSpec::empty(),
+            sni: None,
+            alpn: Vec::new(),
+            provider,
+        }
     }
 
     /// uTLS 的 `(*UConn).ApplyPreset(p)`。
@@ -923,7 +952,10 @@ impl UClient {
     /// 三个随机化 ID 会**现取一个随机种子**（uTLS 在 `Seed == nil` 时就是这么做的），
     /// 所以每次调用产出的指纹不同；`Golang` 返回 [`utls::hello::SpecError::EngineDefined`]
     /// （它的意思是「用引擎自己的 ClientHello」，即不使用本层）。
-    pub fn apply_preset_by_id(self, id: utls::hello::ClientHelloId) -> Result<Self, utls::hello::SpecError> {
+    pub fn apply_preset_by_id(
+        self,
+        id: utls::hello::ClientHelloId,
+    ) -> Result<Self, utls::hello::SpecError> {
         let spec = if id.is_randomized() {
             ClientHelloSpec::randomized_os(id, &self.alpn)?
         } else {
@@ -1004,7 +1036,9 @@ impl UConn {
     /// 而不必各自再写一遍读写与 `http_get`。
     pub fn from_connection(conn: ClientConnection, sock: TcpStream) -> Self {
         sock.set_nodelay(true).ok();
-        UConn { stream: StreamOwned::new(conn, sock) }
+        UConn {
+            stream: StreamOwned::new(conn, sock),
+        }
     }
 
     /// 底层连接的只读视图（诊断用：协议版本、ALPN、对端证书条数都从这里取）。
@@ -1026,7 +1060,11 @@ impl UConn {
     }
 
     pub fn peer_certs(&self) -> usize {
-        self.stream.conn.peer_certificates().map(<[_]>::len).unwrap_or(0)
+        self.stream
+            .conn
+            .peer_certificates()
+            .map(<[_]>::len)
+            .unwrap_or(0)
     }
 
     pub fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {

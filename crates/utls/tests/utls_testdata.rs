@@ -79,7 +79,10 @@ enum Case {
     /// 本仓的等价物是 `from_bytes` + `for_replay`，而 SNI 在反解后是 `Opaque`
     /// （见 `parse` 的契约），所以它与「同一预设 + 那个 SNI」的产出必然相同 ——
     /// 这条就是在**验证这个必然性**。
-    Fingerprinted { id: ClientHelloId, sni: Option<&'static str> },
+    Fingerprinted {
+        id: ClientHelloId,
+        sni: Option<&'static str>,
+    },
     /// 明确不对账，附理由。**理由必须写在案**：安静的跳过看起来像通过。
     Skip(&'static str),
 }
@@ -141,21 +144,32 @@ fn classify(name: &str) -> Case {
     }
 
     // ── 后缀 ──
-    let (base, suffix) = ["-fingerprinted", "-OmitSNI", "-ServerNameIP", "-EmptyServerName"]
-        .iter()
-        .find_map(|s| name.strip_suffix(s).map(|b| (b, Some(*s))))
-        .unwrap_or((name, None));
+    let (base, suffix) = [
+        "-fingerprinted",
+        "-OmitSNI",
+        "-ServerNameIP",
+        "-EmptyServerName",
+    ]
+    .iter()
+    .find_map(|s| name.strip_suffix(s).map(|b| (b, Some(*s))))
+    .unwrap_or((name, None));
 
     // 预设串是去掉后缀之后的**尾部**：`…-ECDHE-RSA-AES128-GCM-SHA256-Chrome-70`。
-    let token = ["Chrome-58", "Chrome-70", "Firefox-55", "Firefox-63", "Golang-0"]
-        .into_iter()
-        .find(|t| base.ends_with(t))
-        .unwrap_or_else(|| {
-            panic!(
-                "夹具 {name:?} 的尾部不是任何一个已知预设串（已去掉后缀 {suffix:?}）。\
+    let token = [
+        "Chrome-58",
+        "Chrome-70",
+        "Firefox-55",
+        "Firefox-63",
+        "Golang-0",
+    ]
+    .into_iter()
+    .find(|t| base.ends_with(t))
+    .unwrap_or_else(|| {
+        panic!(
+            "夹具 {name:?} 的尾部不是任何一个已知预设串（已去掉后缀 {suffix:?}）。\
                  上游改名了或加了新预设 —— 去核对 u_parrots.go 的 `ClientHelloID.Str()`"
-            )
-        });
+        )
+    });
     let id = preset(token);
     if id == ClientHelloId::Golang {
         return Case::Skip(
@@ -169,7 +183,10 @@ fn classify(name: &str) -> Case {
             // `u_fingerprinter_test.go:519/554`：`serverName := "foobar"`（不是
             // `getUTLSTestConfig` 的 `"foobar.com"`），配置是**新造**的
             // `getUTLSTestConfig()` 再 `newConfig.ServerName = serverName`。
-            Case::Fingerprinted { id, sni: Some("foobar") }
+            Case::Fingerprinted {
+                id,
+                sni: Some("foobar"),
+            }
         }
         Some("-OmitSNI") => {
             // `TestUTLSRemoveSNIExtension`（u_conn_test.go:191）：配置仍是
@@ -217,7 +234,10 @@ fn build(case: Case) -> (ClientHelloSpec, HandshakeInputs) {
         spec.session_id = SessionId::Fixed(vec![0u8; 32]);
     }
     if case.remove_sni_flag() {
-        assert!(spec.remove_server_name(), "{id}: spec 里没有 server_name 槽位可删");
+        assert!(
+            spec.remove_server_name(),
+            "{id}: spec 里没有 server_name 槽位可删"
+        );
     }
 
     let sni = case.sni();
@@ -250,7 +270,13 @@ impl Case {
         }
     }
     fn remove_sni_flag(self) -> bool {
-        matches!(self, Case::Preset { remove_sni: true, .. })
+        matches!(
+            self,
+            Case::Preset {
+                remove_sni: true,
+                ..
+            }
+        )
     }
 }
 
@@ -313,7 +339,8 @@ fn flow_client_hello(text: &str, flow: u32) -> Vec<u8> {
 fn fixture_files() -> BTreeMap<String, PathBuf> {
     let dir = Path::new(DIR);
     let mut out = BTreeMap::new();
-    for e in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("读不到夹具目录 {DIR}：{e}")) {
+    for e in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("读不到夹具目录 {DIR}：{e}"))
+    {
         let p = e.expect("目录项").path();
         if !p.is_file() {
             continue;
@@ -344,7 +371,8 @@ fn assert_same_hello(fixture_name: &str, ours: &[u8], theirs: &[u8]) {
     let ctx = |what: &str| format!("{fixture_name}: {what}");
 
     assert_eq!(
-        a.legacy_version, b.legacy_version,
+        a.legacy_version,
+        b.legacy_version,
         "{}",
         ctx("legacy_version（夹具 vs 我们）")
     );
@@ -359,7 +387,8 @@ fn assert_same_hello(fixture_name: &str, ours: &[u8], theirs: &[u8]) {
         ctx("密码套件（含顺序；GREASE 折成同一个哨兵）")
     );
     assert_eq!(
-        a.compression_methods, b.compression_methods,
+        a.compression_methods,
+        b.compression_methods,
         "{}",
         ctx("压缩方法")
     );
@@ -368,11 +397,18 @@ fn assert_same_hello(fixture_name: &str, ours: &[u8], theirs: &[u8]) {
     // GREASE 扩展**自身**的类型也每连接不同，所以类型序列先折成哨兵；
     // 但「哪一个是空体、哪一个带 1 字节」仍由下面的体比较钉住。
     let (ta, tb): (Vec<u16>, Vec<u16>) = (
-        a.extensions.iter().map(|(t, _)| normalize_ext_type(*t)).collect(),
-        b.extensions.iter().map(|(t, _)| normalize_ext_type(*t)).collect(),
+        a.extensions
+            .iter()
+            .map(|(t, _)| normalize_ext_type(*t))
+            .collect(),
+        b.extensions
+            .iter()
+            .map(|(t, _)| normalize_ext_type(*t))
+            .collect(),
     );
     assert_eq!(
-        ta, tb,
+        ta,
+        tb,
         "{}",
         ctx("扩展类型序列（数量/顺序）—— 第一个不同的位置见两侧数组")
     );
@@ -445,10 +481,18 @@ fn every_utls_testdata_fixture_matches_or_is_explicitly_skipped() {
         assert_same_hello(name, &ours, &theirs);
 
         let key = match case {
-            Case::Preset { remove_sni: true, .. } => "Preset(OmitSNI)",
-            Case::Preset { fixed_random: Some(_), .. } => "Preset(钉死随机数)",
+            Case::Preset {
+                remove_sni: true, ..
+            } => "Preset(OmitSNI)",
+            Case::Preset {
+                fixed_random: Some(_),
+                ..
+            } => "Preset(钉死随机数)",
             Case::Preset { sni: Some(""), .. } => "Preset(SNI 空)",
-            Case::Preset { sni: Some("1.1.1.1"), .. } => "Preset(SNI 是 IP)",
+            Case::Preset {
+                sni: Some("1.1.1.1"),
+                ..
+            } => "Preset(SNI 是 IP)",
             Case::Preset { .. } => "Preset",
             Case::Fingerprinted { .. } => "Fingerprinted",
             Case::Skip(_) => unreachable!(),
@@ -473,7 +517,13 @@ fn every_utls_testdata_fixture_matches_or_is_explicitly_skipped() {
          分类多半写歪了",
         files.len()
     );
-    for must in ["Preset", "Preset(SNI 空)", "Preset(SNI 是 IP)", "Preset(OmitSNI)", "Fingerprinted"] {
+    for must in [
+        "Preset",
+        "Preset(SNI 空)",
+        "Preset(SNI 是 IP)",
+        "Preset(OmitSNI)",
+        "Fingerprinted",
+    ] {
         assert!(
             seen_cases.contains_key(must),
             "没有任何夹具落在 {must} 这一类里 —— 那一类行为现在没人验了。\
@@ -486,7 +536,10 @@ fn every_utls_testdata_fixture_matches_or_is_explicitly_skipped() {
     );
 
     // 让跳过清单每次都打出来：它是**结论**，不是日志。
-    eprintln!("── uTLS testdata 对账：比过 {compared} 条，跳过 {} 条 ──", skipped.len());
+    eprintln!(
+        "── uTLS testdata 对账：比过 {compared} 条，跳过 {} 条 ──",
+        skipped.len()
+    );
     for (n, r) in &skipped {
         eprintln!("  跳过 {n}\n       理由：{r}");
     }
@@ -513,15 +566,23 @@ fn omitting_the_sni_slot_equals_an_empty_sni_only_when_stable() {
     assert!(removed.remove_server_name());
     let a = stable.marshal(&empty).unwrap().into_bytes();
     let b = removed.marshal(&empty).unwrap().into_bytes();
-    assert_eq!(a, b, "Stable 预设上「删掉 SNI 槽位」与「SNI 为空」该逐字节相同");
+    assert_eq!(
+        a, b,
+        "Stable 预设上「删掉 SNI 槽位」与「SNI 为空」该逐字节相同"
+    );
 
     let shuffled = ClientHelloSpec::from_preset(ClientHelloId::Chrome(106)).unwrap();
     assert_eq!(shuffled.variability, utls::hello::Variability::Shuffled);
     let mut removed_shuffled = shuffled.clone();
     assert!(removed_shuffled.remove_server_name());
-    let a = shuffled.marshal(&canonical_inputs(&shuffled, Some(""))).unwrap().into_bytes();
-    let b =
-        removed_shuffled.marshal(&canonical_inputs(&shuffled, Some(""))).unwrap().into_bytes();
+    let a = shuffled
+        .marshal(&canonical_inputs(&shuffled, Some("")))
+        .unwrap()
+        .into_bytes();
+    let b = removed_shuffled
+        .marshal(&canonical_inputs(&shuffled, Some("")))
+        .unwrap()
+        .into_bytes();
     assert_ne!(
         a, b,
         "Shuffled 预设上两者必须不同：删掉槽位会少一次洗牌抽取。\
@@ -564,15 +625,28 @@ fn hello_retry_second_flight_matches_the_recording() {
     assert_same_hello(&format!("{NAME} 的第二飞"), &ours_second, &second);
 
     // ── 2. 「只改 key_share 与 padding」这条约束：先验夹具，再验我们 ──
-    for (who, a, b) in
-        [("夹具", &first[..], &second[..]), ("我们", &ours_first[..], &ours_second[..])]
-    {
+    for (who, a, b) in [
+        ("夹具", &first[..], &second[..]),
+        ("我们", &ours_first[..], &ours_second[..]),
+    ] {
         let la = layout(a);
         let lb = layout(b);
-        assert_eq!(la.legacy_version, lb.legacy_version, "{who}: 第二飞改了 legacy_version");
-        assert_eq!(la.random, lb.random, "{who}: 第二飞改了客户端随机数（RFC 禁止）");
-        assert_eq!(la.session_id, lb.session_id, "{who}: 第二飞改了 session id（RFC 禁止）");
-        assert_eq!(la.cipher_suites, lb.cipher_suites, "{who}: 第二飞改了密码套件（RFC 禁止）");
+        assert_eq!(
+            la.legacy_version, lb.legacy_version,
+            "{who}: 第二飞改了 legacy_version"
+        );
+        assert_eq!(
+            la.random, lb.random,
+            "{who}: 第二飞改了客户端随机数（RFC 禁止）"
+        );
+        assert_eq!(
+            la.session_id, lb.session_id,
+            "{who}: 第二飞改了 session id（RFC 禁止）"
+        );
+        assert_eq!(
+            la.cipher_suites, lb.cipher_suites,
+            "{who}: 第二飞改了密码套件（RFC 禁止）"
+        );
         assert_eq!(
             la.compression_methods, lb.compression_methods,
             "{who}: 第二飞改了压缩方法（RFC 禁止）"
@@ -583,8 +657,14 @@ fn hello_retry_second_flight_matches_the_recording() {
             "{who}: 第二飞的总长变了（填充该让出 key_share 长出来的那部分）"
         );
         let (ta, tb): (Vec<u16>, Vec<u16>) = (
-            la.extensions.iter().map(|(t, _)| normalize_ext_type(*t)).collect(),
-            lb.extensions.iter().map(|(t, _)| normalize_ext_type(*t)).collect(),
+            la.extensions
+                .iter()
+                .map(|(t, _)| normalize_ext_type(*t))
+                .collect(),
+            lb.extensions
+                .iter()
+                .map(|(t, _)| normalize_ext_type(*t))
+                .collect(),
         );
         assert_eq!(ta, tb, "{who}: 第二飞改了扩展的类型序列（含顺序）");
         for (i, ((ty, ba), (_, bb))) in la.extensions.iter().zip(lb.extensions.iter()).enumerate() {
@@ -601,7 +681,13 @@ fn hello_retry_second_flight_matches_the_recording() {
 
     // ── 3. 夹具里这一对差异的**具体形状**：key_share 只剩 P-256 一项 ──
     let ks = |h: &[u8]| -> Vec<u8> {
-        layout(h).extensions.iter().find(|(t, _)| *t == v::EXT_KEY_SHARE).unwrap().1.to_vec()
+        layout(h)
+            .extensions
+            .iter()
+            .find(|(t, _)| *t == v::EXT_KEY_SHARE)
+            .unwrap()
+            .1
+            .to_vec()
     };
     let first_ks = ks(&first);
     let second_ks = ks(&second);
@@ -627,8 +713,8 @@ fn hello_retry_second_flight_matches_the_recording() {
 #[test]
 fn real_world_client_hello_round_trips() {
     let path = Path::new(DIR).parent().unwrap().join("raw-capture.bin");
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("读不到 {}：{e}", path.display()));
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {}：{e}", path.display()));
     let capture = decode_hex(text.trim());
     // 捕获本身是**记录**（`16 03 01 …`），去掉 5 字节记录头就是握手消息。
     assert_eq!(capture[0], 0x16, "捕获不是握手记录");

@@ -121,8 +121,8 @@ fn psk_body(record: &[u8]) -> Option<Vec<u8>> {
 /// 会话里存的验签器与当前 config 的验签器，指针不同就静默拒绝复用 ——
 /// 而票已经被 `take_tls13_ticket` 拿走了（票没了、也没复用）。见 `common` 里的说明。
 fn connect(addr: std::net::SocketAddr, config: Arc<rustls::ClientConfig>) -> ClientConnection {
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     common::drive_client(&mut conn, &mut sock).expect("握手该跑完");
     conn
@@ -156,13 +156,21 @@ fn a_second_connection_resumes_and_the_server_says_so() {
     let (addr, server) = common::spawn_server(common::server_config(true, None), 2);
     let store = Arc::new(common::RecordingStore::new());
     let as_store: Arc<dyn ClientSessionStore> = store.clone();
-    let config = config_for(ClientHelloId::ChromePsk(100), as_store, common::shared_verifier());
+    let config = config_for(
+        ClientHelloId::ChromePsk(100),
+        as_store,
+        common::shared_verifier(),
+    );
 
     let first = connect(addr, config.clone());
     // 票真的进了库 —— 这一步单列，因为「收到了 ticket」与「库里真的有票」是两件事，
     // 而后者才是复用的前提（本仓实测踩到过一次静默的差：`ClientSessionMemoryCache`
     // 里就是查不到，而客户端明明收到了 2 张）。
-    assert_eq!(first.tls13_tickets_received(), 2, "第一次该收到 2 张 ticket");
+    assert_eq!(
+        first.tls13_tickets_received(),
+        2,
+        "第一次该收到 2 张 ticket"
+    );
     assert!(!store.is_empty(), "票没进存储 —— 复用无从谈起");
     // 第一次是完整握手：`_PSK_` 预设的 PSK 槽位在没有会话时**零字节**（uTLS 的
     // `pskExtLen() == 0`），所以那条 hello 里不该有 0x0029。
@@ -222,7 +230,11 @@ fn a_second_connection_resumes_and_the_server_says_so() {
 fn filling_the_psk_slot_does_not_disturb_the_rest_of_the_hello() {
     let (addr, server) = common::spawn_server(common::server_config(true, None), 2);
     let store: Arc<dyn ClientSessionStore> = Arc::new(common::RecordingStore::new());
-    let config = config_for(ClientHelloId::ChromePsk(100), store, common::shared_verifier());
+    let config = config_for(
+        ClientHelloId::ChromePsk(100),
+        store,
+        common::shared_verifier(),
+    );
     let _ = connect(addr, config.clone());
     let _ = connect(addr, config);
     let served = server.join().expect("服务端线程");
@@ -243,7 +255,6 @@ fn filling_the_psk_slot_does_not_disturb_the_rest_of_the_hello() {
     assert_eq!(a, b, "除 PSK 之外的扩展序列变了 —— 填槽位污染了别的扩展");
 }
 
-
 /// **HRR + 复用**：服务器强制 HRR（只认 P-384，而客户端的 key_share 只给 X25519），
 /// 同时又能复用会话 —— 于是第二飞里必须有 PSK，而且它的 binder 是在
 /// `message_hash || HRR || Truncate(ClientHello2)` 上**重算**的。
@@ -261,10 +272,18 @@ fn a_hello_retry_request_still_resumes() {
     );
     let store = Arc::new(common::RecordingStore::new());
     let as_store: Arc<dyn ClientSessionStore> = store.clone();
-    let config = config_for(ClientHelloId::ChromePsk(100), as_store, common::shared_verifier());
+    let config = config_for(
+        ClientHelloId::ChromePsk(100),
+        as_store,
+        common::shared_verifier(),
+    );
 
     let first = connect(addr, config.clone());
-    assert_eq!(first.tls13_tickets_received(), 2, "HRR 之后服务端仍该发 ticket");
+    assert_eq!(
+        first.tls13_tickets_received(),
+        2,
+        "HRR 之后服务端仍该发 ticket"
+    );
     assert!(!store.is_empty(), "票没进存储");
     let _second = connect(addr, config.clone());
 
@@ -344,15 +363,15 @@ fn a_hello_retry_request_without_a_session_carries_no_psk() {
     );
     let store = Arc::new(common::RecordingStore::new());
     let as_store: Arc<dyn ClientSessionStore> = store;
-    let config = config_for(ClientHelloId::ChromePsk(100), as_store, common::shared_verifier());
+    let config = config_for(
+        ClientHelloId::ChromePsk(100),
+        as_store,
+        common::shared_verifier(),
+    );
     let _ = connect(addr, config);
 
     let served = server.join().expect("服务端线程");
-    assert_eq!(
-        served[0].client_hellos.len(),
-        2,
-        "该发了第二飞（HRR）"
-    );
+    assert_eq!(served[0].client_hellos.len(), 2, "该发了第二飞（HRR）");
     for (k, hello) in served[0].client_hellos.iter().enumerate() {
         assert!(
             psk_body(hello).is_none(),

@@ -56,8 +56,11 @@ pub(crate) fn parse_client_hello(bytes: &[u8]) -> Result<ClientHelloSpec, ParseE
         return Err(ParseError::Malformed("legacy_session_id 超过 32 字节"));
     }
     let sid = r.take(sid_len)?;
-    let session_id =
-        if sid.is_empty() { SessionId::Empty } else { SessionId::Fixed(sid.to_vec()) };
+    let session_id = if sid.is_empty() {
+        SessionId::Empty
+    } else {
+        SessionId::Fixed(sid.to_vec())
+    };
 
     let cs_len = r.u16()? as usize;
     if !cs_len.is_multiple_of(2) {
@@ -104,9 +107,7 @@ fn classify(id: u16, body: &[u8]) -> Result<Extension, ParseError> {
         v::EXT_SIGNATURE_ALGORITHMS => {
             Extension::SignatureAlgorithms(u16_list(body, "signature_algorithms")?)
         }
-        v::EXT_SUPPORTED_VERSIONS => {
-            Extension::SupportedVersions(u8_prefixed_u16_list(body)?)
-        }
+        v::EXT_SUPPORTED_VERSIONS => Extension::SupportedVersions(u8_prefixed_u16_list(body)?),
         // 只有「体全是零」才能从长度无损重建。非零填充的体是别人写进去的东西，
         // 我们没资格替它猜。
         v::EXT_PADDING if body.iter().all(|&b| b == 0) => {
@@ -114,8 +115,10 @@ fn classify(id: u16, body: &[u8]) -> Result<Extension, ParseError> {
         }
         // 其余交给结构化扩展集。`extensions::classify` **只在重新编码可证明逐字节
         // 相同时**才返回 `Some`，所以失败就回落 `Opaque` —— 宁可不可编辑，也不能不可靠。
-        _ => super::extensions::classify(id, body)
-            .unwrap_or(Extension::Opaque { id, body: body.to_vec() }),
+        _ => super::extensions::classify(id, body).unwrap_or(Extension::Opaque {
+            id,
+            body: body.to_vec(),
+        }),
     })
 }
 
@@ -161,7 +164,10 @@ impl<'a> Reader<'a> {
 
     fn take(&mut self, n: usize) -> Result<&'a [u8], ParseError> {
         if self.rest() < n {
-            return Err(ParseError::Truncated { needed: n, got: self.rest() });
+            return Err(ParseError::Truncated {
+                needed: n,
+                got: self.rest(),
+            });
         }
         let s = &self.b[self.pos..self.pos + n];
         self.pos += n;

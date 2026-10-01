@@ -39,8 +39,11 @@ use crate::{FingerprintClient, UConn};
 ///
 /// 失败分两类，而 `Roller` 对它们的处置不同（见模块头）：**TCP 连不上**立刻放弃，
 /// **TLS 谈不成**换下一个预设。所以 TCP 那一步必须由 `Roller` 自己做。
-pub type TlsConnect<'a> =
-    &'a mut dyn FnMut(TcpStream, FingerprintClient, &str) -> Result<UConn, Box<dyn std::error::Error>>;
+pub type TlsConnect<'a> = &'a mut dyn FnMut(
+    TcpStream,
+    FingerprintClient,
+    &str,
+) -> Result<UConn, Box<dyn std::error::Error>>;
 
 /// uTLS `u_roller.go` 的等价物。
 pub struct Roller {
@@ -120,7 +123,8 @@ impl Roller {
         let a = 7 + (next_below(&mut s, 14) as u64);
         let b = 11 + (next_below(&mut s, 20) as u64);
         // 调用方显式给过超时就用它的（`with_timeouts` 与随机化二选一，后者是默认）。
-        if self.tcp_timeout != Duration::from_secs(7) || self.tls_timeout != Duration::from_secs(11) {
+        if self.tcp_timeout != Duration::from_secs(7) || self.tls_timeout != Duration::from_secs(11)
+        {
             return (self.tcp_timeout, self.tls_timeout);
         }
         (Duration::from_secs(a), Duration::from_secs(b))
@@ -229,9 +233,6 @@ fn next_below(seed: &mut [u8; 32], n: u32) -> u32 {
 /// 同一处熵；这样整套测试里换 provider 就能一并换掉随机性。
 fn random_seed(provider: &CryptoProvider) -> [u8; 32] {
     let mut s = [0u8; 32];
-    provider
-        .secure_random
-        .fill(&mut s)
-        .expect("OS 熵源不可用");
+    provider.secure_random.fill(&mut s).expect("OS 熵源不可用");
     s
 }

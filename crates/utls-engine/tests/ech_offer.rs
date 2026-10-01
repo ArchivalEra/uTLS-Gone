@@ -25,9 +25,9 @@ mod common;
 
 use std::sync::Arc;
 
-use rustls::pki_types::ServerName;
-use rustls::client::EchStatus;
 use rustls::ClientConnection;
+use rustls::client::EchStatus;
+use rustls::pki_types::ServerName;
 use utls::hello::{ClientHelloId, ClientHelloSpec, Extension, HandshakeInputs};
 use utls::values as v;
 use utls_engine::FingerprintClient;
@@ -35,7 +35,10 @@ use utls_engine::FingerprintClient;
 /// 外层 ECH 扩展体：**用引擎里那一处定义**（类型位 + 四个字段）。
 fn outer_ech_body(config_id: u8, enc: &[u8], payload_len: usize) -> Vec<u8> {
     utls_engine::ech::outer_ech_extension_body(
-        utls::hello::HpkeSymmetricCipherSuite { kdf_id: 0x0001, aead_id: 0x0001 },
+        utls::hello::HpkeSymmetricCipherSuite {
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+        },
         config_id,
         enc,
         &vec![0x5Au8; payload_len],
@@ -54,8 +57,8 @@ fn connect(
         common::shared_verifier(),
         None,
     ));
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     common::drive_client(&mut conn, &mut sock).expect("握手该跑完");
     conn
@@ -70,7 +73,10 @@ fn an_offer_is_treated_as_a_real_ech_offer_and_a_bare_extension_as_grease() {
     // spec：Chrome-70 + 一条 `0xfe0d` 扩展（内容按外层格式拼，虽然这台服务器不会去解它）。
     let mut spec = ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).unwrap();
     let body = outer_ech_body(0x11, &[0u8; 32], 64);
-    spec.extensions.push(Extension::Opaque { id: v::EXT_ENCRYPTED_CLIENT_HELLO, body });
+    spec.extensions.push(Extension::Opaque {
+        id: v::EXT_ENCRYPTED_CLIENT_HELLO,
+        body,
+    });
 
     // 内层 hello：指纹层按**真实** SNI 产出的那条（真实用法里它就是被封进 payload 的东西）。
     let mut inner_spec = ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).unwrap();
@@ -80,7 +86,11 @@ fn an_offer_is_treated_as_a_real_ech_offer_and_a_bare_extension_as_grease() {
     inputs.key_exchange = vec![(v::X25519, vec![0x5Au8; 32])];
     // ⚠️ 交出去的是内层 hello 的**体**（无 4 字节握手头）—— 两个参照实现都这样编码
     //（uTLS `h = h[4:]`；rustls 的 `payload_encode` 也不写头），见 fork 里的说明。
-    let inner = inner_spec.marshal(&inputs).expect("内层 hello").into_bytes()[4..].to_vec();
+    let inner = inner_spec
+        .marshal(&inputs)
+        .expect("内层 hello")
+        .into_bytes()[4..]
+        .to_vec();
 
     // ── 情形一：只带扩展，不交 offer ⇒ GREASE ──
     let (addr, server) = common::spawn_server(common::server_config(false, None), 1);
@@ -112,8 +122,8 @@ fn an_offer_is_treated_as_a_real_ech_offer_and_a_bare_extension_as_grease() {
         common::shared_verifier(),
         None,
     ));
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     let err = common::drive_client(&mut conn, &mut sock)
         .expect_err("这台服务器不接受 ECH，而 rustls 的 ECH 是「要求」语义：拒绝即终止");
@@ -135,7 +145,10 @@ fn an_offer_is_treated_as_a_real_ech_offer_and_a_bare_extension_as_grease() {
     // 服务端确实收到了那条 ClientHello（说明失败发生在**协商**这一步，不是发都没发出去）。
     let served = server.join().expect("服务端线程");
     assert_eq!(served.len(), 1);
-    assert!(!served[0].client_hellos.is_empty(), "服务端该收到我们的外层 hello");
+    assert!(
+        !served[0].client_hellos.is_empty(),
+        "服务端该收到我们的外层 hello"
+    );
 }
 
 /// **语义说明**：交出 offer 等于「要求 ECH」（rustls 的 `EchMode::Enable` 语义）——
@@ -283,16 +296,19 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
     let (addr, server) = common::spawn_server(common::server_config(false, None), 1);
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
     let config = Arc::new(common::client_config_with_verifier(
-        FingerprintClient::new(ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).unwrap(), provider)
-            .with_sni("localhost")
-            .with_ech(config_list.clone()),
+        FingerprintClient::new(
+            ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).unwrap(),
+            provider,
+        )
+        .with_sni("localhost")
+        .with_ech(config_list.clone()),
         Vec::new(),
         common::shared_verifier(),
         None,
     ));
     // 注意：spec 里**没有**手写 `0xfe0d` —— 外层那条是 `with_ech` 写上去的。
-    let mut conn = ClientConnection::new(config, ServerName::try_from("localhost").unwrap())
-        .expect("建连接");
+    let mut conn =
+        ClientConnection::new(config, ServerName::try_from("localhost").unwrap()).expect("建连接");
     let mut sock = std::net::TcpStream::connect(addr).expect("连回环");
     let _ = common::drive_client(&mut conn, &mut sock); // 本机服务端不接受 ECH ⇒ 必然报错
     let served = server.join().expect("服务端线程");
@@ -304,12 +320,19 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
 
     // 解回载荷。AAD = 外层编码且载荷段全零 ⇒ 把载荷段清零后再解。
     let body_len = outer_ext.len();
-    assert!(body_len > 1 + 4 + 1 + 2 + 32 + 2, "外层扩展体太短：{body_len}");
+    assert!(
+        body_len > 1 + 4 + 1 + 2 + 32 + 2,
+        "外层扩展体太短：{body_len}"
+    );
     let enc_len = u16::from_be_bytes([outer_ext[6], outer_ext[7]]) as usize;
     let payload_len_off = 1 + 4 + 1 + 2 + enc_len;
     let payload_len =
         u16::from_be_bytes([outer_ext[payload_len_off], outer_ext[payload_len_off + 1]]) as usize;
-    assert_eq!(payload_len, outer_ext.len() - payload_len_off - 2, "载荷长度该自洽");
+    assert_eq!(
+        payload_len,
+        outer_ext.len() - payload_len_off - 2,
+        "载荷长度该自洽"
+    );
     // 体布局：`type(1) || kdf(2) || aead(2) || config_id(1) || enc_len(2) || enc || payload_len(2) || payload`
     let enc = outer_ext[8..8 + enc_len].to_vec();
 
@@ -331,13 +354,23 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
     // 载荷在**消息**里的偏移仍是 `payload_in_msg`（只有 AAD 换成了体的坐标系）。
     let ciphertext = &message[payload_in_msg..];
     let opened = suite
-        .open(&EncapsulatedSecret(enc), &info, &aad, ciphertext, &private_key)
+        .open(
+            &EncapsulatedSecret(enc),
+            &info,
+            &aad,
+            ciphertext,
+            &private_key,
+        )
         .expect("用私钥该能解开我们封的载荷");
     eprintln!("解出的内层明文 {} 字节", opened.len());
 
     // ── 五条规则 ──
     // 规则 4：没有 4 字节握手头（体直接以 legacy_version 开头）。
-    assert_eq!(&opened[..2], &[0x03, 0x03], "内侧明文该以 legacy_version 开头（无握手头）");
+    assert_eq!(
+        &opened[..2],
+        &[0x03, 0x03],
+        "内侧明文该以 legacy_version 开头（无握手头）"
+    );
     // 规则 3：session id 为空。
     assert_eq!(opened[34], 0, "内层 hello 的 session id 该为空");
     // 规则 5：补零到 32 的倍数。
@@ -357,7 +390,10 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
     };
     let inner_rec = as_record(&opened);
     let types = ext_types_of(&inner_rec);
-    assert!(types.contains(&v::EXT_ENCRYPTED_CLIENT_HELLO), "内层该带 ECH 扩展");
+    assert!(
+        types.contains(&v::EXT_ENCRYPTED_CLIENT_HELLO),
+        "内层该带 ECH 扩展"
+    );
     for skipped in [23u16, 35, 11] {
         assert!(
             !types.contains(&skipped),
@@ -375,15 +411,23 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
     let sv = inner_rec_body(&opened);
     assert_eq!(sv[0], 2, "内层的 supported_versions 该只有一项（2 字节）");
     let v0 = u16::from_be_bytes([sv[1], sv[2]]);
-    assert_eq!(v0, 0x0304, "那一项该是 TLS 1.3 —— 低于它的版本会让服务器 illegal_parameter");
+    assert_eq!(
+        v0, 0x0304,
+        "那一项该是 TLS 1.3 —— 低于它的版本会让服务器 illegal_parameter"
+    );
     // 规则 7：可压缩扩展要收进 `0xfd00`，并且**内层没有 GREASE 扩展**。
     let marker = ech_ext_body(&inner_rec);
     let _ = marker;
     let has_fd00 = types.contains(&0xfd00);
-    assert!(has_fd00, "内层该有 `0xfd00`（ECHOuterExtensions）标记：实测 rustls/uTLS 都这么做");
+    assert!(
+        has_fd00,
+        "内层该有 `0xfd00`（ECHOuterExtensions）标记：实测 rustls/uTLS 都这么做"
+    );
     // GREASE 扩展类型的形态是 0x?A?A，内层里不该出现（uTLS 的内层由 Go 的 marshaller 产出，不含它）。
     assert!(
-        !types.iter().any(|t| *t & 0x0f0f == 0x0a0a && (*t >> 8) as u8 == *t as u8),
+        !types
+            .iter()
+            .any(|t| *t & 0x0f0f == 0x0a0a && (*t >> 8) as u8 == *t as u8),
         "内层不该有 GREASE 扩展，实际类型序列 = {types:?}"
     );
 
@@ -394,7 +438,9 @@ fn the_engine_builds_the_inner_hello_by_the_five_rules() {
     );
     // 外层放的是公开名。
     assert!(
-        outer.windows(b"public.example".len()).any(|w| w == b"public.example"),
+        outer
+            .windows(b"public.example".len())
+            .any(|w| w == b"public.example"),
         "外层该带公开名（public.example）"
     );
     assert!(

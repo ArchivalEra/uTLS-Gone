@@ -48,10 +48,10 @@
 
 use std::sync::Arc;
 
+use rustls::crypto::CryptoProvider;
 use rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES;
 use rustls::crypto::hpke::{Hpke, HpkePublicKey, HpkeSealer};
-use rustls::crypto::CryptoProvider;
-use utls::hello::{hpke_aead_tag_len, CodePoint, EchConfig, Extension, HpkeSymmetricCipherSuite};
+use utls::hello::{CodePoint, EchConfig, Extension, HpkeSymmetricCipherSuite, hpke_aead_tag_len};
 
 /// 一次 ECH 提议的封装状态。
 ///
@@ -106,8 +106,7 @@ impl EchSealer {
         info.extend_from_slice(b"tls ech\0");
         info.extend_from_slice(&config.raw);
 
-        let (enc, sealer) = suite
-            .setup_sealer(&info, &HpkePublicKey(config.public_key.clone()))?;
+        let (enc, sealer) = suite.setup_sealer(&info, &HpkePublicKey(config.public_key.clone()))?;
         Ok(EchSealer {
             suite,
             config_id: config.config_id,
@@ -277,7 +276,6 @@ pub struct InnerHellos {
 /// `ECHOuterExtensions`（draft-ietf-tls-esni-18）：体是 `u8 长度 + u16 类型列表`。
 const EXT_ECH_OUTER_EXTENSIONS: u16 = 0xfd00;
 
-
 /// 把可压缩扩展收成一条 `0xfd00` 的体。
 fn ech_outer_extensions_body(types: &[u16]) -> Vec<u8> {
     let mut b = Vec::with_capacity(1 + types.len() * 2);
@@ -312,7 +310,9 @@ pub fn build_inner_client_hello_body(
     inner: &InnerHelloInputs<'_>,
 ) -> Result<InnerHellos, rustls::Error> {
     if inner.cipher_suites.is_empty() {
-        return Err(general("utls-engine: 内层没有可报的 cipher suites（引擎一条都给不出）"));
+        return Err(general(
+            "utls-engine: 内层没有可报的 cipher suites（引擎一条都给不出）",
+        ));
     }
 
     // 内层的输入：SNI 换真名、ALPN 换诚实列表。其余（随机数、key_exchange）与外层**同源**
@@ -352,7 +352,12 @@ pub fn build_inner_client_hello_body(
         .is_some_and(|n| !utls::hello::hostname_in_sni(n).is_empty());
     let mut spec = utls::hello::ClientHelloSpec {
         legacy_version: utls::values::LEGACY_VERSION,
-        cipher_suites: inner.cipher_suites.iter().copied().map(CodePoint::Fixed).collect(),
+        cipher_suites: inner
+            .cipher_suites
+            .iter()
+            .copied()
+            .map(CodePoint::Fixed)
+            .collect(),
         compression_methods: vec![utls::values::COMPRESSION_NONE],
         extensions: Vec::new(),
         session_id: utls::hello::SessionId::Empty,
@@ -362,11 +367,15 @@ pub fn build_inner_client_hello_body(
         spec.extensions.push(Extension::ServerName);
     }
     spec.extensions.push(Extension::SignedCertificateTimestamp);
-    spec.extensions.push(Extension::Opaque { id: 0xfe0d, body: inner_ech_extension_body() });
+    spec.extensions.push(Extension::Opaque {
+        id: 0xfe0d,
+        body: inner_ech_extension_body(),
+    });
     if !inner.alpn.is_empty() {
         spec.extensions.push(Extension::Alpn(inner.alpn.to_vec()));
     }
-    spec.extensions.push(Extension::SupportedVersions(vec![CodePoint::Fixed(0x0304)]));
+    spec.extensions
+        .push(Extension::SupportedVersions(vec![CodePoint::Fixed(0x0304)]));
     let marker_at = (!compressed.is_empty()).then_some(spec.extensions.len());
     if !compressed.is_empty() {
         spec.extensions.push(Extension::Opaque {
@@ -424,5 +433,9 @@ pub fn build_inner_client_hello_body(
         usize::from(inner.maximum_name_length) + 9
     };
     let pad = 31 - ((body.len() + pad0 - 1) % 32);
-    Ok(InnerHellos { sealed: body, pad, expanded })
+    Ok(InnerHellos {
+        sealed: body,
+        pad,
+        expanded,
+    })
 }

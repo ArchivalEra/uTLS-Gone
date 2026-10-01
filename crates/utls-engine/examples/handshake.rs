@@ -20,7 +20,10 @@ use utls::hello::{ClientHelloId, ClientHelloSpec};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let preset_name = args.first().cloned().unwrap_or_else(|| "chrome_133".into());
-    let host = args.get(1).cloned().unwrap_or_else(|| "tls.browserleaks.com".into());
+    let host = args
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| "tls.browserleaks.com".into());
 
     let id = ClientHelloId::implemented()
         .iter()
@@ -36,9 +39,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{host}:443");
     let (hs, body) = utls_engine::http_get(spec, &host, &addr, "/json")?;
 
-    println!("   握手：版本 {:?}，ALPN {:?}，对端证书 {} 张",
-        hs.negotiated_version, hs.negotiated_alpn, hs.peer_cert_count);
-    println!("   我们发出去的 ClientHello：{} 字节", hs.client_hello.len());
+    println!(
+        "   握手：版本 {:?}，ALPN {:?}，对端证书 {} 张",
+        hs.negotiated_version, hs.negotiated_alpn, hs.peer_cert_count
+    );
+    println!(
+        "   我们发出去的 ClientHello：{} 字节",
+        hs.client_hello.len()
+    );
     if !hs.reached_server {
         println!("   ⚠️ 没读到任何响应 —— 服务器可能拒绝了我们");
     }
@@ -49,13 +57,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   本地 JA3 文本  ：{}", ours.text());
 
     let Some(json) = extract_json(&body) else {
-        println!("\n   没从响应里找到 JSON。响应前 400 字节：\n{}", &body[..body.len().min(400)]);
+        println!(
+            "\n   没从响应里找到 JSON。响应前 400 字节：\n{}",
+            &body[..body.len().min(400)]
+        );
         return Ok(());
     };
     let theirs_ja3 = json_str(&json, "ja3_hash");
     let theirs_ja4 = json_str(&json, "ja4");
-    println!("\n   服务器看到的 JA3：{}", theirs_ja3.as_deref().unwrap_or("(无)"));
-    println!("   服务器看到的 JA4：{}", theirs_ja4.as_deref().unwrap_or("(无)"));
+    println!(
+        "\n   服务器看到的 JA3：{}",
+        theirs_ja3.as_deref().unwrap_or("(无)")
+    );
+    println!(
+        "   服务器看到的 JA4：{}",
+        theirs_ja4.as_deref().unwrap_or("(无)")
+    );
 
     match theirs_ja3 {
         Some(t) if t == ours.hash_hex() => {
@@ -76,15 +93,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let head = j4.split('_').next().unwrap_or("");
         if head.len() >= 8 {
             println!("   JA4 首段：{head}");
-            println!("      协议={} 版本={} SNI={} 密码套件数={} 扩展数={} ALPN={}",
-                &head[0..1], &head[1..3], &head[3..4], &head[4..6], &head[6..8], &head[8..]);
+            println!(
+                "      协议={} 版本={} SNI={} 密码套件数={} 扩展数={} ALPN={}",
+                &head[0..1],
+                &head[1..3],
+                &head[3..4],
+                &head[4..6],
+                &head[6..8],
+                &head[8..]
+            );
             let want_c = format!("{:02}", ours.cipher_suites.len());
             let want_e = format!("{:02}", ours.extensions.len());
             if head[4..6] == want_c && head[6..8] == want_e {
                 println!("      ✅ 密码套件数与扩展数与本地一致（{want_c} / {want_e}）");
             } else {
-                println!("      ❌ 对不上：本地 {want_c}/{want_e}，服务器 {} / {}",
-                    &head[4..6], &head[6..8]);
+                println!(
+                    "      ❌ 对不上：本地 {want_c}/{want_e}，服务器 {} / {}",
+                    &head[4..6],
+                    &head[6..8]
+                );
             }
             let ver = if &head[1..3] == "13" { "TLS1.3" } else { "?" };
             println!("      ✅ 版本一致（{ver}）");
@@ -117,9 +144,13 @@ fn extract_json(body: &str) -> Option<String> {
     let mut esc = false;
     for (i, c) in body[start..].char_indices() {
         if in_str {
-            if esc { esc = false; }
-            else if c == '\\' { esc = true; }
-            else if c == '"' { in_str = false; }
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
             continue;
         }
         match c {

@@ -95,9 +95,24 @@ fn load_reference() -> BTreeMap<String, Ref> {
             name.clone(),
             Ref {
                 legacy_version: p["legacy_version"].as_u64().unwrap() as u16,
-                ciphers: p["ciphers"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect(),
-                extensions: p["extensions"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect(),
-                groups: p["groups"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u16).collect(),
+                ciphers: p["ciphers"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_u64().unwrap() as u16)
+                    .collect(),
+                extensions: p["extensions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_u64().unwrap() as u16)
+                    .collect(),
+                groups: p["groups"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_u64().unwrap() as u16)
+                    .collect(),
                 point_formats: pf.iter().map(|x| x.as_u64().unwrap() as u16).collect(),
                 ja3_text: p["ja3_text"].as_str().unwrap().to_string(),
                 ext_bodies: p["ext_bodies"]
@@ -116,11 +131,19 @@ fn load_reference() -> BTreeMap<String, Ref> {
                     .iter()
                     .map(|pair| {
                         let a = pair.as_array().unwrap();
-                        (a[0].as_u64().unwrap() as u16, a[1].as_u64().unwrap() as usize)
+                        (
+                            a[0].as_u64().unwrap() as u16,
+                            a[1].as_u64().unwrap() as usize,
+                        )
                     })
                     .collect(),
                 ja3_md5: p["ja3_md5"].as_str().unwrap().to_string(),
-                lens: e["lens"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as usize).collect(),
+                lens: e["lens"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_u64().unwrap() as usize)
+                    .collect(),
                 len_stable: e["len_stable"].as_bool().unwrap(),
                 ja3_stable: e["ja3_stable"].as_bool().unwrap(),
             },
@@ -149,8 +172,16 @@ fn every_preset_matches_the_utls_reference() {
         assert_eq!(parts.len(), 5, "{name}: JA3 文本该有五段");
 
         // ── 始终要求逐序相同的四段 ──
-        assert_eq!(parts[0].parse::<u16>().unwrap(), r.legacy_version, "{name}: legacy_version");
-        assert_eq!(parse_u16_list(parts[1]), r.ciphers, "{name}: 密码套件（顺序）");
+        assert_eq!(
+            parts[0].parse::<u16>().unwrap(),
+            r.legacy_version,
+            "{name}: legacy_version"
+        );
+        assert_eq!(
+            parse_u16_list(parts[1]),
+            r.ciphers,
+            "{name}: 密码套件（顺序）"
+        );
         assert_eq!(parse_u16_list(parts[3]), r.groups, "{name}: 支持组（顺序）");
         assert_eq!(parse_u16_list(parts[4]), r.point_formats, "{name}: 点格式");
 
@@ -160,7 +191,8 @@ fn every_preset_matches_the_utls_reference() {
         // 否则会得到「类型配错了对」的假失败。规范化之后，这条断言顺便验证了
         // uTLS 那条「第 1 个 GREASE 扩展体为空、第 2 个是 [0]」的规则。
         let varies = !r.len_stable;
-        let keep = |t: u16| !(varies && (t == v::EXT_ENCRYPTED_CLIENT_HELLO || t == v::EXT_PADDING));
+        let keep =
+            |t: u16| !(varies && (t == v::EXT_ENCRYPTED_CLIENT_HELLO || t == v::EXT_PADDING));
         let mut our_lens: Vec<(u16, usize)> = wire_ext_lengths(hello.as_bytes())
             .into_iter()
             .map(|(t, l)| (normalize_ext_type(t), l))
@@ -223,11 +255,18 @@ fn every_preset_matches_the_utls_reference() {
         // `Stable` ⇒ JA3 跨连接恒定；`Shuffled` ⇒ 不恒定（真实 Chrome 与 rustls 0.23 都如此）。
         // 参照那边的 `ja3_stable` 是跑 48 次量出来的，所以这条断言是在拿**观测**验**设计**。
         let our_ja3_stable = spec.variability == utls::hello::Variability::Stable;
-        assert_eq!(our_ja3_stable, r.ja3_stable, "{name}: ja3_stable 与参照不一致");
+        assert_eq!(
+            our_ja3_stable, r.ja3_stable,
+            "{name}: ja3_stable 与参照不一致"
+        );
 
         // ── 顺序与 JA3 文本：仅对 Stable 预设 ──
         if spec.variability == utls::hello::Variability::Stable {
-            assert_eq!(parse_u16_list(parts[2]), r.extensions, "{name}: 扩展顺序（Stable 预设）");
+            assert_eq!(
+                parse_u16_list(parts[2]),
+                r.extensions,
+                "{name}: 扩展顺序（Stable 预设）"
+            );
             assert_eq!(ours, r.ja3_text, "{name}: JA3 文本");
             assert_eq!(hello.ja3().hash_hex(), r.ja3_md5, "{name}: JA3 的 MD5");
             order_matched += 1;
@@ -243,7 +282,9 @@ fn every_preset_matches_the_utls_reference() {
         let mut our_len_set = std::collections::BTreeSet::new();
         for seed in 0u8..16 {
             our_len_set.insert(
-                spec.marshal(&ref_inputs_with_seed(&spec, seed)).unwrap().len(),
+                spec.marshal(&ref_inputs_with_seed(&spec, seed))
+                    .unwrap()
+                    .len(),
             );
         }
         for l in &our_len_set {
@@ -256,7 +297,10 @@ fn every_preset_matches_the_utls_reference() {
 
         // ── 稳定性判断必须一致 ──
         let our_len_stable = our_len_set.len() == 1;
-        assert_eq!(our_len_stable, r.len_stable, "{name}: len_stable 与参照不一致");
+        assert_eq!(
+            our_len_stable, r.len_stable,
+            "{name}: len_stable 与参照不一致"
+        );
 
         checked += 1;
     }
@@ -265,9 +309,15 @@ fn every_preset_matches_the_utls_reference() {
     assert!(checked >= 39, "只对账了 {checked} 个预设 —— 少了就是漏了");
     // ⚠️ 下面两条不写死数字：加了预设就得回来改魔法数的断言，正是那种「一定会漂」的手写名录。
     // 改成拿**本轮的 Stable 计数**自己比自己。
-    assert_eq!(order_matched, stable_count, "Stable 预设的顺序都对账了才成立");
+    assert_eq!(
+        order_matched, stable_count,
+        "Stable 预设的顺序都对账了才成立"
+    );
     assert_eq!(ja3_matched, stable_count);
-    assert!(stable_count >= 30, "Stable 预设只有 {stable_count} 个 —— 少了对账对象");
+    assert!(
+        stable_count >= 30,
+        "Stable 预设只有 {stable_count} 个 —— 少了对账对象"
+    );
     assert!(reference.contains_key("chrome_133") && reference.contains_key("firefox_148"));
 }
 
@@ -284,7 +334,11 @@ fn reference_and_implemented_ids_are_in_bijection() {
         .map(|id| id.name())
         .collect();
     let theirs: Vec<String> = reference.keys().cloned().collect();
-    assert_eq!(ours.len(), theirs.len(), "数目不等：我们 {ours:?} / 参照 {theirs:?}");
+    assert_eq!(
+        ours.len(),
+        theirs.len(),
+        "数目不等：我们 {ours:?} / 参照 {theirs:?}"
+    );
     for k in &theirs {
         assert!(ours.contains(k), "参照有 {k}，我们没有");
     }
@@ -308,12 +362,19 @@ fn every_preset_round_trips_byte_exact() {
             .unwrap_or_else(|e| panic!("{id}: 反解失败：{e}"));
         let replay = HandshakeInputs::for_replay(hello.as_bytes()).unwrap();
         let again = parsed.marshal(&replay).unwrap();
-        assert_eq!(again.as_bytes(), hello.as_bytes(), "{id}: 往返不是逐字节相同");
+        assert_eq!(
+            again.as_bytes(),
+            hello.as_bytes(),
+            "{id}: 往返不是逐字节相同"
+        );
         n += 1;
     }
     let want = ClientHelloId::implemented()
         .iter()
         .filter(|id| !matches!(id, ClientHelloId::Custom))
         .count();
-    assert_eq!(n, want, "只往返了 {n} 个预设，而 implemented() 里有 {want} 个静态预设");
+    assert_eq!(
+        n, want,
+        "只往返了 {n} 个预设，而 implemented() 里有 {want} 个静态预设"
+    );
 }

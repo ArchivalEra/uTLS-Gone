@@ -1,6 +1,6 @@
 //! ClientHello 的声明式模型：一条 ClientHello 长什么样，以及它长不成什么样。
 
-use super::{encode, parse, preset, randomized, ClientHello, ClientHelloId, HandshakeInputs};
+use super::{ClientHello, ClientHelloId, HandshakeInputs, encode, parse, preset, randomized};
 
 /// 一个可能被 GREASE 占用的码点位置。
 ///
@@ -58,7 +58,6 @@ pub enum Padding {
     /// 特定 SNI 长度上正确的指纹。
     BoringStyle,
 }
-
 
 // ── 结构化扩展集（见 `extensions.rs`）──────────────────────────────────────
 //
@@ -130,7 +129,10 @@ pub struct PreSharedKey {
 impl PreSharedKey {
     /// 没有会话的槽位：零 identity、零 binder ⇒ **不写字节**（uTLS 的 `Len() == 0`）。
     pub const fn empty() -> Self {
-        PreSharedKey { identities: Vec::new(), binders: Vec::new() }
+        PreSharedKey {
+            identities: Vec::new(),
+            binders: Vec::new(),
+        }
     }
 
     /// 「还没有算出真 binder」的形态：**全零占位、长度 = 会话哈希的长度**。
@@ -139,7 +141,10 @@ impl PreSharedKey {
     /// `make([]byte, hash.Size())`）。哈希长度由调用方给 —— 本层不引密码学。
     pub fn placeholder(identities: Vec<PskIdentity>, binder_len: usize) -> Self {
         let binders = vec![vec![0u8; binder_len]; identities.len()];
-        PreSharedKey { identities, binders }
+        PreSharedKey {
+            identities,
+            binders,
+        }
     }
 
     /// 会不会写出字节（uTLS 的 `pskExtLen() != 0`）。
@@ -297,9 +302,13 @@ pub enum Extension {
     /// `signed_certificate_timestamp`（体空）。
     SignedCertificateTimestamp,
     /// `psk_key_exchange_modes`。
-    PskKeyExchangeModes { modes: Vec<u8> },
+    PskKeyExchangeModes {
+        modes: Vec<u8>,
+    },
     /// `record_size_limit`（RFC 8449）。uTLS 只**广播**它、不支持它。
-    RecordSizeLimit { limit: u16 },
+    RecordSizeLimit {
+        limit: u16,
+    },
     /// `signature_algorithms_cert`。
     SignatureAlgorithmsCert(SignatureAlgorithmsCert),
     /// `delegated_credentials`。
@@ -307,9 +316,14 @@ pub enum Extension {
     /// `next_protocol_negotiation`（NPN）。uTLS 的体**恒为空**。
     Npn,
     /// ChannelID。体恒为空；`old_codepoint` 决定用 30031 还是 30032。
-    ChannelId { old_codepoint: bool },
+    ChannelId {
+        old_codepoint: bool,
+    },
     /// 任意扩展：类型 + 原始体，逐字节原样写出。
-    Opaque { id: u16, body: Vec<u8> },
+    Opaque {
+        id: u16,
+        body: Vec<u8>,
+    },
 }
 
 /// GREASE ECH 的候选集。
@@ -340,7 +354,10 @@ impl GreaseEchOptions {
     pub fn firefox() -> Self {
         GreaseEchOptions {
             cipher_suites: vec![
-                (crate::values::HPKE_KDF_HKDF_SHA256, crate::values::HPKE_AEAD_AES_128_GCM),
+                (
+                    crate::values::HPKE_KDF_HKDF_SHA256,
+                    crate::values::HPKE_AEAD_AES_128_GCM,
+                ),
                 (
                     crate::values::HPKE_KDF_HKDF_SHA256,
                     crate::values::HPKE_AEAD_CHACHA20_POLY1305,
@@ -388,7 +405,11 @@ impl Extension {
             Extension::DelegatedCredentials(_) => v::EXT_DELEGATED_CREDENTIALS,
             Extension::Npn => v::EXT_NPN,
             Extension::ChannelId { old_codepoint } => {
-                if *old_codepoint { v::EXT_CHANNEL_ID_OLD } else { v::EXT_CHANNEL_ID }
+                if *old_codepoint {
+                    v::EXT_CHANNEL_ID_OLD
+                } else {
+                    v::EXT_CHANNEL_ID
+                }
             }
             Extension::Opaque { id, .. } => *id,
         })
@@ -517,12 +538,17 @@ impl ClientHelloSpec {
     /// 「插在 PSK 之前」不是细节：uTLS 的 `AlwaysAddPadding` 专门为它写了一个分支，
     /// 而 `HelloChrome_114_Padding_PSK_Shuf` 的 case 里也正是这个顺序（填充 → PSK）。
     pub fn always_add_padding(&mut self) {
-        if self.extensions.iter().any(|e| matches!(e, Extension::Padding(_))) {
+        if self
+            .extensions
+            .iter()
+            .any(|e| matches!(e, Extension::Padding(_)))
+        {
             return; // 已经有一条，什么都不做
         }
         // 有 PSK 就插在它前面（PSK 必须最后），否则追加到末尾。
         let at = self.psk_position().unwrap_or(self.extensions.len());
-        self.extensions.insert(at, Extension::Padding(Padding::BoringStyle));
+        self.extensions
+            .insert(at, Extension::Padding(Padding::BoringStyle));
     }
 
     /// uTLS 的 `Config.AlwaysIncludePSK` 对 spec 做的那个变更（`ApplyPreset` 里的分支）：
@@ -534,13 +560,16 @@ impl ClientHelloSpec {
         if self.psk_position().is_some() {
             return false;
         }
-        self.extensions.push(Extension::PreSharedKey(PreSharedKey::empty()));
+        self.extensions
+            .push(Extension::PreSharedKey(PreSharedKey::empty()));
         true
     }
 
     /// PSK 扩展在列表里的位置（没有则 `None`）。
     pub fn psk_position(&self) -> Option<usize> {
-        self.extensions.iter().position(|e| matches!(e, Extension::PreSharedKey(_)))
+        self.extensions
+            .iter()
+            .position(|e| matches!(e, Extension::PreSharedKey(_)))
     }
 
     /// uTLS 的 `UConn.RemoveSNIExtension()`（`u_conn.go:280`）：**把 server_name 这个槽位
@@ -556,7 +585,8 @@ impl ClientHelloSpec {
     /// `Golang` 根本没有 spec，见 [`SpecError::EngineDefined`]）。
     pub fn remove_server_name(&mut self) -> bool {
         let before = self.extensions.len();
-        self.extensions.retain(|e| !matches!(e, Extension::ServerName));
+        self.extensions
+            .retain(|e| !matches!(e, Extension::ServerName));
         self.extensions.len() != before
     }
 
@@ -617,7 +647,9 @@ impl ClientHelloSpec {
         }
 
         if let Extension::KeyShare(cps) = &self.extensions[at]
-            && cps.iter().any(|c| matches!(c, CodePoint::Fixed(g) if *g == selected_group))
+            && cps
+                .iter()
+                .any(|c| matches!(c, CodePoint::Fixed(g) if *g == selected_group))
         {
             return Err(SpecError::HelloRetryRedundantKeyShare(selected_group));
         }
@@ -659,9 +691,12 @@ impl ClientHelloSpec {
                 len: out.extensions.len(),
             });
         }
-        out.extensions.insert(index, Extension::Cookie(CookieExtension {
-            cookie: cookie.to_vec(),
-        }));
+        out.extensions.insert(
+            index,
+            Extension::Cookie(CookieExtension {
+                cookie: cookie.to_vec(),
+            }),
+        );
         Ok(out)
     }
 
@@ -694,11 +729,17 @@ pub enum SpecError {
     /// 超过 2 个 GREASE 扩展：uTLS 只有两个占位值，第三个没有对应的随机值可用。
     TooManyGreaseExtensions(usize),
     /// PSK 扩展**必须在最后**（RFC 8446 §4.2.11）。uTLS 的每个 `_PSK_` 预设也都把它列在末尾。
-    PreSharedKeyNotLast { index: usize, len: usize },
+    PreSharedKeyNotLast {
+        index: usize,
+        len: usize,
+    },
     /// binder 数量与 identity 数量不等 —— RFC 8446 §4.2.11 要求「每个 identity 恰好一个
     /// binder」，不等就是畸形消息。uTLS 的写循环不校验这一点（两个列表各自求和），
     /// 所以本层报错比逐字节照抄更严：它挡住的是一类**畸形**，不是一个合法产物。
-    BinderCountMismatch { identities: usize, binders: usize },
+    BinderCountMismatch {
+        identities: usize,
+        binders: usize,
+    },
     /// 收到 HRR 要发第二飞，但 spec 里没有 `key_share` 扩展可改。
     /// 对应 uTLS 的 `"uTLS: received HelloRetryRequest, but keyshare not found among client's …"`。
     HelloRetryWithoutKeyShare,
@@ -708,10 +749,18 @@ pub enum SpecError {
     /// 对应 uTLS 的 `"tls: server sent an unnecessary HelloRetryRequest key_share"`。
     HelloRetryRedundantKeyShare(u16),
     /// 插 cookie 的位置越界：不得插到最后两位（uTLS 用 `len - 2` 当上界，为的是 PSK 仍在最后）。
-    CookieIndexOutOfRange { index: usize, len: usize },
-    PaddingTargetUnreachable { target: u16 },
+    CookieIndexOutOfRange {
+        index: usize,
+        len: usize,
+    },
+    PaddingTargetUnreachable {
+        target: u16,
+    },
     /// 扩展体或整条消息超出各自长度字段的表示范围。
-    TooLong { what: &'static str, len: usize },
+    TooLong {
+        what: &'static str,
+        len: usize,
+    },
     /// 预设的版本不存在，或该预设尚未实现。
     PresetUnavailable(ClientHelloId),
     /// 这是随机化预设，而随机化指纹**由种子定义** —— 没有种子就没有指纹。
@@ -730,10 +779,16 @@ impl core::fmt::Display for SpecError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             SpecError::MissingKeyExchange(g) => {
-                write!(f, "key_share 需要组 {g} 的公钥，但 inputs.key_exchange 里没有")
+                write!(
+                    f,
+                    "key_share 需要组 {g} 的公钥，但 inputs.key_exchange 里没有"
+                )
             }
             SpecError::ServerNameTooLong(n) => write!(f, "SNI 长 {n} 字节，上限 255"),
-            SpecError::BinderCountMismatch { identities, binders } => write!(
+            SpecError::BinderCountMismatch {
+                identities,
+                binders,
+            } => write!(
                 f,
                 "PSK 有 {identities} 个 identity 却有 {binders} 个 binder ——                  RFC 8446 §4.2.11 要求每个 identity 恰好一个"
             ),
@@ -828,9 +883,10 @@ impl From<ParseError> for SpecError {
         // 反解失败在 marshal 语境里就是「这条 spec 不该被发出去」。
         // 保留原文以便日志能说清是哪一种结构问题。
         match e {
-            ParseError::Truncated { needed, got } => {
-                SpecError::TooLong { what: "输入（解析用）", len: needed.saturating_sub(got) }
-            }
+            ParseError::Truncated { needed, got } => SpecError::TooLong {
+                what: "输入（解析用）",
+                len: needed.saturating_sub(got),
+            },
             _ => SpecError::NoExtensions,
         }
     }

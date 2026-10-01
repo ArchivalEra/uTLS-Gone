@@ -14,11 +14,11 @@
 
 use std::sync::Arc;
 
+use rustls::client::{PlanRequest, ResumptionOffer, SuppliesClientHello};
+use rustls::crypto::CryptoProvider;
 use utls::hello::{ClientHelloId, ClientHelloSpec};
 use utls::values as v;
 use utls_engine::FingerprintClient;
-use rustls::client::{PlanRequest, ResumptionOffer, SuppliesClientHello};
-use rustls::crypto::CryptoProvider;
 
 /// 引擎侧那套 provider（与 `UClient::new` 用的一致：aws-lc-rs）。
 fn provider() -> Arc<CryptoProvider> {
@@ -28,12 +28,19 @@ fn provider() -> Arc<CryptoProvider> {
 /// 引擎能完成的组（与 `fork_key_exchange_groups` 同一口径）。
 /// 一次没有会话可复用的 plan 请求。
 fn plan_req(groups: &[u16]) -> PlanRequest {
-    PlanRequest { groups: groups.to_vec(), resumption: None }
+    PlanRequest {
+        groups: groups.to_vec(),
+        resumption: None,
+    }
 }
 
 /// 一个假的复用提议（数据形态而已 —— binder 由引擎自己算）。
 fn offer() -> ResumptionOffer {
-    ResumptionOffer { ticket: vec![0xAB; 16], obfuscated_ticket_age: 42, binder_len: 32 }
+    ResumptionOffer {
+        ticket: vec![0xAB; 16],
+        obfuscated_ticket_age: 42,
+        binder_len: 32,
+    }
 }
 
 fn engine_groups() -> Vec<u16> {
@@ -87,7 +94,10 @@ fn session_id_of(hello: &[u8]) -> Vec<u8> {
 }
 
 fn body_of(hello: &[u8], ty: u16) -> Option<Vec<u8>> {
-    exts(hello).into_iter().find(|(t, _)| *t == ty).map(|(_, b)| b)
+    exts(hello)
+        .into_iter()
+        .find(|(t, _)| *t == ty)
+        .map(|(_, b)| b)
 }
 
 #[test]
@@ -108,8 +118,16 @@ fn retry_reuses_the_first_flight_inputs_and_only_rewrites_key_share() {
         })
         .expect("第二飞该能产出");
     let second_bytes = retry.client_hello.clone().unwrap();
-    let second_kx = retry.key_exchanges.first().cloned().expect("换了组就该带新交换");
-    assert_eq!(second_kx.group(), v::CURVE_P256, "新交换该是服务器要的那个组");
+    let second_kx = retry
+        .key_exchanges
+        .first()
+        .cloned()
+        .expect("换了组就该带新交换");
+    assert_eq!(
+        second_kx.group(),
+        v::CURVE_P256,
+        "新交换该是服务器要的那个组"
+    );
 
     // ① RFC 8446 §4.1.2：只有 key_share 与 padding 可以变。
     assert_eq!(
@@ -117,7 +135,11 @@ fn retry_reuses_the_first_flight_inputs_and_only_rewrites_key_share() {
         random_of(&second_bytes),
         "第二飞换了客户端随机数 —— RFC 禁止，而且这是最容易漏的一条"
     );
-    assert_eq!(session_id_of(&first_bytes), session_id_of(&second_bytes), "第二飞换了 session id");
+    assert_eq!(
+        session_id_of(&first_bytes),
+        session_id_of(&second_bytes),
+        "第二飞换了 session id"
+    );
     assert_eq!(
         first_bytes.len(),
         second_bytes.len(),
@@ -144,7 +166,11 @@ fn retry_reuses_the_first_flight_inputs_and_only_rewrites_key_share() {
 
     // ② key_share 只剩选中的组，而且是**新的**公钥（新的一把私钥）。
     let ks = body_of(&second_bytes, v::EXT_KEY_SHARE).unwrap();
-    assert_eq!(&ks[..4], &[0x00, 0x45, 0x00, 0x17], "该只剩 P-256 一项（0x0017）");
+    assert_eq!(
+        &ks[..4],
+        &[0x00, 0x45, 0x00, 0x17],
+        "该只剩 P-256 一项（0x0017）"
+    );
     let first_ks = body_of(&first_bytes, v::EXT_KEY_SHARE).unwrap();
     assert_ne!(first_ks, ks, "key_share 没变说明没起新密钥交换");
     assert_ne!(ks[6..], first_ks[6..], "公钥字节该是新的（每连接一把私钥）");
@@ -218,7 +244,10 @@ fn retry_refuses_what_it_cannot_express() {
             resumption: None,
         })
         .unwrap_err();
-    assert!(format!("{e}").contains("复用"), "报错该说清是「没有可复用的输入」：{e}");
+    assert!(
+        format!("{e}").contains("复用"),
+        "报错该说清是「没有可复用的输入」：{e}"
+    );
 
     // ② 服务器要一个 supported_groups 里没有的组 ⇒ 报错，不降级去发别的组。
     let client = chrome_70();
@@ -232,7 +261,10 @@ fn retry_refuses_what_it_cannot_express() {
             resumption: None,
         })
         .unwrap_err();
-    assert!(format!("{e}").contains("0x0301") || format!("{e}").contains("769"), "报错该点名那个组：{e}");
+    assert!(
+        format!("{e}").contains("0x0301") || format!("{e}").contains("769"),
+        "报错该点名那个组：{e}"
+    );
 }
 
 /// 没实现 `retry_plan` 的供应者（默认实现）必须**响亮拒绝**，而不是发一条与第一飞
@@ -299,12 +331,20 @@ fn a_psk_slot_is_filled_from_the_offer_and_the_binder_slot_is_reported() {
     assert_eq!(bytes.len() - slot.truncated_len, 2 + 1 + 32);
     // 那条 identity 就是我们给的 ticket，且 binder 还是全零占位（真值由引擎写）。
     let body = &bytes[slot.truncated_len..];
-    assert_eq!(body[0..2], [0, 33], "binders 长度 = 1 + 32（含 binder 自己的长度字节）");
+    assert_eq!(
+        body[0..2],
+        [0, 33],
+        "binders 长度 = 1 + 32（含 binder 自己的长度字节）"
+    );
     assert_eq!(body[2], 32, "binder 长度字段");
     assert!(body[3..].iter().all(|b| *b == 0), "此时该是全零占位");
 
     // 换一个**没有**会话的请求：槽位不被填，也不报 binder 位置。
     let plain = client.plan(&plan_req(&groups)).unwrap();
     assert!(plain.psk_binder.is_none());
-    assert_ne!(plain.client_hello.unwrap().len(), bytes.len(), "两次的字节该不同");
+    assert_ne!(
+        plain.client_hello.unwrap().len(),
+        bytes.len(),
+        "两次的字节该不同"
+    );
 }

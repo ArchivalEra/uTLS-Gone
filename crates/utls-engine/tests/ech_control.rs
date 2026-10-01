@@ -1,19 +1,39 @@
+use rustls::client::{EchConfig, EchMode};
+use rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES;
+use rustls::pki_types::{EchConfigListBytes, ServerName};
+use rustls::{ClientConfig, ClientConnection, StreamOwned};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
-use rustls::pki_types::{EchConfigListBytes, ServerName};
-use rustls::client::{EchConfig, EchMode};
-use rustls::{ClientConfig, ClientConnection, StreamOwned};
-use rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES;
 
 fn fetch(host: &str) -> Vec<u8> {
     let out = std::process::Command::new("dig")
-        .args(["+short", "-t", "TYPE65", host, "@1.1.1.1"]).output().expect("dig");
+        .args(["+short", "-t", "TYPE65", host, "@1.1.1.1"])
+        .output()
+        .expect("dig");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let ech = text.split_whitespace().find_map(|t| t.strip_prefix("ech=")).expect("ech=");
-    let mut v = Vec::new(); let mut acc = 0u32; let mut bits = 0u32;
+    let ech = text
+        .split_whitespace()
+        .find_map(|t| t.strip_prefix("ech="))
+        .expect("ech=");
+    let mut v = Vec::new();
+    let mut acc = 0u32;
+    let mut bits = 0u32;
     for c in ech.bytes() {
-        let d = match c { b'A'..=b'Z' => c-b'A', b'a'..=b'z' => c-b'a'+26, b'0'..=b'9' => c-b'0'+52, b'-'|b'+' => 62, b'_'|b'/' => 63, b'=' => break, _ => panic!() };
-        acc = (acc<<6)|u32::from(d); bits += 6; if bits >= 8 { bits -= 8; v.push((acc>>bits) as u8); }
+        let d = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            b'=' => break,
+            _ => panic!(),
+        };
+        acc = (acc << 6) | u32::from(d);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            v.push((acc >> bits) as u8);
+        }
     }
     v
 }
@@ -24,7 +44,8 @@ fn control() {
     let host = std::env::var("ECH_HOST").unwrap_or_else(|_| "crypto.cloudflare.com".into());
     let list = fetch(&host);
     eprintln!("配置 {} 字节", list.len());
-    let ech = EchConfig::new(EchConfigListBytes::from(&list[..]), ALL_SUPPORTED_SUITES).expect("配置");
+    let ech =
+        EchConfig::new(EchConfigListBytes::from(&list[..]), ALL_SUPPORTED_SUITES).expect("配置");
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     // 注意顺序：`with_ech` 在 `WantsVersions` 上（它会自己定版本）。
@@ -33,28 +54,44 @@ fn control() {
     let mut config = ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::aws_lc_rs::default_provider(),
     ))
-        .with_ech(EchMode::Enable(ech))
-        .expect("ECH 构建器")
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+    .with_ech(EchMode::Enable(ech))
+    .expect("ECH 构建器")
+    .with_root_certificates(roots)
+    .with_no_client_auth();
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let cfg = Arc::new(config);
     let name = ServerName::try_from(host.clone()).unwrap();
     let conn = ClientConnection::new(cfg, name).expect("连接");
     let tcp = std::net::TcpStream::connect(format!("{host}:443")).expect("tcp");
-    tcp.set_read_timeout(Some(std::time::Duration::from_secs(10))).ok();
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .ok();
     // 记下 rustls 实际发出去的那条 ClientHello —— 那是「能通的对岸」，与我们的比就有方向了。
     let seen = Arc::new(Mutex::new(Vec::new()));
-    let mut s = StreamOwned::new(conn, Tee { inner: tcp, seen: seen.clone() });
+    let mut s = StreamOwned::new(
+        conn,
+        Tee {
+            inner: tcp,
+            seen: seen.clone(),
+        },
+    );
     loop {
         match s.conn.complete_io(&mut s.sock) {
-            Ok(_) => if !s.conn.is_handshaking() { break },
-            Err(e) => { eprintln!("rustls 自己的 ECH 客户端: 握手失败 = {e}"); 
+            Ok(_) => {
+                if !s.conn.is_handshaking() {
+                    break;
+                }
+            }
+            Err(e) => {
+                eprintln!("rustls 自己的 ECH 客户端: 握手失败 = {e}");
                 eprintln!("ech_status = {:?}", s.conn.ech_status());
-                return; }
+                return;
+            }
         }
     }
-    eprintln!("✅ rustls 自己的 ECH 客户端: 握手完成, ech_status = {:?}", s.conn.ech_status());
+    eprintln!(
+        "✅ rustls 自己的 ECH 客户端: 握手完成, ech_status = {:?}",
+        s.conn.ech_status()
+    );
     let hello = seen.lock().unwrap().clone();
     report_outer(hello, "rustls");
 }
@@ -85,20 +122,28 @@ fn report_outer(rec: Vec<u8>, who: &str) {
         if ty == 0xfe0d {
             let e = &region[q + 4..q + 4 + bl];
             let mut r = 1usize; // type byte
-            let kdf = u16::from_be_bytes([e[r], e[r + 1]]); r += 2;
-            let aead = u16::from_be_bytes([e[r], e[r + 1]]); r += 2;
-            let cid = e[r]; r += 1;
-            let encl = u16::from_be_bytes([e[r], e[r + 1]]) as usize; r += 2 + encl;
+            let kdf = u16::from_be_bytes([e[r], e[r + 1]]);
+            r += 2;
+            let aead = u16::from_be_bytes([e[r], e[r + 1]]);
+            r += 2;
+            let cid = e[r];
+            r += 1;
+            let encl = u16::from_be_bytes([e[r], e[r + 1]]) as usize;
+            r += 2 + encl;
             let pl = u16::from_be_bytes([e[r], e[r + 1]]) as usize;
             eprintln!(
                 "{who}: 外层 ECH: type={} kdf=0x{kdf:04x} aead=0x{aead:04x} config_id=0x{cid:02x} \
                  enc_len={encl} **payload_len={pl}** (⇒ 内层明文 {} 字节)",
-                e[0], pl - 16
+                e[0],
+                pl - 16
             );
         }
         q += 4 + bl;
     }
-    eprintln!("{who}: 外层扩展类型序列 = {types:?} (共 {} 条)", types.len());
+    eprintln!(
+        "{who}: 外层扩展类型序列 = {types:?} (共 {} 条)",
+        types.len()
+    );
     let _ = types;
 }
 
@@ -120,5 +165,7 @@ impl Write for Tee {
         seen.extend_from_slice(&buf[..n]);
         Ok(n)
     }
-    fn flush(&mut self) -> std::io::Result<()> { self.inner.flush() }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }

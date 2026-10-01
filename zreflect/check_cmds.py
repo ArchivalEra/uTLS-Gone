@@ -77,9 +77,13 @@ def _run(cmd, cache, cwd):
     return cache[cmd]
 
 
-def problems(ledger, runner):
+def problems(ledger, runner, skip_keys=()):
     """纯函数：入参是**台账**（与兄弟闸门同一约定），`runner(cmd)` 返回 (rc, out)。
     返回问题清单，空 = 通过。自证要能注入假 runner，所以这里不碰进程、只收结果。
+
+    `skip_keys`：**机器相关**的事实（`rustc --version` 那种）在别的机器上必然产出不同的值，
+    所以允许调用方点名跳过 —— 但**必须显式点名并打印出来**（见 `run()` 读的
+    `REFLECT_CMDS_SKIP`）。默认一个都不跳，本地判据因此仍是满的。
     """
     facts = facts_of(ledger)
     if not facts:
@@ -89,9 +93,13 @@ def problems(ledger, runner):
     out = []
     checked = 0
     skipped = []
+    machine = []
     for key, entry in sorted(facts.items()):
         cmd = entry.get("cmd") or ""
         want = _value(entry)
+        if key in skip_keys:                      # 调用方点名的机器相关项
+            machine.append(key)
+            continue
         if isinstance(want, dict):                # 「量不到」的诚实形状：没有值可比
             skipped.append(key)
             continue
@@ -115,6 +123,10 @@ def problems(ledger, runner):
         # 如实说：这些是「量不到」的事实，命令本身无从比对。
         print("  注意：%d 条事实是「量不到」形状，命令未比对：%s"
               % (len(skipped), ", ".join(skipped[:5])), file=sys.stderr)
+    if machine:
+        # 更要紧的是这条：跳过的**是有值可比、只是换台机器就不一样**的那些。
+        print("  注意：按 REFLECT_CMDS_SKIP 跳过 %d 条机器相关事实（不比对）：%s"
+              % (len(machine), ", ".join(machine)), file=sys.stderr)
     return []
 
 
@@ -123,6 +135,7 @@ def run(argv):
     f = facts_of(led)
     cache = {}
     cwd = GATE_REPO
+    skip_keys = tuple(k for k in os.environ.get("REFLECT_CMDS_SKIP", "").split(",") if k)
 
     def runner(cmd):
         # 生产者合并：`producer | grep '^key='` ⇒ 只跑 producer 一次，
@@ -139,7 +152,7 @@ def run(argv):
             return 0, ""                       # 没那一行 ⇒ 取不出值 ⇒ 报
         return _run(cmd, cache, cwd)
 
-    probs = problems(led, runner)
+    probs = problems(led, runner, skip_keys)
     for x in probs:
         print("  · %s" % x, file=sys.stderr)
     if probs:
