@@ -689,14 +689,14 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
 | `md_files` | **22** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **2840** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_lines` | **2845** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
 | `py_lines` | **1933** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `question_count` | **10** | `ls questions/*.md | wc -l` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
-| `rs_files` | **44** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **19073** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_files` | **45** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `rs_lines` | **19633** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 

@@ -848,6 +848,9 @@ pub enum SpecError {
         what: &'static str,
         len: usize,
     },
+    /// QUIC 传输参数的 `Fake` 逃生口没有给 ID —— 上游在这里 panic
+    /// （`u_quic_transport_parameters.go:367`）；本 crate 把「发不出去」交成错误。
+    QuicFakeParameterWithoutId,
     /// 预设的版本不存在，或该预设尚未实现。
     PresetUnavailable(ClientHelloId),
     /// 这是随机化预设，而随机化指纹**由种子定义** —— 没有种子就没有指纹。
@@ -917,6 +920,12 @@ impl core::fmt::Display for SpecError {
                 write!(f, "填充目标 {target} 小于未填充长度，达不到")
             }
             SpecError::TooLong { what, len } => write!(f, "{what} 长 {len} 字节，超出长度字段"),
+            SpecError::QuicFakeParameterWithoutId => {
+                write!(
+                    f,
+                    "QUIC 的 Fake 传输参数必须给一个非零 ID —— 静默发参数 0 是畸形"
+                )
+            }
             SpecError::PresetUnavailable(id) => write!(f, "预设 {id} 不存在或尚未实现"),
             SpecError::EngineDefined(id) => write!(
                 f,

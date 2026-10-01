@@ -48,13 +48,16 @@
 
 ## 三、**未做**（真缺口，逐条）
 
-1. **QUIC 指纹层**（上游 `u_quic.go` 236 行 + `u_quic_transport_parameters.go` 374 行）。
-   上游有 `TestMarshal`（Firefox 参数集的 golden bytes）与 `TestGetGREASEVersion`
-   （4096 次抽样必须都是 `0x?a?a?a?a` 且高位不全同 —— 上游加它正是因为底层实现漏了掩码，
-   让这个参数变成「不是真浏览器」的可靠信号）。我们要做的是**编码层**（纯字节，无引擎），
-   至于 QUIC 连接本身由 rustls 的 `pub mod quic` 提供。
-   注：`crates/utls` 现在**一行 QUIC 都没有**；`README.md` 的「非目标」一节原先错写成
-   「uTLS 本身也没有 HTTP/3 指纹」，已改。
+1. **QUIC 指纹层 —— 编码层已移植，连接那半边未接**。
+   `u_quic_transport_parameters.go` 已移植为 `crates/utls/src/quic.rs`，上游三条判据
+   都有了 Rust 版：`TestMarshal`（Firefox 参数集 **golden bytes 逐字节**）、
+   `TestGetGREASEVersion`（4096 次抽样全是 `0x?a?a?a?a` 且高位不全同）、
+   `TestVersionInformationGREASESubstitution`（哨兵逐次替换、非哨兵原样、结构里仍是哨兵）。
+   **一处刻意的差别**（写在模块头）：上游每次 `Value()` 从系统熵新抽，我们由**每连接的
+   seed** 驱动（与 hello 分域）—— 跨连接照样每条不同，**同连接可复现**（HRR 第二飞需要）。
+   **仍缺**：(a) `u_quic.go` 的 `UQUICConn` 那层接缝（rustls 有 `pub mod quic`，
+   但我们的外供 ClientHello 还没接上 QUIC 连接）；(b) 真握手判据
+   （服务端看到的传输参数扩展与我们算的一致）。
 2. **`ClientHelloSpec` 的 JSON 格式**（`u_clienthello_json_test.go` + 4 个 golden：
    Chrome102 / Firefox105 / iOS14 / Edge106）。其中 3 个预设我们有，**`Ios(14)` 没有**
    （`preset.rs` 返回 `PresetUnavailable`）—— 要 4/4 就得顺手实现 iOS 14。

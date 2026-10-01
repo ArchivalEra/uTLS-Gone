@@ -39,7 +39,7 @@ mod preset_data;
 mod randomized;
 mod randomized_tables;
 mod spec;
-mod stream;
+pub(crate) mod stream; // quic 模块要从这里取每连接的抽取流
 #[cfg(test)]
 mod tests;
 

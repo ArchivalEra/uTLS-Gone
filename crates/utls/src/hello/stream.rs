@@ -53,6 +53,20 @@ impl Stream {
         (self.next_u64() >> 32) as u32
     }
 
+    /// 传输参数那条流：**同一个 seed 派生，但与 hello 的流不同域**。
+    ///
+    /// 为什么不能共用：QUIC 的传输参数扩展就在 ClientHello 里，它的 GREASE 版本
+    /// 必须与 hello 里其它 GREASE 值**不相关**（相关本身就是一种指纹信号）；
+    /// 但又必须能从同一个 seed 复现（HRR 第二飞）。域分离常量就是同时满足这两条的办法。
+    pub(crate) fn for_transport_parameters(seed: &[u8; 32]) -> Self {
+        let mut s = Self::new(seed);
+        s.state = s.state.wrapping_add(0xD1B5_4A32_D192_ED03);
+        if s.state == 0 {
+            s.state = 1;
+        }
+        s
+    }
+
     pub(crate) fn u8(&mut self) -> u8 {
         self.next_u64() as u8
     }

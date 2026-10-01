@@ -15,6 +15,7 @@
 
 pub mod hello;
 pub mod ja3;
+pub mod quic;
 pub mod values;
 
 pub use hello::{ClientHello, ClientHelloId, ClientHelloSpec, HandshakeInputs};

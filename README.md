@@ -189,11 +189,13 @@ sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/
 HTTP/2 的指纹 —— uTLS 本身也没有，它属于另一层（`ClientProfile` 那一类的封装）。
 本项目只做 **ClientHello**（TCP 上的 TLS）。
 
-⚠️ **HTTP/3 不在这条里，别照旧稿抄**：上游 uTLS **有**一个 QUIC 指纹层
+⚠️ **HTTP/3 要分开说，别照旧稿抄**：上游 uTLS **有**一个 QUIC 指纹层
 （`u_quic.go` / `u_quic_transport_parameters.go`，是它自己写的，带 golden-bytes 与
-GREASE-version 测试），我们**还没有**把它移植过来 —— 这是「完全等价」上一处**已知的、
-未完成的**缺口，逐条记在 [`docs/utls-parity.md`](docs/utls-parity.md)。
-（这里从前写着「HTTP/3 指纹 uTLS 本身也没有」，那句话是错的。）
+GREASE-version 测试）—— 这里从前写着「uTLS 本身也没有 HTTP/3 指纹」，那句话是错的。
+现在**传输参数的编码层**已经移植（`crates/utls/src/quic.rs`，Firefox 参数集与上游
+golden bytes 逐字节一致，GREASE 版本分布/哨兵替换同款判据）；还没接的是
+`UQUICConn` 那层连接缝（rustls 有 `pub mod quic`）。逐条状态见
+[`docs/utls-parity.md`](docs/utls-parity.md)。
 
 ## License
 
