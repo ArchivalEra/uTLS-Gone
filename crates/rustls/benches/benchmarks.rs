@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use bencher::{benchmark_group, benchmark_main, Bencher};
-use rustls::crypto::ring as provider;
+use bencher::{Bencher, benchmark_group, benchmark_main};
 use rustls::ServerConnection;
-use rustls_test::{make_server_config, KeyType, TestNonBlockIo};
+use rustls::crypto::ring as provider;
+use rustls_test::{KeyType, TestNonBlockIo, make_server_config};
 
 fn bench_ewouldblock(c: &mut Bencher) {
     let server_config = make_server_config(KeyType::Rsa2048, &provider::default_provider());

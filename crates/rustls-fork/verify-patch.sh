@@ -51,6 +51,7 @@ cd "rustls-$VERSION"
 git init -q .
 git add -A
 git -c user.email=x@y -c user.name=x commit -qm pristine
+PRISTINE_SRC="$PWD/src"
 
 # ── 判据①：文件数 ──
 files=$(grep -c '^diff --git' "$PATCH")
@@ -61,6 +62,27 @@ if [ "$files" != "$marked" ]; then
     echo "   （多半是新改了一个文件却没重新生成 patch.diff，见 README「二之前」）" >&2
     exit 1
 fi
+
+# ── 判据①′：**只有带 FORK 标记的文件**允许与原始树不同 ──
+# 这一条是 2026-10-01 用血换来的：`cargo fmt --all`（或在 vendored 目录里跑 rustfmt）
+# 会把**没改过的**上游文件也重排，实测一次污染 68 个文件，而当时两条判据都看不出来
+# —— 因为重新生成的补丁会把这些差异一起收进去（文件数变成了 80）。
+# 断言写成「每个差异文件都必须含 `FORK(utls-rs)`」，与判据①互为里外。
+stray=$(diff -rq "$PRISTINE_SRC" "$VENDORED/src" 2>/dev/null | while read -r line; do
+    case "$line" in
+        "Files "*" differ") f=$(printf '%s' "$line" | sed 's/^Files \(.*\) and .* differ$/\1/') ;;
+        "Only in $VENDORED/src"*": "*) f="$VENDORED/src/${line##*: }" ;;
+        *) continue ;;
+    esac
+    grep -q 'FORK(utls-rs)' "$f" 2>/dev/null || printf '%s\n' "$f"
+done)
+if [ -n "$stray" ]; then
+    echo "⚠️ 判据①′不过：下面这些文件与原始树不同、却**没有** FORK(utls-rs) 标记：" >&2
+    printf '%s\n' "$stray" >&2
+    echo "   多半是在 vendored 目录里跑过 rustfmt/cargo fmt —— 把上游文件恢复成 tarball 里的原样。" >&2
+    exit 1
+fi
+echo "判据①′ vendored 树里没有「无标记却被改过」的文件 ✅"
 
 # ── 判据②：打上去能否逐文件重现 vendored 那棵树 ──
 git apply "$PATCH"

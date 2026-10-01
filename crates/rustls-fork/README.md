@@ -105,7 +105,7 @@ cd rustls-0.23.45 && git init -q . && git add -A \
 而补丁看上去照旧生成成功、测试也全绿（因为它压根没被编译进那条路径）。
 这就是为什么覆盖的是**整棵 `src`**，不是一张清单。
 
-## 二、八处能力：改哪个文件、为什么
+## 二、能力清单：改哪个文件、为什么（现 10 条；(i) 见缺陷表第 8 条、(j) 见下）
 
 补丁的规模**不在这里手抄**：`fork_patch_files` / `fork_patch_hunks` / `fork_patch_plus` /
 `fork_patch_minus` 四条台账事实给出「几个文件、几个 hunk、增删多少行」，各带一条可复跑的
@@ -343,6 +343,21 @@ outer/inner 的类型位**（`0` = outer，`1` = inner，而 inner 形态**只�
 本仓先按「没有类型位」的格式拼外层扩展，rustls 把 `kdf_id` 的高字节当类型读，
 整条 hello 直接解不开（`InvalidMessage(MessageTooShort)`）。两个参照实现都写这一位：
 rustls `EncryptedClientHello::encode`、uTLS `generateOuterECHExt` 的 `b.AddUint8(0)`。
+
+### (j) 服务端侧：允许用证书自己的签名算法（REALITY 需要）
+
+`ServerConfig::fork_use_certificate_signature_scheme`（默认 `false`）—— 打开后，
+服务端把**签名键自己支持的方案**并进客户端的 `signature_algorithms` 候选，
+于是 `CertificateVerify` 可以用一个客户端没报过的算法。
+
+为什么需要：XTLS/REALITY 的服务端证书是**一次性 ed25519 自签叶**，其签名位被覆写为
+`HMAC(AuthKey, pub)`，客户端按 `ed25519.PublicKey` 校验它而不是验链；而真实浏览器
+指纹（Chrome 131/133）**根本不报 Ed25519** —— Go 参照因此把 `hs.sigAlg = Ed25519`
+写死（`handshake_server_tls13.go:165`），完全不协商。没有这个开关时，stock Xray
+客户端一上来就死在 `PeerIncompatible::NoSignatureSchemesInCommon`（实测）。
+
+只在「服务端用自选方案的证书解析器」时才该开（`ResolvesServerCert` 那一类场景）。
+RFC 8446 §4.4.2.2 默认行为不变。
 
 ### 为什么这个缝是「每连接」的
 

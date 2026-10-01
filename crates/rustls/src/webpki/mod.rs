@@ -21,11 +21,11 @@ pub use server_verifier::{ServerCertVerifierBuilder, WebPkiServerVerifier};
 // Conditionally exported from crate.
 #[allow(unreachable_pub)]
 pub use verify::{
-    verify_server_cert_signed_by_trust_anchor, verify_server_name, ParsedCertificate,
+    ParsedCertificate, verify_server_cert_signed_by_trust_anchor, verify_server_name,
 };
 pub use verify::{
-    verify_tls12_signature, verify_tls13_signature, verify_tls13_signature_with_raw_key,
-    WebPkiSupportedAlgorithms,
+    WebPkiSupportedAlgorithms, verify_tls12_signature, verify_tls13_signature,
+    verify_tls13_signature_with_raw_key,
 };
 
 /// An error that can occur when building a certificate verifier.

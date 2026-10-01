@@ -244,7 +244,7 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
 /// [`DEFAULT_KX_GROUPS`] is provided as an array of this provider's defaults.
 pub mod kx_group {
     pub use super::kx::{SECP256R1, SECP384R1, X25519};
-    pub use super::pq::{MLKEM1024, MLKEM768, SECP256R1MLKEM768, X25519MLKEM768};
+    pub use super::pq::{MLKEM768, MLKEM1024, SECP256R1MLKEM768, X25519MLKEM768};
 }
 
 /// A list of the default key exchange groups supported by this provider.
@@ -319,7 +319,11 @@ mod tests {
     #[cfg(feature = "fips")]
     #[test]
     fn default_suites_are_fips() {
-        assert!(super::DEFAULT_CIPHER_SUITES.iter().all(|scs| scs.fips()));
+        assert!(
+            super::DEFAULT_CIPHER_SUITES
+                .iter()
+                .all(|scs| scs.fips())
+        );
     }
 
     #[cfg(not(feature = "fips"))]
@@ -337,7 +341,9 @@ mod tests {
                 .iter()
                 .map(|alg| {
                     (
-                        alg.public_key_alg_id().as_ref().to_vec(),
+                        alg.public_key_alg_id()
+                            .as_ref()
+                            .to_vec(),
                         alg.signature_alg_id().as_ref().to_vec(),
                     )
                 })

@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T19:16:14+0800",
+ "generated": "2026-10-01T19:24:22+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -44,7 +44,7 @@
    "note": "文档"
   },
   "md_lines": {
-   "value": 2993,
+   "value": 3016,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
    "source": "repo",
    "note": "文档"
@@ -56,7 +56,7 @@
    "note": "vendored 的 rustls fork（**不是**我们写的）"
   },
   "fork_rs_lines": {
-   "value": 48947,
+   "value": 50042,
    "cmd": "find crates/rustls -name '*.rs' -exec cat {} + | wc -l",
    "source": "crates/rustls",
    "note": "同上"
@@ -68,19 +68,19 @@
    "note": "我们**改过**的 fork 文件数（其余是上游原文）"
   },
   "fork_patch_files": {
-   "value": 9,
+   "value": 12,
    "cmd": "grep -c '^diff --git' crates/rustls-fork/patch.diff",
    "source": "crates/rustls-fork/",
    "note": "补丁改动的文件数（含新建的 fork.rs）"
   },
   "fork_patch_hunks": {
-   "value": 39,
+   "value": 43,
    "cmd": "grep -c '^@@' crates/rustls-fork/patch.diff",
    "source": "crates/rustls-fork/",
    "note": "补丁的 hunk 数 —— rebase 时按 hunk 定位，所以它是「要维护的行数」的尺度"
   },
   "fork_patch_plus": {
-   "value": 1435,
+   "value": 1483,
    "cmd": "grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'",
    "source": "crates/rustls-fork/",
    "note": "补丁新增行数"
@@ -92,7 +92,7 @@
    "note": "补丁删除行数"
   },
   "fork_patch_matches_markers": {
-   "value": "NO",
+   "value": "yes",
    "cmd": "[ \"$(grep -c '^diff --git' crates/rustls-fork/patch.diff)\" = \"$(grep -rl 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | wc -l)\" ] && echo yes || echo NO",
    "source": "crates/rustls-fork/",
    "note": "不变式：patch.diff 的文件数 == 带 FORK(utls-rs) 标记的文件数（不等 ⇒ 补丁漏了文件，或漏了标记）"

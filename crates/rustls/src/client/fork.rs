@@ -406,7 +406,9 @@ impl ActiveKeyExchange for ExternalKx {
     }
 
     fn hybrid_component(&self) -> Option<(NamedGroup, &[u8])> {
-        self.hybrid.as_ref().map(|(group, key)| (*group, &key[..]))
+        self.hybrid
+            .as_ref()
+            .map(|(group, key)| (*group, &key[..]))
     }
 
     fn complete_hybrid_component(

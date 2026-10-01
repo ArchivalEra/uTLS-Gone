@@ -100,7 +100,9 @@ impl<'a> BorrowedPayload<'a> {
             return;
         }
 
-        self.0 = core::mem::take(&mut self.0).split_at_mut(len).0;
+        self.0 = core::mem::take(&mut self.0)
+            .split_at_mut(len)
+            .0;
     }
 
     pub(crate) fn into_inner(self) -> &'a mut [u8] {

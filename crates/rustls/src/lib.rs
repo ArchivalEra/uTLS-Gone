@@ -533,20 +533,20 @@ pub mod internal {
 /// [`unbuffered-client`]: https://github.com/rustls/rustls/blob/main/examples/src/bin/unbuffered-client.rs
 /// [`unbuffered-server`]: https://github.com/rustls/rustls/blob/main/examples/src/bin/unbuffered-server.rs
 pub mod unbuffered {
+    pub use crate::conn::UnbufferedConnectionCommon;
     pub use crate::conn::unbuffered::{
         AppDataRecord, ConnectionState, EncodeError, EncodeTlsData, EncryptError,
         InsufficientSizeError, ReadEarlyData, ReadTraffic, TransmitTlsData, UnbufferedStatus,
         WriteTraffic,
     };
-    pub use crate::conn::UnbufferedConnectionCommon;
 }
 
 // The public interface is:
 pub use crate::builder::{ConfigBuilder, ConfigSide, WantsVerifier, WantsVersions};
 pub use crate::common_state::{CommonState, HandshakeKind, IoState, Side};
-pub use crate::conn::{kernel, ConnectionCommon, SideData};
 #[cfg(feature = "std")]
 pub use crate::conn::{Connection, Reader, Writer};
+pub use crate::conn::{ConnectionCommon, SideData, kernel};
 pub use crate::enums::{
     AlertDescription, CertificateCompressionAlgorithm, CipherSuite, ContentType, HandshakeType,
     ProtocolVersion, SignatureAlgorithm, SignatureScheme,
@@ -575,7 +575,7 @@ pub use crate::ticketer::TicketSwitcher;
 pub use crate::tls12::Tls12CipherSuite;
 pub use crate::tls13::Tls13CipherSuite;
 pub use crate::verify::DigitallySignedStruct;
-pub use crate::versions::{SupportedProtocolVersion, ALL_VERSIONS, DEFAULT_VERSIONS};
+pub use crate::versions::{ALL_VERSIONS, DEFAULT_VERSIONS, SupportedProtocolVersion};
 pub use crate::webpki::RootCertStore;
 
 /// Items for use in a client.
@@ -603,10 +603,9 @@ pub mod client {
     pub use client_conn::{ClientConnection, WriteEarlyData};
     pub use ech::{EchConfig, EchGreaseConfig, EchMode, EchStatus};
     // FORK(utls-rs): the externally supplied ClientHello seam.
-    pub use fork::{
-        ClientHelloPlan, EchOffer, ExternalKeyExchange, FixedClientHello, HelloRetryRequestPlan,
-        PlanRequest, PskBinderSlot, ResumptionOffer, SuppliesClientHello,
-    };
+    pub use fork::{ClientHelloPlan, EchOffer, ExternalKeyExchange, FixedClientHello,
+                    HelloRetryRequestPlan, PlanRequest, PskBinderSlot, ResumptionOffer,
+                    SuppliesClientHello};
     pub use handy::AlwaysResolvesClientRawPublicKeys;
     #[cfg(any(feature = "std", feature = "hashbrown"))]
     pub use handy::ClientSessionMemoryCache;
@@ -620,8 +619,8 @@ pub mod client {
 
     pub use crate::msgs::persist::{Tls12ClientSessionValue, Tls13ClientSessionValue};
     pub use crate::webpki::{
-        verify_server_cert_signed_by_trust_anchor, verify_server_name, ServerCertVerifierBuilder,
-        VerifierBuilderError, WebPkiServerVerifier,
+        ServerCertVerifierBuilder, VerifierBuilderError, WebPkiServerVerifier,
+        verify_server_cert_signed_by_trust_anchor, verify_server_name,
     };
 }
 
@@ -710,7 +709,7 @@ pub mod pki_types {
 /// Message signing interfaces.
 pub mod sign {
     pub use crate::crypto::signer::{
-        public_key_to_spki, CertifiedKey, Signer, SigningKey, SingleCertAndKey,
+        CertifiedKey, Signer, SigningKey, SingleCertAndKey, public_key_to_spki,
     };
 }
 
@@ -735,12 +734,12 @@ pub(crate) mod polyfill;
 #[cfg(any(feature = "std", feature = "hashbrown"))]
 mod hash_map {
     #[cfg(feature = "std")]
-    pub(crate) use std::collections::hash_map::Entry;
-    #[cfg(feature = "std")]
     pub(crate) use std::collections::HashMap;
+    #[cfg(feature = "std")]
+    pub(crate) use std::collections::hash_map::Entry;
 
     #[cfg(all(not(feature = "std"), feature = "hashbrown"))]
-    pub(crate) use hashbrown::hash_map::Entry;
-    #[cfg(all(not(feature = "std"), feature = "hashbrown"))]
     pub(crate) use hashbrown::HashMap;
+    #[cfg(all(not(feature = "std"), feature = "hashbrown"))]
+    pub(crate) use hashbrown::hash_map::Entry;
 }

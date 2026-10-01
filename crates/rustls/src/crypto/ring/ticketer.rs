@@ -95,7 +95,9 @@ impl ProducesTickets for AeadTicketer {
     fn encrypt(&self, message: &[u8]) -> Option<Vec<u8>> {
         // Random nonce, because a counter is a privacy leak.
         let mut nonce_buf = [0u8; 12];
-        SystemRandom::new().fill(&mut nonce_buf).ok()?;
+        SystemRandom::new()
+            .fill(&mut nonce_buf)
+            .ok()?;
         let nonce = aead::Nonce::assume_unique_for_key(nonce_buf);
         let aad = aead::Aad::from(self.key_name);
 
@@ -131,7 +133,11 @@ impl ProducesTickets for AeadTicketer {
 
     /// Decrypt `ciphertext` and recover the original message.
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
-        if ciphertext.len() > self.maximum_ciphertext_len.load(Ordering::SeqCst) {
+        if ciphertext.len()
+            > self
+                .maximum_ciphertext_len
+                .load(Ordering::SeqCst)
+        {
             #[cfg(debug_assertions)]
             debug!("rejected over-length ticket");
             return None;

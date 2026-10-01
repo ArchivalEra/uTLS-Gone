@@ -9,19 +9,20 @@ use pki_types::ServerName;
 #[cfg(feature = "tls12")]
 use super::tls12;
 use super::{ResolvesClientCert, Tls12Resumption};
+use crate::SupportedCipherSuite;
 #[cfg(feature = "logging")]
 use crate::bs_debug;
 use crate::check::inappropriate_handshake_message;
 use crate::client::client_conn::ClientConnectionData;
 use crate::client::common::ClientHelloDetails;
 use crate::client::ech::{EchConfig, EchState};
-use crate::SupportedCipherSuite;
 // FORK(utls-rs): the externally supplied ClientHello seam.
 use crate::client::fork;
-use crate::client::{tls13, ClientConfig, EchMode, EchStatus};
-use crate::common_state::{CommonState, HandshakeKind, KxState, State};
-use crate::conn::ConnectionRandoms;
+use crate::client::{ClientConfig, EchMode, EchStatus, tls13};
 use crate::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES as ALL_SUPPORTED_HPKE_SUITES;
+use crate::common_state::{CommonState, HandshakeKind, KxState, State};
+use crate::msgs::enums::NamedGroup;
+use crate::conn::ConnectionRandoms;
 use crate::crypto::{ActiveKeyExchange, KeyExchangeAlgorithm};
 use crate::enums::{
     AlertDescription, CertificateType, CipherSuite, ContentType, HandshakeType, ProtocolVersion,
@@ -30,7 +31,6 @@ use crate::error::{Error, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHashBuffer;
 use crate::log::{debug, trace};
 use crate::msgs::base::Payload;
-use crate::msgs::enums::NamedGroup;
 use crate::msgs::enums::{Compression, ExtensionType};
 use crate::msgs::handshake::{
     CertificateStatusRequest, ClientExtensions, ClientExtensionsInput, ClientHelloPayload,
@@ -40,12 +40,12 @@ use crate::msgs::handshake::{
     TransportParameters,
 };
 use crate::msgs::message::{Message, MessagePayload};
+use pki_types::EchConfigListBytes;
 use crate::msgs::persist;
 use crate::sync::Arc;
 use crate::tls13::key_schedule::KeyScheduleEarly;
 use crate::tls13::Tls13CipherSuite;
 use crate::verify::ServerCertVerifier;
-use pki_types::EchConfigListBytes;
 
 pub(super) type NextState<'a> = Box<dyn State<ClientConnectionData> + 'a>;
 pub(super) type NextStateOrError<'a> = Result<NextState<'a>, Error>;
@@ -76,9 +76,11 @@ impl OfferedKeyShares {
     }
 
     fn any_group_matches(&self, group: NamedGroup) -> bool {
-        self.0
-            .iter()
-            .any(|kx| kx.group() == group || kx.hybrid_component().is_some_and(|(g, _)| g == group))
+        self.0.iter().any(|kx| {
+            kx.group() == group
+                || kx.hybrid_component()
+                    .is_some_and(|(g, _)| g == group)
+        })
     }
 
     /// The share the server selected, if we offered it.
@@ -102,9 +104,10 @@ impl OfferedKeyShares {
             .iter()
             .position(|kx| kx.group() == their.group)
             .or_else(|| {
-                self.0
-                    .iter()
-                    .position(|kx| kx.hybrid_component().is_some_and(|(g, _)| g == their.group))
+                self.0.iter().position(|kx| {
+                    kx.hybrid_component()
+                        .is_some_and(|(g, _)| g == their.group)
+                })
             })?;
         Some(self.0.remove(at))
     }
@@ -268,7 +271,10 @@ impl ClientHelloInput {
         };
 
         let hello = ClientHelloDetails::new(
-            extra_exts.protocols.clone().unwrap_or_default(),
+            extra_exts
+                .protocols
+                .clone()
+                .unwrap_or_default(),
             crate::rand::random_u16(config.provider.secure_random)?,
         );
 
@@ -310,7 +316,11 @@ impl ClientHelloInput {
         cx: &mut ClientContext<'_>,
     ) -> NextStateOrError<'static> {
         let mut transcript_buffer = HandshakeHashBuffer::new();
-        if self.config.client_auth_cert_resolver.has_certs() {
+        if self
+            .config
+            .client_auth_cert_resolver
+            .has_certs()
+        {
             transcript_buffer.set_client_auth_enabled();
         }
 
@@ -346,13 +356,13 @@ impl ClientHelloInput {
                 .unwrap_or(true);
             match supplied.is_empty() && !caller_offered_key_share {
                 true => None,
-                false if supplied.is_empty() => {
-                    Some(OfferedKeyShares::single(tls13::initial_key_share(
+                false if supplied.is_empty() => Some(OfferedKeyShares::single(
+                    tls13::initial_key_share(
                         &self.config,
                         &self.server_name,
                         &mut cx.common.kx_state,
-                    )?))
-                }
+                    )?,
+                )),
                 false => {
                     // FORK(utls-rs): `kx_state` is a state machine, not just a resumption
                     // hint — `KxState::complete()` asserts on it later in the handshake.
@@ -463,7 +473,11 @@ fn emit_client_hello_for_retry(
                 .collect(),
         ),
         supported_versions: Some(supported_versions),
-        signature_schemes: Some(config.verifier.supported_verify_schemes()),
+        signature_schemes: Some(
+            config
+                .verifier
+                .supported_verify_schemes(),
+        ),
         extended_master_secret_request: Some(()),
         certificate_status_request: Some(CertificateStatusRequest::build_ocsp()),
         protocols: extra_exts.protocols.clone(),
@@ -535,11 +549,13 @@ fn emit_client_hello_for_retry(
             // algorithm is also supported separately by our provider for this version
             // (`find_kx_group` looks that up).
             if let Some((component_group, component_share)) =
-                one.hybrid_component().filter(|(group, _)| {
-                    config
-                        .find_kx_group(*group, ProtocolVersion::TLSv1_3)
-                        .is_some()
-                })
+                one
+                    .hybrid_component()
+                    .filter(|(group, _)| {
+                        config
+                            .find_kx_group(*group, ProtocolVersion::TLSv1_3)
+                            .is_some()
+                    })
             {
                 shares.push(KeyShareEntry::new(component_group, component_share));
             }
@@ -582,11 +598,17 @@ fn emit_client_hello_for_retry(
             false
         };
 
-    if config.client_auth_cert_resolver.only_raw_public_keys() {
+    if config
+        .client_auth_cert_resolver
+        .only_raw_public_keys()
+    {
         exts.client_certificate_types = Some(vec![CertificateType::RawPublicKey]);
     }
 
-    if config.verifier.requires_raw_public_keys() {
+    if config
+        .verifier
+        .requires_raw_public_keys()
+    {
         exts.server_certificate_types = Some(vec![CertificateType::RawPublicKey]);
     }
 
@@ -652,14 +674,17 @@ fn emit_client_hello_for_retry(
         extensions: exts,
     };
 
-    let ech_grease_ext = config.ech_mode.as_ref().and_then(|mode| match mode {
-        EchMode::Grease(cfg) => Some(cfg.grease_ext(
-            config.provider.secure_random,
-            input.server_name.clone(),
-            &chp_payload,
-        )),
-        _ => None,
-    });
+    let ech_grease_ext = config
+        .ech_mode
+        .as_ref()
+        .and_then(|mode| match mode {
+            EchMode::Grease(cfg) => Some(cfg.grease_ext(
+                config.provider.secure_random,
+                input.server_name.clone(),
+                &chp_payload,
+            )),
+            _ => None,
+        });
 
     match (cx.data.ech_status, &mut ech_state) {
         // If we haven't offered ECH, or have offered ECH but got a non-rejecting HRR, then
@@ -669,7 +694,9 @@ fn emit_client_hello_for_retry(
             chp_payload = ech_state.ech_hello(chp_payload, retryreq, &tls13_session)?;
             cx.data.ech_status = EchStatus::Offered;
             // Store the ECH extension in case we need to carry it forward in a subsequent hello.
-            input.prev_ech_ext = chp_payload.encrypted_client_hello.clone();
+            input.prev_ech_ext = chp_payload
+                .encrypted_client_hello
+                .clone();
         }
         // If we haven't offered ECH, and have no ECH state, then consider whether to use GREASE
         // ECH.
@@ -849,10 +876,7 @@ fn emit_external_client_hello(
                         .into(),
                 ));
             }
-            let (start, end) = (
-                slot.truncated_len + 3,
-                slot.truncated_len + 3 + slot.binder_len,
-            );
+            let (start, end) = (slot.truncated_len + 3, slot.truncated_len + 3 + slot.binder_len);
             if end > bytes.len() {
                 return Err(Error::General(
                     "FORK(utls-rs): the reported PSK binder runs past the end of the ClientHello"
@@ -939,13 +963,15 @@ fn emit_external_client_hello(
     // only ends up in the key log. Found by running the TLS 1.2-era fingerprints end to end.
     let payload = MessagePayload::new(ContentType::Handshake, ProtocolVersion::TLSv1_2, &bytes)?;
     let outer_session_id = match &payload {
-        MessagePayload::Handshake { parsed, .. } => match &parsed.0 {
-            HandshakePayload::ClientHello(chp) => {
-                input.random = chp.random;
-                chp.session_id.clone()
+        MessagePayload::Handshake { parsed, .. } => {
+            match &parsed.0 {
+                HandshakePayload::ClientHello(chp) => {
+                    input.random = chp.random;
+                    chp.session_id.clone()
+                }
+                _ => input.session_id.clone(),
             }
-            _ => input.session_id.clone(),
-        },
+        }
         _ => input.session_id.clone(),
     };
 
@@ -988,7 +1014,8 @@ fn emit_external_client_hello(
     if let MessagePayload::Handshake { parsed, .. } = &payload {
         if let HandshakePayload::ClientHello(chp) = &parsed.0 {
             input.hello.offered_cipher_suites = chp.cipher_suites.clone();
-            input.hello.offered_cert_compression = chp.certificate_compression_algorithms.is_some();
+            input.hello.offered_cert_compression =
+                chp.certificate_compression_algorithms.is_some();
             // ALPN is checked against what we offered, so it has to come from here.
             input.hello.alpn_protocols = chp.protocols.clone().unwrap_or_default();
             // FORK(utls-rs): the legacy session id, likewise. This engine generates one
@@ -1043,7 +1070,10 @@ fn emit_external_client_hello(
     // early-data write is refused: the handshake would still complete *resumed*,
     // but silently without 0-RTT — which is the worst kind of miss, because nothing
     // errors. Found by writing the early-data judgment before this block existed.
-    if retryreq.is_none() && input.config.enable_early_data && early_data_key_schedule.is_some() {
+    if retryreq.is_none()
+        && input.config.enable_early_data
+        && early_data_key_schedule.is_some()
+    {
         // Same condition `prepare_resumption` applies on the self-built path
         // (`config.enable_early_data && max_early_data_size > 0 && !doing_retry`).
         let resumption = input
@@ -1206,7 +1236,9 @@ pub(super) fn process_server_cert_type_extension(
 ) -> Result<Option<(ExtensionType, CertificateType)>, Error> {
     process_cert_type_extension(
         common,
-        config.verifier.requires_raw_public_keys(),
+        config
+            .verifier
+            .requires_raw_public_keys(),
         server_cert_extension.copied(),
         ExtensionType::ServerCertificateType,
     )
@@ -1219,7 +1251,9 @@ pub(super) fn process_client_cert_type_extension(
 ) -> Result<Option<(ExtensionType, CertificateType)>, Error> {
     process_cert_type_extension(
         common,
-        config.client_auth_cert_resolver.only_raw_public_keys(),
+        config
+            .client_auth_cert_resolver
+            .only_raw_public_keys(),
         client_cert_extension.copied(),
         ExtensionType::ClientCertificateType,
     )
@@ -1309,7 +1343,10 @@ impl State<ClientConnectionData> for ExpectServerHello {
             process_alpn_protocol(
                 cx.common,
                 &self.input.hello.alpn_protocols,
-                server_hello.selected_protocol.as_ref().map(|s| s.as_ref()),
+                server_hello
+                    .selected_protocol
+                    .as_ref()
+                    .map(|s| s.as_ref()),
                 self.input.config.check_selected_alpn,
             )?;
         }
@@ -1364,7 +1401,9 @@ impl State<ClientConnectionData> for ExpectServerHello {
         }
 
         // Start our handshake hash, and input the server-hello.
-        let mut transcript = self.transcript_buffer.start_hash(suite.hash_provider());
+        let mut transcript = self
+            .transcript_buffer
+            .start_hash(suite.hash_provider());
         transcript.add_message(&m);
 
         let randoms = ConnectionRandoms::new(self.input.random, server_hello.random);
@@ -1449,12 +1488,7 @@ impl ExpectServerHelloOrHelloRetryRequest {
         // belongs to that new offer. Rather than proceed with the outer transcript and
         // silently authenticate the wrong handshake, refuse.
         if cx.data.ech_status == EchStatus::Offered
-            && self
-                .next
-                .input
-                .fork
-                .as_ref()
-                .is_some_and(|p| p.client_hello.is_some())
+            && self.next.input.fork.as_ref().is_some_and(|p| p.client_hello.is_some())
         {
             return Err(Error::General(
                 "FORK(utls-rs): a caller-supplied ClientHello offering ECH cannot be used after \
@@ -1497,7 +1531,9 @@ impl ExpectServerHelloOrHelloRetryRequest {
                 .input
                 .fork_resumption
                 .as_ref()
-                .filter(|r| hrr_hash == Some(r.suite.common.hash_provider.algorithm()))
+                .filter(|r| {
+                    hrr_hash == Some(r.suite.common.hash_provider.algorithm())
+                })
                 .map(|r| r.offer.clone());
             let req = fork::HelloRetryRequestPlan {
                 selected_group: hrr.key_share.map(u16::from),
@@ -1525,9 +1561,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
                     // `kx_state` is a state machine, not merely a hint: it is consulted
                     // when the server's own key share arrives. Record the retry group the
                     // same way the first hello records its own.
-                    cx.common.kx_state = match config
-                        .find_kx_group(NamedGroup::from(group), ProtocolVersion::TLSv1_3)
-                    {
+                    cx.common.kx_state = match config.find_kx_group(
+                        NamedGroup::from(group),
+                        ProtocolVersion::TLSv1_3,
+                    ) {
                         Some(g) => KxState::Start(g),
                         None => KxState::External,
                     };
@@ -1660,7 +1697,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
         };
 
         // This is the draft19 change where the transcript became a tree
-        let transcript = self.next.transcript_buffer.start_hash(cs.hash_provider());
+        let transcript = self
+            .next
+            .transcript_buffer
+            .start_hash(cs.hash_provider());
         let mut transcript_buffer = transcript.into_hrr_buffer();
         transcript_buffer.add_message(&m);
 
@@ -1740,7 +1780,9 @@ impl State<ClientConnectionData> for ExpectServerHelloOrHelloRetryRequest {
             MessagePayload::Handshake {
                 parsed: HandshakeMessagePayload(HandshakePayload::ServerHello(..)),
                 ..
-            } => self.into_expect_server_hello().handle(cx, m),
+            } => self
+                .into_expect_server_hello()
+                .handle(cx, m),
             MessagePayload::Handshake {
                 parsed: HandshakeMessagePayload(HandshakePayload::HelloRetryRequest(..)),
                 ..
@@ -1831,7 +1873,9 @@ impl ClientSessionValue {
 
         if let Some(resuming) = &found {
             if cx.common.is_quic() {
-                cx.common.quic.params = resuming.tls13().map(|v| v.quic_params());
+                cx.common.quic.params = resuming
+                    .tls13()
+                    .map(|v| v.quic_params());
             }
         }
 

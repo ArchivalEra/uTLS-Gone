@@ -42,7 +42,7 @@ mod tests {
     use crate::sign::CertifiedKey;
     use crate::tls13::key_schedule::{derive_traffic_iv, derive_traffic_key};
     use crate::verify::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-    use crate::{version, DigitallySignedStruct, DistinguishedName, KeyLog};
+    use crate::{DigitallySignedStruct, DistinguishedName, KeyLog, version};
 
     /// Tests that session_ticket(35) extension
     /// is not sent if the client does not support TLS 1.2.
@@ -70,9 +70,10 @@ mod tests {
                 .with_no_client_auth(),
         )
         .unwrap();
-        assert!(!ch
-            .cipher_suites
-            .contains(&CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV));
+        assert!(
+            !ch.cipher_suites
+                .contains(&CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV)
+        );
     }
 
     #[test]
@@ -169,7 +170,8 @@ mod tests {
                 }),
             )),
         };
-        conn.read_tls(&mut sh.into_wire_bytes().as_slice()).unwrap();
+        conn.read_tls(&mut sh.into_wire_bytes().as_slice())
+            .unwrap();
 
         assert_eq!(
             conn.process_new_packets(),
@@ -238,7 +240,8 @@ mod tests {
                 }),
             )),
         };
-        conn.read_tls(&mut sh.into_wire_bytes().as_slice()).unwrap();
+        conn.read_tls(&mut sh.into_wire_bytes().as_slice())
+            .unwrap();
         conn.process_new_packets().unwrap();
 
         let cert = Message {
@@ -287,7 +290,11 @@ mod tests {
             .unwrap();
         conn.process_new_packets().unwrap();
 
-        assert!(verifier.seen_sha1_signature.load(Ordering::SeqCst));
+        assert!(
+            verifier
+                .seen_sha1_signature
+                .load(Ordering::SeqCst)
+        );
     }
 
     #[derive(Debug, Default)]
@@ -314,7 +321,8 @@ mod tests {
             dss: &DigitallySignedStruct,
         ) -> Result<HandshakeSignatureValid, Error> {
             assert_eq!(dss.scheme, SignatureScheme::ECDSA_SHA1_Legacy);
-            self.seen_sha1_signature.store(true, Ordering::SeqCst);
+            self.seen_sha1_signature
+                .store(true, Ordering::SeqCst);
             Ok(HandshakeSignatureValid::assertion())
         }
 
@@ -418,7 +426,8 @@ mod tests {
                 }),
             )),
         };
-        conn.read_tls(&mut sh.into_wire_bytes().as_slice()).unwrap();
+        conn.read_tls(&mut sh.into_wire_bytes().as_slice())
+            .unwrap();
         conn.process_new_packets().unwrap();
 
         let ee = Message {
@@ -432,7 +441,8 @@ mod tests {
         let enc_ee = encrypter
             .encrypt(PlainMessage::from(ee).borrow_outbound(), 0)
             .unwrap();
-        conn.read_tls(&mut enc_ee.encode().as_slice()).unwrap();
+        conn.read_tls(&mut enc_ee.encode().as_slice())
+            .unwrap();
         conn.process_new_packets().map(|_| ())
     }
 
@@ -455,7 +465,10 @@ mod tests {
             .load_private_key(client_key())
             .unwrap();
         let public_key_as_cert = vec![CertificateDer::from(
-            key.public_key().unwrap().as_ref().to_vec(),
+            key.public_key()
+                .unwrap()
+                .as_ref()
+                .to_vec(),
         )];
         CertifiedKey::new(public_key_as_cert, key)
     }
@@ -583,7 +596,10 @@ mod tests {
                 .tls13()
                 .unwrap();
 
-            let secret = self.server_handshake_secret.get().unwrap();
+            let secret = self
+                .server_handshake_secret
+                .get()
+                .unwrap();
 
             let expander = cipher_suite
                 .hkdf_provider
@@ -603,7 +619,9 @@ mod tests {
 
         fn log(&self, label: &str, _client_random: &[u8], secret: &[u8]) {
             if label == "SERVER_HANDSHAKE_TRAFFIC_SECRET" {
-                self.server_handshake_secret.set(secret.to_vec()).unwrap();
+                self.server_handshake_secret
+                    .set(secret.to_vec())
+                    .unwrap();
             }
         }
     }
@@ -626,7 +644,11 @@ fn hybrid_kx_component_share_offered_if_supported_separately() {
     )
     .unwrap();
 
-    let key_shares = ch.extensions.key_shares.as_ref().unwrap();
+    let key_shares = ch
+        .extensions
+        .key_shares
+        .as_ref()
+        .unwrap();
     assert_eq!(key_shares.len(), 2);
     assert_eq!(key_shares[0].group, NamedGroup::X25519MLKEM768);
     assert_eq!(key_shares[1].group, NamedGroup::X25519);
@@ -649,7 +671,11 @@ fn hybrid_kx_component_share_not_offered_unless_supported_separately() {
     )
     .unwrap();
 
-    let key_shares = ch.extensions.key_shares.as_ref().unwrap();
+    let key_shares = ch
+        .extensions
+        .key_shares
+        .as_ref()
+        .unwrap();
     assert_eq!(key_shares.len(), 1);
     assert_eq!(key_shares[0].group, NamedGroup::X25519MLKEM768);
 }

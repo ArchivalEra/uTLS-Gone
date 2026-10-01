@@ -10,6 +10,8 @@ use std::io;
 use pki_types::{DnsName, UnixTime};
 
 use super::hs;
+#[cfg(feature = "std")]
+use crate::WantsVerifier;
 use crate::builder::ConfigBuilder;
 #[cfg(feature = "std")]
 use crate::common_state::State;
@@ -31,10 +33,8 @@ use crate::sync::Arc;
 use crate::time_provider::DefaultTimeProvider;
 use crate::time_provider::TimeProvider;
 use crate::vecbuf::ChunkVecBuffer;
-#[cfg(feature = "std")]
-use crate::WantsVerifier;
 use crate::{
-    compress, sign, verify, versions, DistinguishedName, KeyLog, NamedGroup, WantsVersions,
+    DistinguishedName, KeyLog, NamedGroup, WantsVersions, compress, sign, verify, versions,
 };
 
 /// A trait for the ability to store server session data.
@@ -185,8 +185,11 @@ impl<'a> ClientHello<'a> {
     /// The server can specify supported ALPN protocols by setting [`ServerConfig::alpn_protocols`].
     /// During the handshake, the server will select the first protocol configured that the client supports.
     pub fn alpn(&self) -> Option<impl Iterator<Item = &'a [u8]>> {
-        self.alpn
-            .map(|protocols| protocols.iter().map(|proto| proto.as_ref()))
+        self.alpn.map(|protocols| {
+            protocols
+                .iter()
+                .map(|proto| proto.as_ref())
+        })
     }
 
     /// Get cipher suites.
@@ -767,7 +770,8 @@ mod connection {
 
     impl Debug for ServerConnection {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            f.debug_struct("ServerConnection").finish()
+            f.debug_struct("ServerConnection")
+                .finish()
         }
     }
 
@@ -1000,7 +1004,9 @@ impl UnbufferedServerConnection {
     pub fn dangerous_into_kernel_connection(
         self,
     ) -> Result<(ExtractedSecrets, KernelConnection<ServerConnectionData>), Error> {
-        self.inner.core.dangerous_into_kernel_connection()
+        self.inner
+            .core
+            .dangerous_into_kernel_connection()
     }
 }
 
@@ -1045,10 +1051,16 @@ impl Accepted {
             server_name: &self.connection.core.data.sni,
             signature_schemes: &self.sig_schemes,
             alpn: payload.protocols.as_ref(),
-            server_cert_types: payload.server_certificate_types.as_deref(),
-            client_cert_types: payload.client_certificate_types.as_deref(),
+            server_cert_types: payload
+                .server_certificate_types
+                .as_deref(),
+            client_cert_types: payload
+                .client_certificate_types
+                .as_deref(),
             cipher_suites: &payload.cipher_suites,
-            certificate_authorities: payload.certificate_authority_names.as_deref(),
+            certificate_authorities: payload
+                .certificate_authority_names
+                .as_deref(),
             named_groups: payload.named_groups.as_deref(),
         };
 

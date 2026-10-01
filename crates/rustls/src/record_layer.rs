@@ -78,7 +78,10 @@ impl RecordLayer {
         let want_close_before_decrypt = self.read_seq == SEQ_SOFT_LIMIT;
 
         let encrypted_len = encr.payload.len();
-        match self.message_decrypter.decrypt(encr, self.read_seq) {
+        match self
+            .message_decrypter
+            .decrypt(encr, self.read_seq)
+        {
             Ok(plaintext) => {
                 self.read_seq += 1;
                 if !self.has_decrypted {
@@ -109,7 +112,9 @@ impl RecordLayer {
         assert!(self.next_pre_encrypt_action() != PreEncryptAction::Refuse);
         let seq = self.write_seq;
         self.write_seq += 1;
-        self.message_encrypter.encrypt(plain, seq).unwrap()
+        self.message_encrypter
+            .encrypt(plain, seq)
+            .unwrap()
     }
 
     /// Prepare to use the given `MessageEncrypter` for future message encryption.
@@ -218,7 +223,8 @@ impl RecordLayer {
     }
 
     pub(crate) fn encrypted_len(&self, payload_len: usize) -> usize {
-        self.message_encrypter.encrypted_payload_len(payload_len)
+        self.message_encrypter
+            .encrypted_payload_len(payload_len)
     }
 
     fn doing_trial_decryption(&mut self, requested: usize) -> bool {

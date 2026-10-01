@@ -1810,3 +1810,91 @@ index 63b836a..b1a32ff 100644
          order.sort_by_cached_key(|new_ext| {
              let seed = ((self.order_seed as u32) << 16) | (u16::from(*new_ext) as u32);
              low_quality_integer_hash(seed)
+diff --git a/src/server/builder.rs b/src/server/builder.rs
+index 22b30ab..e087421 100644
+--- a/src/server/builder.rs
++++ b/src/server/builder.rs
+@@ -121,6 +121,8 @@ impl ConfigBuilder<ServerConfig, WantsServerCert> {
+             max_early_data_size: 0,
+             send_half_rtt_data: false,
+             send_tls13_tickets: 2,
++            // FORK(utls-rs) (j): 默认关（RFC 要求从客户端列表里选）。
++            fork_use_certificate_signature_scheme: false,
+             max_tls13_tickets: 0,
+             #[cfg(feature = "tls12")]
+             require_ems,
+diff --git a/src/server/server_conn.rs b/src/server/server_conn.rs
+index 2cfd8b8..620b20b 100644
+--- a/src/server/server_conn.rs
++++ b/src/server/server_conn.rs
+@@ -398,6 +398,23 @@ pub struct ServerConfig {
+     /// do any resumption.
+     pub send_tls13_tickets: usize,
+ 
++    /// FORK(utls-rs) (j): use the certificate's own signature scheme even when the
++    /// client did not offer it in `signature_algorithms`.
++    ///
++    /// Default `false` (RFC 8446 §4.4.2.2: the server MUST choose from the client's
++    /// list). XTLS/REALITY needs the opposite: its certificate is a one-off ed25519
++    /// self-signed leaf whose *signature field* carries `HMAC(AuthKey, pub)`
++    /// (`handshake_server_tls13.go:143-151`), the client verifies that HMAC rather
++    /// than a chain, and real browser fingerprints (Chrome 131/133) **do not offer
++    /// Ed25519 at all** — so the Go reference hard-codes `hs.sigAlg = Ed25519`
++    /// (line 165) instead of negotiating. Without this switch the handshake dies
++    /// with `PeerIncompatible::NoSignatureSchemesInCommon`, which is exactly what
++    /// happened when a stock Xray-core client first met this server.
++    ///
++    /// Only meaningful for a certificate resolver that serves a scheme of its own
++    /// choosing; leave it off for anything that talks to real browsers.
++    pub fork_use_certificate_signature_scheme: bool,
++
+     /// Upper bound on the number of TLS 1.3 tickets sent in response to a
+     /// client [RFC 9149] `ticket_request` extension.
+     ///
+diff --git a/src/server/tls13.rs b/src/server/tls13.rs
+index 42a5520..30b48b9 100644
+--- a/src/server/tls13.rs
++++ b/src/server/tls13.rs
+@@ -153,6 +153,22 @@ mod client_hello {
+ 
+             sigschemes_ext.retain(SignatureScheme::supported_in_tls13);
+ 
++            // FORK(utls-rs) (j): REALITY 的服务端证书是「一次性 ed25519 + HMAC 尾签」，
++            // 而真实浏览器指纹（Chrome 131/133）**不报 Ed25519** —— Go 参照因此把
++            // `hs.sigAlg = Ed25519` 写死（`handshake_server_tls13.go:165`），不协商。
++            // 这个开关就是那条硬编码：显式打开时，把**签名键自己支持的方案**并进候选
++            // （`choose_scheme` 已经实现了「这个键能签哪几种」的全部知识，不用另找入口）。
++            if self.config.fork_use_certificate_signature_scheme {
++                if let Some(signer) =
++                    server_key.get_key().choose_scheme(&ALL_TLS13_SIGNATURE_SCHEMES)
++                {
++                    let own = signer.scheme();
++                    if !sigschemes_ext.contains(&own) {
++                        sigschemes_ext.push(own);
++                    }
++                }
++            }
++
+             let shares_ext = client_hello
+                 .key_shares
+                 .as_ref()
+@@ -813,6 +829,19 @@ mod client_hello {
+         flight.add(c);
+     }
+ 
++/// RFC 8446 §4.4.3 的 TLS 1.3 签名方案全集（`signature_algorithms` 里可能出现的
++/// 那些）。只用于 FORK(utls-rs) (j)：问签名键「你自己支持哪些」——
++/// `choose_scheme` 会从这里面挑它真正能签的。
++const ALL_TLS13_SIGNATURE_SCHEMES: [SignatureScheme; 8] = [
++    SignatureScheme::ECDSA_NISTP256_SHA256,
++    SignatureScheme::ECDSA_NISTP384_SHA384,
++    SignatureScheme::ECDSA_NISTP521_SHA512,
++    SignatureScheme::ED25519,
++    SignatureScheme::RSA_PSS_SHA256,
++    SignatureScheme::RSA_PSS_SHA384,
++    SignatureScheme::RSA_PSS_SHA512,
++    SignatureScheme::RSA_PKCS1_SHA256,
++];
+     fn emit_certificate_verify_tls13(
+         flight: &mut HandshakeFlightTls13<'_>,
+         common: &mut CommonState,

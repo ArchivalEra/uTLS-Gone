@@ -28,6 +28,14 @@ Chrome 是移动靶，保真度只能靠抓包语料建立，靠断言建立不�
 - 上游明确拒绝的能力（广播自己协商不了的密码套件、去掉无条件追加的 SCSV、
   压制每连接扩展乱序）**必须由补丁显式提供**，不许用「大概不会有影响」略过：
   这三项都是能直接改变指纹的，不是实现细节。
+- ⚠️ **绝不在 vendored 目录里跑 rustfmt / `cargo fmt --all`**。2026-10-01 实测：
+  一次 `cargo fmt --all` 把 `crates/rustls` 里**没改过的 68 个上游文件**（外加
+  `benches/`、`examples/` 各一个）重排了 —— 而那两条补丁判据当时看不出来，
+  因为重新生成的补丁会把这些差异一起收进去（文件数从 12 涨到 80）。
+  现在 `crates/rustls-fork/verify-patch.sh` 的**判据①′**会挡：任何与原始 tarball
+  不同、却没有 `FORK(utls-rs)` 标记的文件都会让它红。
+  （本次污染已用 tarball 恢复：`diff -rq <tarball>/src crates/rustls/src` 现在只剩
+  12 个带标记的文件 + `fork.rs`。）
 
 ## 四、预设表是数据，不是代码
 

@@ -31,7 +31,7 @@ use crate::webpki::{RootCertStore, WebPkiServerVerifier};
 
 #[macro_rules_attribute::apply(bench_for_each_provider)]
 mod benchmarks {
-    use super::{provider, Context};
+    use super::{Context, provider};
 
     #[bench]
     fn reddit_cert(b: &mut test::Bencher) {
@@ -205,7 +205,11 @@ struct Context {
 impl Context {
     fn new(provider: CryptoProvider, domain: &'static str, certs: &[&'static [u8]]) -> Self {
         let mut roots = RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        roots.extend(
+            webpki_roots::TLS_SERVER_ROOTS
+                .iter()
+                .cloned(),
+        );
         Self {
             server_name: domain.try_into().unwrap(),
             chain: certs

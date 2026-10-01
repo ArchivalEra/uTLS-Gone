@@ -119,7 +119,9 @@ impl ChunkVecBuffer {
 
     /// Inspect the first chunk from this object.
     pub(crate) fn peek(&self) -> Option<&[u8]> {
-        self.chunks.front().map(|ch| ch.as_slice())
+        self.chunks
+            .front()
+            .map(|ch| ch.as_slice())
     }
 }
 
@@ -158,7 +160,10 @@ impl ChunkVecBuffer {
         // this backs (infallible) `BufRead::consume`, where `used` is
         // user-supplied.
         assert!(
-            used <= self.chunk().map(|ch| ch.len()).unwrap_or_default(),
+            used <= self
+                .chunk()
+                .map(|ch| ch.len())
+                .unwrap_or_default(),
             "illegal `BufRead::consume` usage",
         );
         self.consume(used);
@@ -219,7 +224,9 @@ impl ChunkVecBuffer {
 
     /// Returns the first contiguous chunk of data, or None if empty.
     pub(crate) fn chunk(&self) -> Option<&[u8]> {
-        self.chunks.front().map(|chunk| &chunk[self.prefix_used..])
+        self.chunks
+            .front()
+            .map(|chunk| &chunk[self.prefix_used..])
     }
 }
 
@@ -259,7 +266,10 @@ mod tests {
 
     #[test]
     fn every_possible_chunk_interleaving() {
-        let input = (0..=0xffu8).cycle().take(4096).collect::<Vec<u8>>();
+        let input = (0..=0xffu8)
+            .cycle()
+            .take(4096)
+            .collect::<Vec<u8>>();
 
         for input_chunk_len in 1..64usize {
             for output_chunk_len in 1..65usize {

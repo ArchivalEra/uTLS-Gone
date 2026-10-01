@@ -178,6 +178,30 @@ jobs:
               sys.exit(f"⚠️ 这两条本该被 -skip 摘掉，却出现在 PASS 里：{sorted(ran)}")
           PY
 
+  # REALITY 的真栈判据：需要 **stock Xray-core 客户端**（官方 release）。
+  # 单独一个 job 是因为它多一个外部依赖（二进制下载），失败归因要一眼可见；
+  # `crates/reality` 的其余判据（离线三测 / KDF 对拍 / 客户端闭环 / 镜像服务端）
+  # 已在 `rust` job 的 `cargo test --workspace --all-features` 里跑。
+  reality-stack:
+    name: REALITY 真栈（stock Xray 客户端）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 取官方 Xray-core（stock 客户端，不自己编）
+        run: |
+          set -eu
+          mkdir -p /tmp/xray-bin
+          curl -sSL -o /tmp/xray.zip \
+            https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          unzip -o -q /tmp/xray.zip -d /tmp/xray-bin
+          chmod +x /tmp/xray-bin/xray
+          /tmp/xray-bin/xray version
+      - name: 真栈判据（测试自己找 /tmp/xray-bin/xray）
+        run: cargo test -p reality --test real_stack -- --nocapture
+
   # 与上面那个 job 互补 —— 两个都别删，它们判的不是同一件事：
   #   * `upstream`         ：**未改一字节**的上游树，代价是把那两条外网测试 `-skip` 掉
   #                          ⇒ 「上游那棵树自己没问题」的基线。

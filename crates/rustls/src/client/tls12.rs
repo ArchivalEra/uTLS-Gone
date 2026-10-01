@@ -9,18 +9,19 @@ use subtle::ConstantTimeEq;
 
 use super::client_conn::ClientConnectionData;
 use super::hs::ClientContext;
+use crate::ConnectionTrafficSecrets;
 use crate::check::{inappropriate_handshake_message, inappropriate_message};
 use crate::client::common::{ClientAuthDetails, ServerCertDetails};
-use crate::client::{hs, ClientConfig};
+use crate::client::{ClientConfig, hs};
 use crate::common_state::{CommonState, HandshakeKind, KxState, Side, State};
-use crate::conn::kernel::{Direction, KernelContext, KernelState};
 use crate::conn::ConnectionRandoms;
+use crate::conn::kernel::{Direction, KernelContext, KernelState};
 use crate::crypto::KeyExchangeAlgorithm;
 use crate::enums::{AlertDescription, ContentType, HandshakeType, ProtocolVersion};
 use crate::error::{Error, InvalidMessage, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHash;
 use crate::log::{debug, trace, warn};
-use crate::msgs::base::{Payload, PayloadU16, PayloadU8};
+use crate::msgs::base::{Payload, PayloadU8, PayloadU16};
 use crate::msgs::ccs::ChangeCipherSpecPayload;
 use crate::msgs::handshake::{
     CertificateChain, ClientDhParams, ClientEcdhParams, ClientKeyExchangeParams,
@@ -34,7 +35,6 @@ use crate::suites::{PartiallyExtractedSecrets, SupportedCipherSuite};
 use crate::sync::Arc;
 use crate::tls12::{self, ConnectionSecrets, Tls12CipherSuite};
 use crate::verify::{self, DigitallySignedStruct};
-use crate::ConnectionTrafficSecrets;
 
 mod server_hello {
     use super::*;
@@ -104,7 +104,9 @@ mod server_hello {
                 });
 
             // Doing EMS?
-            let using_ems = server_hello.extended_master_secret_ack.is_some();
+            let using_ems = server_hello
+                .extended_master_secret_ack
+                .is_some();
             if config.require_ems && !using_ems {
                 return Err({
                     cx.common.send_fatal_alert(
@@ -115,7 +117,10 @@ mod server_hello {
             }
 
             // Might the server send a ticket?
-            let must_issue_new_ticket = if server_hello.session_ticket_ack.is_some() {
+            let must_issue_new_ticket = if server_hello
+                .session_ticket_ack
+                .is_some()
+            {
                 debug!("Server supports tickets");
                 true
             } else {
@@ -124,7 +129,9 @@ mod server_hello {
 
             // Might the server send a CertificateStatus between Certificate and
             // ServerKeyExchange?
-            let may_send_cert_status = server_hello.certificate_status_request_ack.is_some();
+            let may_send_cert_status = server_hello
+                .certificate_status_request_ack
+                .is_some();
             if may_send_cert_status {
                 debug!("Server may staple OCSP response");
             }
@@ -151,12 +158,17 @@ mod server_hello {
                         &secrets.randoms.client,
                         &secrets.master_secret,
                     );
-                    cx.common.start_encryption_tls12(&secrets, Side::Client);
+                    cx.common
+                        .start_encryption_tls12(&secrets, Side::Client);
 
                     // Since we're resuming, we verified the certificate and
                     // proof of possession in the prior session.
-                    cx.common.peer_certificates =
-                        Some(resuming.server_cert_chain().clone().into_owned());
+                    cx.common.peer_certificates = Some(
+                        resuming
+                            .server_cert_chain()
+                            .clone()
+                            .into_owned(),
+                    );
                     cx.common.handshake_kind = Some(HandshakeKind::Resumed);
                     let cert_verified = verify::ServerCertVerified::assertion();
                     let sig_verified = verify::HandshakeSignatureValid::assertion();
@@ -452,12 +464,14 @@ impl State<ClientConnectionData> for ExpectServerKx<'_> {
         )?;
         self.transcript.add_message(&m);
 
-        let kx = opaque_kx.unwrap_given_kxa(self.suite.kx).ok_or_else(|| {
-            cx.common.send_fatal_alert(
-                AlertDescription::DecodeError,
-                InvalidMessage::MissingKeyExchange,
-            )
-        })?;
+        let kx = opaque_kx
+            .unwrap_given_kxa(self.suite.kx)
+            .ok_or_else(|| {
+                cx.common.send_fatal_alert(
+                    AlertDescription::DecodeError,
+                    InvalidMessage::MissingKeyExchange,
+                )
+            })?;
 
         // Save the signature and signed parameters for later verification.
         let mut kx_params = Vec::new();
@@ -754,7 +768,9 @@ impl State<ClientConnectionData> for ExpectCertificateRequest<'_> {
         const NO_CONTEXT: Option<Vec<u8>> = None; // TLS 1.2 doesn't use a context.
         let no_compression = None; // or compression
         let client_auth = ClientAuthDetails::resolve(
-            self.config.client_auth_cert_resolver.as_ref(),
+            self.config
+                .client_auth_cert_resolver
+                .as_ref(),
             Some(&certreq.canames),
             &signature_schemes,
             NO_CONTEXT,
@@ -873,7 +889,10 @@ impl State<ClientConnectionData> for ExpectServerDone<'_> {
                 &st.server_cert.ocsp_response,
                 now,
             )
-            .map_err(|err| cx.common.send_cert_verify_error_alert(err))?;
+            .map_err(|err| {
+                cx.common
+                    .send_cert_verify_error_alert(err)
+            })?;
 
         // 2.
         // Build up the contents of the signed message.
@@ -908,7 +927,10 @@ impl State<ClientConnectionData> for ExpectServerDone<'_> {
             st.config
                 .verifier
                 .verify_tls12_signature(&message, end_entity, sig)
-                .map_err(|err| cx.common.send_cert_verify_error_alert(err))?
+                .map_err(|err| {
+                    cx.common
+                        .send_cert_verify_error_alert(err)
+                })?
         };
         cx.common.peer_certificates = Some(st.server_cert.cert_chain.into_owned());
 
@@ -955,7 +977,9 @@ impl State<ClientConnectionData> for ExpectServerDone<'_> {
         let mut transcript = st.transcript;
         emit_client_kx(&mut transcript, st.suite.kx, cx.common, kx.pub_key());
         // Note: EMS handshake hash only runs up to ClientKeyExchange.
-        let ems_seed = st.using_ems.then(|| transcript.current_hash());
+        let ems_seed = st
+            .using_ems
+            .then(|| transcript.current_hash());
 
         // 4c.
         if let Some(ClientAuthDetails::Verify { signer, .. }) = &st.client_auth {
@@ -987,8 +1011,11 @@ impl State<ClientConnectionData> for ExpectServerDone<'_> {
             &secrets.randoms.client,
             &secrets.master_secret,
         );
-        cx.common.start_encryption_tls12(&secrets, Side::Client);
-        cx.common.record_layer.start_encrypting();
+        cx.common
+            .start_encryption_tls12(&secrets, Side::Client);
+        cx.common
+            .record_layer
+            .start_encrypting();
 
         // 5.
         emit_finished(&secrets, &mut transcript, cx.common);
@@ -1129,7 +1156,9 @@ impl State<ClientConnectionData> for ExpectCcs {
         cx.common.check_aligned_handshake()?;
 
         // Note: msgs layer validates trivial contents of CCS.
-        cx.common.record_layer.start_decrypting();
+        cx.common
+            .record_layer
+            .start_decrypting();
 
         Ok(Box::new(ExpectFinished {
             config: self.config,
@@ -1196,7 +1225,10 @@ impl ExpectFinished {
             self.session_id,
             ticket,
             self.secrets.master_secret(),
-            cx.common.peer_certificates.clone().unwrap_or_default(),
+            cx.common
+                .peer_certificates
+                .clone()
+                .unwrap_or_default(),
             &self.config.verifier,
             &self.config.client_auth_cert_resolver,
             now,
@@ -1249,11 +1281,14 @@ impl State<ClientConnectionData> for ExpectFinished {
 
         if st.resuming {
             emit_ccs(cx.common);
-            cx.common.record_layer.start_encrypting();
+            cx.common
+                .record_layer
+                .start_encrypting();
             emit_finished(&st.secrets, &mut st.transcript, cx.common);
         }
 
-        cx.common.start_traffic(&mut cx.sendable_plaintext);
+        cx.common
+            .start_traffic(&mut cx.sendable_plaintext);
         Ok(Box::new(ExpectTraffic {
             secrets: st.secrets,
             _cert_verified: st.cert_verified,
@@ -1297,7 +1332,9 @@ impl State<ClientConnectionData> for ExpectTraffic {
         Self: 'm,
     {
         match m.payload {
-            MessagePayload::ApplicationData(payload) => cx.common.take_received_plaintext(payload),
+            MessagePayload::ApplicationData(payload) => cx
+                .common
+                .take_received_plaintext(payload),
             payload => {
                 return Err(inappropriate_message(
                     &payload,
@@ -1314,12 +1351,14 @@ impl State<ClientConnectionData> for ExpectTraffic {
         label: &[u8],
         context: Option<&[u8]>,
     ) -> Result<(), Error> {
-        self.secrets.export_keying_material(output, label, context);
+        self.secrets
+            .export_keying_material(output, label, context);
         Ok(())
     }
 
     fn extract_secrets(&self) -> Result<PartiallyExtractedSecrets, Error> {
-        self.secrets.extract_secrets(Side::Client)
+        self.secrets
+            .extract_secrets(Side::Client)
     }
 
     fn into_external_state(self: Box<Self>) -> Result<Box<dyn KernelState + 'static>, Error> {

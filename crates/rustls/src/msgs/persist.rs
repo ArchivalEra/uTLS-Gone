@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 use crate::client::ResolvesClientCert;
 use crate::enums::{CipherSuite, ProtocolVersion};
 use crate::error::InvalidMessage;
-use crate::msgs::base::{MaybeEmpty, PayloadU16, PayloadU8};
+use crate::msgs::base::{MaybeEmpty, PayloadU8, PayloadU16};
 use crate::msgs::codec::{Codec, Reader};
 #[cfg(feature = "tls12")]
 use crate::msgs::handshake::SessionId;
@@ -57,7 +57,9 @@ impl<T: core::ops::Deref<Target = ClientSessionCommon>> Retrieved<T> {
     pub(crate) fn has_expired(&self) -> bool {
         let common = &*self.value;
         common.lifetime_secs != 0
-            && common.epoch.saturating_add(u64::from(common.lifetime_secs))
+            && common
+                .epoch
+                .saturating_add(u64::from(common.lifetime_secs))
                 < self.retrieved_at.as_secs()
     }
 }
@@ -339,7 +341,8 @@ impl Codec<'_> for ServerSessionValue {
         }
         self.application_data.encode(bytes);
         self.creation_time_sec.encode(bytes);
-        self.age_obfuscation_offset.encode(bytes);
+        self.age_obfuscation_offset
+            .encode(bytes);
     }
 
     fn read(r: &mut Reader<'_>) -> Result<Self, InvalidMessage> {
@@ -430,8 +433,10 @@ impl ServerSessionValue {
         time_now: UnixTime,
     ) -> Self {
         let client_age_ms = obfuscated_client_age_ms.wrapping_sub(self.age_obfuscation_offset);
-        let server_age_ms =
-            (time_now.as_secs().saturating_sub(self.creation_time_sec) as u32).saturating_mul(1000);
+        let server_age_ms = (time_now
+            .as_secs()
+            .saturating_sub(self.creation_time_sec) as u32)
+            .saturating_mul(1000);
 
         let age_difference = server_age_ms.abs_diff(client_age_ms);
 

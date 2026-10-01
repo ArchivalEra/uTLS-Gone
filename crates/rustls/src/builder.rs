@@ -178,7 +178,9 @@ impl<Side: ConfigSide, State> ConfigBuilder<Side, State> {
 impl<Side: ConfigSide, State: fmt::Debug> fmt::Debug for ConfigBuilder<Side, State> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let side_name = core::any::type_name::<Side>();
-        let (ty, _) = side_name.split_once('<').unwrap_or((side_name, ""));
+        let (ty, _) = side_name
+            .split_once('<')
+            .unwrap_or((side_name, ""));
         let (_, name) = ty.rsplit_once("::").unwrap_or(("", ty));
 
         f.debug_struct(&format!("ConfigBuilder<{name}, _>",))
@@ -238,7 +240,10 @@ impl<S: ConfigSide> ConfigBuilder<S, WantsVersions> {
 
         for cs in self.provider.cipher_suites.iter() {
             let cs_kx = cs.key_exchange_algorithms();
-            if cs_kx.iter().any(|kx| supported_kx_algos.contains(kx)) {
+            if cs_kx
+                .iter()
+                .any(|kx| supported_kx_algos.contains(kx))
+            {
                 continue;
             }
             let suite_name = cs.common().suite;

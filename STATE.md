@@ -379,13 +379,13 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | 键 | 值 | 复跑命令 |
 |---|---|---|
 | `cargo_version` | **cargo 1.98.1 (797e8a9bc 2026-08-05)** | `cargo --version` |
-| `fork_patch_files` | **9** | `grep -c '^diff --git' crates/rustls-fork/patch.diff` |
-| `fork_patch_hunks` | **39** | `grep -c '^@@' crates/rustls-fork/patch.diff` |
-| `fork_patch_matches_markers` | **NO** | `[ "$(grep -c '^diff --git' crates/rustls-fork/patch.diff)" = "$(grep -rl 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | wc -l)" ] && echo yes || echo NO` |
+| `fork_patch_files` | **12** | `grep -c '^diff --git' crates/rustls-fork/patch.diff` |
+| `fork_patch_hunks` | **43** | `grep -c '^@@' crates/rustls-fork/patch.diff` |
+| `fork_patch_matches_markers` | **yes** | `[ "$(grep -c '^diff --git' crates/rustls-fork/patch.diff)" = "$(grep -rl 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | wc -l)" ] && echo yes || echo NO` |
 | `fork_patch_minus` | **39** | `grep '^-' crates/rustls-fork/patch.diff | grep -vc '^---'` |
-| `fork_patch_plus` | **1435** | `grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'` |
+| `fork_patch_plus` | **1483** | `grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'` |
 | `fork_rs_files` | **111** | `find crates/rustls -name '*.rs' | wc -l` |
-| `fork_rs_lines` | **48947** | `find crates/rustls -name '*.rs' -exec cat {} + | wc -l` |
+| `fork_rs_lines` | **50042** | `find crates/rustls -name '*.rs' -exec cat {} + | wc -l` |
 | `fork_rs_modified` | **12** | `grep -rc 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | grep -v ':0' | wc -l` |
 | `fp_360_11_cipher_count` | **16** | `cargo run --quiet --example reflect-facts | grep '^360_11_cipher_count='` |
 | `fp_360_11_ext_count` | **16** | `cargo run --quiet --example reflect-facts | grep '^360_11_ext_count='` |
@@ -696,7 +696,7 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
 | `md_files` | **23** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **2993** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_lines` | **3016** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
 | `py_lines` | **1933** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |

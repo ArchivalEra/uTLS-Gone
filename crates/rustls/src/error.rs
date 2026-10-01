@@ -704,7 +704,8 @@ impl fmt::Display for CertificateError {
                  ({} seconds ago)",
                 time.as_secs(),
                 not_after.as_secs(),
-                time.as_secs().saturating_sub(not_after.as_secs())
+                time.as_secs()
+                    .saturating_sub(not_after.as_secs())
             ),
 
             Self::NotValidYetContext { time, not_before } => write!(
@@ -714,7 +715,9 @@ impl fmt::Display for CertificateError {
                  ({} seconds in future)",
                 time.as_secs(),
                 not_before.as_secs(),
-                not_before.as_secs().saturating_sub(time.as_secs())
+                not_before
+                    .as_secs()
+                    .saturating_sub(time.as_secs())
             ),
 
             Self::ExpiredRevocationListContext { time, next_update } => write!(
@@ -725,7 +728,8 @@ impl fmt::Display for CertificateError {
                  ({} seconds ago)",
                 time.as_secs(),
                 next_update.as_secs(),
-                time.as_secs().saturating_sub(next_update.as_secs())
+                time.as_secs()
+                    .saturating_sub(next_update.as_secs())
             ),
 
             Self::InvalidPurposeContext {
@@ -1187,21 +1191,27 @@ mod tests {
         );
         assert_eq!(NotValidForName, NotValidForName);
         let context = NotValidForNameContext {
-            expected: ServerName::try_from("example.com").unwrap().to_owned(),
+            expected: ServerName::try_from("example.com")
+                .unwrap()
+                .to_owned(),
             presented: vec!["other.com".into()],
         };
         assert_eq!(context, context);
         assert_ne!(
             context,
             NotValidForNameContext {
-                expected: ServerName::try_from("example.com").unwrap().to_owned(),
+                expected: ServerName::try_from("example.com")
+                    .unwrap()
+                    .to_owned(),
                 presented: vec![]
             }
         );
         assert_ne!(
             context,
             NotValidForNameContext {
-                expected: ServerName::try_from("huh.com").unwrap().to_owned(),
+                expected: ServerName::try_from("huh.com")
+                    .unwrap()
+                    .to_owned(),
                 presented: vec!["other.com".into()],
             }
         );
@@ -1297,17 +1307,23 @@ mod tests {
             Error::AlertReceived(AlertDescription::ExportRestriction),
             super::CertificateError::Expired.into(),
             super::CertificateError::NotValidForNameContext {
-                expected: ServerName::try_from("example.com").unwrap().to_owned(),
+                expected: ServerName::try_from("example.com")
+                    .unwrap()
+                    .to_owned(),
                 presented: vec![],
             }
             .into(),
             super::CertificateError::NotValidForNameContext {
-                expected: ServerName::try_from("example.com").unwrap().to_owned(),
+                expected: ServerName::try_from("example.com")
+                    .unwrap()
+                    .to_owned(),
                 presented: vec!["DnsName(\"hello.com\")".into()],
             }
             .into(),
             super::CertificateError::NotValidForNameContext {
-                expected: ServerName::try_from("example.com").unwrap().to_owned(),
+                expected: ServerName::try_from("example.com")
+                    .unwrap()
+                    .to_owned(),
                 presented: vec![
                     "DnsName(\"hello.com\")".into(),
                     "DnsName(\"goodbye.com\")".into(),

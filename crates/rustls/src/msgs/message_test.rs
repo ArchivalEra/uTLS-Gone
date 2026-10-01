@@ -8,7 +8,7 @@ use super::codec::Reader;
 use super::enums::AlertLevel;
 use super::message::{Message, OutboundOpaqueMessage, PlainMessage};
 use crate::enums::{AlertDescription, HandshakeType};
-use crate::msgs::base::{MaybeEmpty, NonEmpty, PayloadU16, PayloadU24, PayloadU8};
+use crate::msgs::base::{MaybeEmpty, NonEmpty, PayloadU8, PayloadU16, PayloadU24};
 
 #[test]
 fn test_read_fuzz_corpus() {
@@ -38,7 +38,9 @@ fn test_read_fuzz_corpus() {
             continue;
         };
 
-        let enc = PlainMessage::from(msg).into_unencrypted_opaque().encode();
+        let enc = PlainMessage::from(msg)
+            .into_unencrypted_opaque()
+            .encode();
         assert_eq!(bytes.to_vec(), enc);
         assert_eq!(bytes[..rd.used()].to_vec(), enc);
     }

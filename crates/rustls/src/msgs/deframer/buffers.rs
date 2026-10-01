@@ -135,7 +135,9 @@ impl BufferProgress {
         // the caller is about to discard `discard` bytes
         // from the front of the buffer.  adjust `processed`
         // down by the same amount.
-        self.processed = self.processed.saturating_sub(self.discard);
+        self.processed = self
+            .processed
+            .saturating_sub(self.discard);
         mem::take(&mut self.discard)
     }
 
@@ -174,7 +176,8 @@ impl DeframerVecBuffer {
              * 0          ^ self.used
              */
 
-            self.buf.copy_within(taken..self.used, 0);
+            self.buf
+                .copy_within(taken..self.used, 0);
             self.used -= taken;
         } else if taken >= self.used {
             self.used = 0;

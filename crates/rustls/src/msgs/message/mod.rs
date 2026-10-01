@@ -207,7 +207,9 @@ impl Message<'_> {
 
     #[cfg(test)]
     pub(crate) fn into_wire_bytes(self) -> Vec<u8> {
-        PlainMessage::from(self).into_unencrypted_opaque().encode()
+        PlainMessage::from(self)
+            .into_unencrypted_opaque()
+            .encode()
     }
 }
 
