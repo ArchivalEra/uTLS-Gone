@@ -680,8 +680,8 @@ JA3 是最常用的指纹对账方式，而它对体长完全无感 —— 所�
 | `py_lines` | **1991** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `question_count` | **10** | `ls questions/*.md | wc -l` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
-| `rs_files` | **42** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **18341** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_files` | **43** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `rs_lines` | **18544** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 
