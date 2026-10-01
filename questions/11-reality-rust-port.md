@@ -55,8 +55,15 @@
    （AuthKey 与 sessionId 密文双向：Go 封 ⇒ Rust 开；Rust 封 ⇒ Go 开）。
 3. **真栈**：Rust 镜像服务端 + 客户端 ⇒ 鉴权路径握手成功并承载流量；
    未鉴权客户端拿到与直连真站逐字节相同的握手字节。
-4. **P-256-only dest**：完成握手并承载数据（客户端用带 P-256 share 的预设，
-   如 Firefox 148 的 `[4588, X25519, P-256]`）。
+4. **P-256-only dest**：**靠透传完成握手**（不是镜像）—— 见下方「判据 4 的修正」。
+   `tests/real_stack.rs` 的 `a_p256_only_dest_still_completes_by_falling_back_to_passthrough`
+   判三件事：透传路径下客户端与真站**完成握手**、镜像路径对 P-256 **明确拒绝**、
+   拒绝后**回落透传**（`mirror_failed`/`fallback` 各记一次）。
+5. **客户端半边**（`tests/client_side.rs` 5 条）：`seal_hello` 与镜像证书校验、
+   与「本仓服务端」闭环、只改 sessionId 32 字节。
+6. **参数面 parity**（`tests/parity.rs` 2 条）：`config.proto` 的 **21 个字段逐条**给出
+   归宿（本仓对应物 / 同层不适用 / 未实现），并与上游 proto 文件**双向**核对
+   （数量相等 + 每个字段名与类型都在文件里）。「未实现」被断言**恰好**是 ML-DSA 那一对。
 
 ## 已知边界
 
@@ -89,11 +96,15 @@ rc≠0 或出现 `FAILED` ⇒ 结论要改。真栈那三条另外需要 `/tmp/x
 3. **真栈**（`tests/real_stack.rs`，**stock Xray-core 26.3.27**）：
    鉴权路径完成握手并承载流量（VLESS 请求到达 handler、`short_id` 解出、
    回显往返）；未鉴权客户端拿到与**直连真站逐字节相同**的证书链（实测断言相等）。
-4. **P-256-only dest**：鉴权与镜像计划成立（`tests/mirror_server.rs` 与
-   `tests/real_stack.rs` 各一条，真站与客户端都用真 P-256 公钥 —— 哑字节会被
-   rustls 以 `PeerMisbehaved(InvalidKeyShare)` 拒绝，这条弯路已记录）。
+4. **P-256-only dest 的修正**（判据 4 原文要求「完成握手并承载数据」）：
+   查权威参照后这条**按字面做不到，也不该做** —— 是 uTLS 客户端的硬边界：
+   `KeySharePrivateKeys`（`u_public.go:926-931`）只有 `Ecdhe`(X25519)/`Mlkem`/
+   `MlkemEcdhe` 三个字段，**没有 P-256 私钥位**，所以 uTLS/Xray 客户端在任何情况下
+   都完不成「服务端选 P-256」的握手；XTLS `tls.go:222-239` 只挑那两个组正是为此。
+   本仓的处理：镜像**明确拒绝** P-256 ⇒ **回落透传**，客户端与真站直接谈成
+   （判据见 `tests/real_stack.rs`，三件事都断言）。
 
-## 过程中的四个实测发现（都进了代码注释）
+## 过程中的六个实测发现（都进了代码注释）
 
 1. **rustls 严格协商签名算法**，而浏览器指纹（Chrome 131/133）**不报 Ed25519** ——
    REALITY 的证书恰恰必须是 ed25519（客户端按 `ed25519.PublicKey` 做 HMAC 校验）。
@@ -103,16 +114,25 @@ rc≠0 或出现 `FAILED` ⇒ 结论要改。真栈那三条另外需要 `/tmp/x
    不打开时的症状：`PeerIncompatible::NoSignatureSchemesInCommon`。
 2. **HMAC 的输入是裸 ed25519 公钥（32 字节），不是 SPKI**。第一版传 rustls 的
    `SubjectPublicKeyInfoDer`（44 字节），AuthKey 两侧明明相同（打印核对过），
-   客户端仍 `BadCertificate`。SPKI 里 ed25519 公钥固定在最后 32 字节。
-3. **rustls 的 TCP 0-RTT 只支持有状态恢复**（本仓既有结论，本轮再次用到）。
-4. **`split_dest_flight` 的 Malformed 要逐条查**，只查第一条会漏掉「缺 CCS」这类
+   客户端仍 `BadCertificate`。
+3. **`Certificate` 消息的形状有两处坑**（都是对着 uTLS 解析器逐行核出来的）：
+   体首的 `certificate_request_context`（u8 长度）**与每个证书条目后的 u16
+   extensions 字段**（`handshake_messages.go:1602-1608`）。少任何一个，客户端
+   `readHandshake` 解不开、回 `unexpected message`（看不出原因的错）。
+4. **ed25519 公钥的偏移不能猜**：第一版取「签名值前 32 字节」，那是 DER 结构字节；
+   真公钥在 SPKI 里（找 OID `2b6570` 后跳 12 字节）。症状 `bad_certificate`。
+5. **镜像的 ECDH 输入是客户端 hello 里的 key share**，不是真站 serverShare
+   （后者是它自己的密文/公钥）。喂错在 MLKEM768 上炸 `InvalidKeyShare`
+   （1120 vs 1216）。参照：`handshake_server_tls13.go:104-120`。
+6. **`split_dest_flight` 的 Malformed 要逐条查**，只查第一条会漏掉「缺 CCS」这类
    出现在第二条的坏形状（对照 `tls.go:368-372` 的逐条 `break f`）。
 
 ## 已知边界（与 issue 一致）
 
 - **HRR 不处理**：真站对 CH 回 HelloRetryRequest 时镜像失败 —— Go 参照同样如此。
-- **Mldsa65Key / Mldsa65Verify（ML-DSA-65 证书扩展签名）暂不实现** —— 参照的可选增强。
-- **架构性差异（写进 `src/server.rs` 模块头）**：参照拿真站的 ServerHello 当模板、
-  只换 serverShare 密钥字节；本实现跑在 rustls 上、不 fork 服务端，所以 ServerHello
-  由 rustls 生成（密码学合法、客户端只验转录与尾签），但「ServerHello 与真站同形」
-  这层保真**没做**。要做需给 fork 加服务端侧的 ClientHello/ServerHello 缝。
+- **Mldsa65Key / Mldsa65Verify（ML-DSA-65 证书扩展签名）未实现** —— 参照的可选增强，
+  也是 `tests/parity.rs` 里唯一被断言允许的「未实现」字段对。
+- **镜像的组只有 X25519 与 X25519MLKEM768** —— 依据是 uTLS 客户端的能力（见判据 4）。
+- **传输层的旁路能力**（`type`/`xver`/`limit_fallback_*`/`spider_x`/`master_key_log`）
+  **同层不适用**：本 crate 是协议层（鉴权/镜像/密钥），监听器与传输交给调用方。
+  逐条归宿在 `tests/parity.rs` 的表里。

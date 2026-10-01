@@ -6,22 +6,22 @@
 //! 2. 鉴权（[`crate::ch::decide`]，`tls.go:213-275`）；
 //! 3. **无论鉴权与否都拨真站并把 hello 原样转过去**（`tls.go:172` 的 dial + 转发）
 //!    —— 这是抗探测的核心：真站看到的是一次正常访问；
-//! 4. 鉴权通过 ⇒ 用 rustls 完成**我们自己的** TLS 1.3 握手，证书是
-//!    **一次性自签 ed25519 + HMAC(AuthKey, pub) 尾签**（`handshake_server_tls13.go:143-160`）
-//!    —— 客户端据此认出「这是 REALITY 服务端」；
-//!    之后明文交给调用方的 [`Handler`]（上层协议，如 VLESS）；
+//! 4. 鉴权通过 ⇒ 读真站的 ServerHello 当**模板**，跑**镜像握手**
+//!    （[`crate::mirror_tls`]）：真站的 ServerHello 逐字节上给客户端，只替换
+//!    `serverShare` 的密钥字节；证书是**一次性自签 ed25519 + HMAC(AuthKey, pub)
+//!    尾签**（`handshake_server_tls13.go:143-160`）—— 客户端据此认出
+//!    「这是 REALITY 服务端」；之后明文交给调用方的 [`Handler`]（上层协议，如 VLESS）；
 //! 5. 未鉴权 ⇒ 双向原样透传（`tls.go:410-425`）：客户端拿到与直连真站**逐字节相同**
-//!    的握手与证书。
+//!    的握手与证书。**镜像失败也一样透传**（`Stats::mirror_failed` / `Stats::fallback`）。
 //!
-//! # 与参照的一处**架构性差异**（如实记在这里，也记进 `questions/11`）
+//! # 镜像这一层为什么自己写（而不是让 rustls 跑）
 //!
-//! 参照实现会拿**真站的 ServerHello 当模板**，只替换 `serverShare` 的密钥字节
-//! （`handshake_server_tls13.go:104-120`）—— 它自己就是 TLS 栈，改起来自然。
-//! 本实现跑在 rustls 上、**不 fork 服务端**，所以 ServerHello 由 rustls 生成：
-//! 密码学上完全合法（客户端只验转录与证书尾签，看不到真站的 ServerHello），
-//! 但**「ServerHello 与真站同形」这一层保真没有做**。要做需要给 fork 加一条
-//! 服务端侧的 ClientHello/ServerHello 缝（与客户端侧的 (a) 对偶），那是一件
-//! 单独立项的活 —— 记为已知差异，不假装。
+//! 参照拿真站的 ServerHello 当模板、只替换 `serverShare` 的密钥字节
+//! （`handshake_server_tls13.go:104-120`）。rustls **不允许**替换 ServerHello 的
+//! key share、也不接受外供 ServerHello（它把那些字节与自己的转录/密钥状态绑死），
+//! 所以这半段握手由 [`crate::mirror_tls`] 自己跑：EE/Certificate/CertificateVerify/
+//! Finished 与记录层加解密都是自实现，只有密钥交换借 rustls 的 `SupportedKxGroup`
+//! （混合组语义与 Go 一致，已有真栈判据证明）。
 //!
 //! # 证书为什么可以「签名是 HMAC」
 //!
