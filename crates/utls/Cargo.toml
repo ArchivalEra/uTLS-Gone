@@ -1,0 +1,20 @@
+[package]
+name = "utls"
+description = "纯 Rust 复刻 uTLS：把 ClientHello 做成可命名、可复现、可验证的指纹"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+getrandom.workspace = true
+md-5.workspace = true
+sha3.workspace = true
+hkdf.workspace = true
+
+[[example]]
+name = "reflect-facts"
+
+[dev-dependencies]
+# 只为读 tests/fixtures/utls-reference.json —— 参照实现产出的对账夹具。
+serde_json = "1"

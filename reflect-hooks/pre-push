@@ -1,0 +1,22 @@
+#!/bin/sh
+# pre-push：机器块必须新鲜、闸门必须全绿 —— 从 Octave-Full-Wasm 的 pre-push 迁移。
+#
+# 为什么 pre-commit 已经查了 pre-push 还要查：pre-commit 会自动重算，但**产物可能在
+# 上次提交之后又变了** —— 那种情况下推出去的文档就已经是旧的了。pre-push **不自动改
+# 文件、不动历史**：不新鲜就直接拒推，强制先提交再推。
+set -e
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO=$(CDPATH= cd -- "$HERE/.." && pwd)
+cd "$REPO"
+
+DOC=${REFLECT_DOC:-STATE.md}
+if [ -f "$DOC" ]; then
+  python3 zreflect/facts.py --check "$DOC"
+fi
+# ② 全部闸门：**发现式**名录（与 gates-selftest.sh 同一逻辑 —— 别手写清单，
+#    手写清单漏登记一个 check_*.py 时，hook 自己还绿着（issue #1 ①）。
+#    约定：每个闸门都必须支持 --selftest（由 gates-selftest.sh 强制）。
+for g in zreflect/check_*.py; do
+  [ -f "$g" ] || continue
+  python3 "$g" || exit 1
+done

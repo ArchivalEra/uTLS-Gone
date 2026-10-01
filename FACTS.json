@@ -1,0 +1,1931 @@
+{
+ "schema": 1,
+ "generated": "2026-10-01T08:56:36+0800",
+ "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
+ "facts": {
+  "rustc_version": {
+   "value": "rustc 1.98.1 (48a229cea 2026-09-01)",
+   "cmd": "rustc --version",
+   "source": "toolchain"
+  },
+  "cargo_version": {
+   "value": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+   "cmd": "cargo --version",
+   "source": "toolchain"
+  },
+  "rs_files": {
+   "value": 40,
+   "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
+   "source": "repo",
+   "note": "我们自己写的 Rust"
+  },
+  "rs_lines": {
+   "value": 16278,
+   "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
+   "source": "repo",
+   "note": "我们自己写的 Rust"
+  },
+  "py_files": {
+   "value": 16,
+   "cmd": "find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
+   "source": "repo",
+   "note": "闸门/采集器"
+  },
+  "py_lines": {
+   "value": 1978,
+   "cmd": "find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
+   "source": "repo",
+   "note": "闸门/采集器"
+  },
+  "md_files": {
+   "value": 20,
+   "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
+   "source": "repo",
+   "note": "文档"
+  },
+  "md_lines": {
+   "value": 2288,
+   "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
+   "source": "repo",
+   "note": "文档"
+  },
+  "fork_rs_files": {
+   "value": 111,
+   "cmd": "find crates/rustls -name '*.rs' | wc -l",
+   "source": "crates/rustls",
+   "note": "vendored 的 rustls fork（**不是**我们写的）"
+  },
+  "fork_rs_lines": {
+   "value": 49886,
+   "cmd": "find crates/rustls -name '*.rs' -exec cat {} + | wc -l",
+   "source": "crates/rustls",
+   "note": "同上"
+  },
+  "fork_rs_modified": {
+   "value": 9,
+   "cmd": "grep -rc 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | grep -v ':0' | wc -l",
+   "source": "crates/rustls",
+   "note": "我们**改过**的 fork 文件数（其余是上游原文）"
+  },
+  "fork_patch_files": {
+   "value": 9,
+   "cmd": "grep -c '^diff --git' crates/rustls-fork/patch.diff",
+   "source": "crates/rustls-fork/",
+   "note": "补丁改动的文件数（含新建的 fork.rs）"
+  },
+  "fork_patch_hunks": {
+   "value": 39,
+   "cmd": "grep -c '^@@' crates/rustls-fork/patch.diff",
+   "source": "crates/rustls-fork/",
+   "note": "补丁的 hunk 数 —— rebase 时按 hunk 定位，所以它是「要维护的行数」的尺度"
+  },
+  "fork_patch_plus": {
+   "value": 1327,
+   "cmd": "grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'",
+   "source": "crates/rustls-fork/",
+   "note": "补丁新增行数"
+  },
+  "fork_patch_minus": {
+   "value": 39,
+   "cmd": "grep '^-' crates/rustls-fork/patch.diff | grep -vc '^---'",
+   "source": "crates/rustls-fork/",
+   "note": "补丁删除行数"
+  },
+  "fork_patch_matches_markers": {
+   "value": "yes",
+   "cmd": "[ \"$(grep -c '^diff --git' crates/rustls-fork/patch.diff)\" = \"$(grep -rl 'FORK(utls-rs)' crates/rustls/src --include='*.rs' | wc -l)\" ] && echo yes || echo NO",
+   "source": "crates/rustls-fork/",
+   "note": "不变式：patch.diff 的文件数 == 带 FORK(utls-rs) 标记的文件数（不等 ⇒ 补丁漏了文件，或漏了标记）"
+  },
+  "gate_count": {
+   "value": 5,
+   "cmd": "ls zreflect/check_*.py | wc -l",
+   "source": "zreflect/",
+   "note": "闸门数：登记是被发现的，不是被记得的"
+  },
+  "question_count": {
+   "value": 10,
+   "cmd": "ls questions/*.md | wc -l",
+   "source": "questions/",
+   "note": "悬案总数"
+  },
+  "open_questions": {
+   "value": 0,
+   "cmd": "python3 -c \"import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))\"",
+   "source": "questions/",
+   "note": "未结案的悬案 —— 读法与闸门同源（别改成子串匹配）"
+  },
+  "retraction_count": {
+   "value": 5,
+   "cmd": "python3 -c \"import json;print(len(json.load(open('retractions.json'))['retractions']))\"",
+   "source": "retractions.json",
+   "note": "已被推翻、不许再当现状出现的断言"
+  },
+  "rustls_pin": {
+   "value": "0.23.45",
+   "cmd": "grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1",
+   "source": "Cargo.toml",
+   "note": "钉住的 rustls —— 补丁要对它 rebase"
+  },
+  "fp_randomized_seed0_ja3_md5": {
+   "value": "26822966929f842a4c55ff33436e7d67",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed0_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed0_ja3_text": {
+   "value": "771,4866-4865-4867-52393-157-60-156-49199-49196-52392-49191-49187-49200-49195-49172-47-49162-49171-49161-49170-10,13-16-0-11-10-51-43-35-23-65281-45,4588-29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed0_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed0_hello_len": {
+   "value": "1566",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed0_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed1_ja3_md5": {
+   "value": "815d092461846a85bfe28245cd4d5f75",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed1_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed1_ja3_text": {
+   "value": "771,4867-49200-157-52393-49187-52392-49195-156-60-49191-47-53-49170-10-49162,65281-51-10-5-11-0-17513-21-16-23-13-45-35-43,4588-29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed1_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed1_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed1_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed2_ja3_md5": {
+   "value": "0de39d583d9385cc981e62f0437c940f",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed2_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed2_ja3_text": {
+   "value": "771,49187-49195-52392-157-52393-49196-60-49191-49171-10-47-49169-49161-49159-53-49170-49172,5-13-11-35-0-10-23,23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed2_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_seed2_hello_len": {
+   "value": "192",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_seed2_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed0_ja3_md5": {
+   "value": "c7d630f6535ab1f5b0e3950db6554ac9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed0_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed0_ja3_text": {
+   "value": "771,49187-60-49199-157-49196-52392-49195-156-49200-49191-49171-10-5-53-47-49162-49169-49172-49161-49159-49170,0-11-13-10-65281-5-35-16-23,23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed0_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed0_hello_len": {
+   "value": "217",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed0_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed1_ja3_md5": {
+   "value": "5f11d9abc52a689b81a758517df394f1",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed1_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed1_ja3_text": {
+   "value": "771,4866-4865-60-52393-49187-49196-52392-49195-49199-157-49171-10-53-49161-49162,11-5-23-43-17513-16-10-18-13-51-0-45-35,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed1_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed1_hello_len": {
+   "value": "1502",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed1_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed2_ja3_md5": {
+   "value": "7b9f787da5094b8ecf46b874d60de39a",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed2_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed2_ja3_text": {
+   "value": "771,4866-4867-4865-49199-157-156-49191-49200-49196-49195-52393-53-49170-49172-10-49162-49161,65281-13-21-43-18-16-11-10-5-51-17513-45-0-35,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed2_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_alpn_seed2_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_alpn_seed2_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed0_ja3_md5": {
+   "value": "419a0067df283e172dbe1515f4a9fef1",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed0_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed0_ja3_text": {
+   "value": "771,49187-60-49199-157-49196-52392-49195-156-49200-49191-49171-10-5-53-47-49162-49169-49172-49161-49159-49170,13-11-65281-5-0-35-10-23,23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed0_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed0_hello_len": {
+   "value": "199",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed0_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed1_ja3_md5": {
+   "value": "ad82954779f6fe28886c6b619a5ac5da",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed1_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed1_ja3_text": {
+   "value": "771,4866-4865-60-52393-49187-49196-52392-49195-49199-157-49171-10-53-49161-49162,13-18-45-10-11-5-43-23-0-51-35,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed1_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed1_hello_len": {
+   "value": "1475",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed1_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed2_ja3_md5": {
+   "value": "78d307ab74c1728c434cfd9779b584d3",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed2_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed2_ja3_text": {
+   "value": "771,4866-4867-4865-49199-157-156-49191-49200-49196-49195-52393-53-49170-49172-10-49162-49161,65281-18-10-21-13-11-5-45-43-51-0-35,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed2_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_randomized_no_alpn_seed2_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^randomized_no_alpn_seed2_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_ja3_md5": {
+   "value": "94c485bca29d5392be53f2b8cf7f4304",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_ja3_text": {
+   "value": "771,49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53-10,65281-0-23-35-13-5-18-16-30032-11-10,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_hello_len": {
+   "value": "226",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_cipher_count": {
+   "value": "13",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_ext_count": {
+   "value": "11",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_58_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_58_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_ja3_md5": {
+   "value": "94c485bca29d5392be53f2b8cf7f4304",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_ja3_text": {
+   "value": "771,49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53-10,65281-0-23-35-13-5-18-16-30032-11-10,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_hello_len": {
+   "value": "226",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_cipher_count": {
+   "value": "13",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_ext_count": {
+   "value": "11",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_62_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_62_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_ja3_md5": {
+   "value": "6a958df291c3f2ee216e80434750d4e1",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53-10,65281-0-23-35-13-5-18-16-30032-11-51-45-43-10-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_cipher_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_70_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_70_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_ja3_md5": {
+   "value": "66918128f1b9b03303d77c6f2eefd128",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53-10,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_cipher_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_72_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_72_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_ja3_md5": {
+   "value": "b32309a26951912be7dba376398abc3b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_83_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_83_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_ja3_md5": {
+   "value": "b32309a26951912be7dba376398abc3b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_87_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_87_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_ja3_md5": {
+   "value": "cd08e31494f9531f560d64c695473da9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_96_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_96_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_ja3_md5": {
+   "value": "cd08e31494f9531f560d64c695473da9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_ja3_md5": {
+   "value": "cd08e31494f9531f560d64c695473da9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_102_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_102_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_ja3_md5": {
+   "value": "def317a12dc7ed05a1b27f43af514602",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,17513-5-11-16-10-43-27-51-13-23-65281-45-35-18-0-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_106_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_106_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_ja3_md5": {
+   "value": "0e56ea8d7576172d3325596634e6c05f",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,17513-5-11-16-10-43-27-51-13-23-65281-45-35-18-0,25497-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_hello_len": {
+   "value": "1526",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_pq_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_pq_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_ja3_md5": {
+   "value": "4e9f1c0a7ee4ceec80faed41334e1dcf",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,43-18-5-10-0-45-16-13-27-11-51-17513-23-65281-35-65037,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_hello_len": {
+   "value": "558",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_len_stable": {
+   "value": "NO",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_ja3_md5": {
+   "value": "c99b8581a3e59b0bae7aef14a6e5e3bf",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,10-13-23-45-65037-35-17513-51-27-11-18-16-0-65281-5-43,25497-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_hello_len": {
+   "value": "1780",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_len_stable": {
+   "value": "NO",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_120_pq_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_120_pq_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_ja3_md5": {
+   "value": "e1d8b04eeb8ef3954ec4f49267a783ef",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_hello_len": {
+   "value": "304",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_100_psk_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_100_psk_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_ja3_md5": {
+   "value": "3f9ed491ea677a123655db3560fe9dc5",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,17513-5-11-16-10-43-27-51-13-23-65281-45-35-18-0,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_hello_len": {
+   "value": "304",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_112_psk_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_112_psk_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_ja3_md5": {
+   "value": "6d720efbfea20c5396c1e146b3686ae4",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,13-23-35-65281-11-27-45-0-5-17513-16-10-43-18-51-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_114_psk_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_114_psk_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_ja3_md5": {
+   "value": "8813703eeb522d2179bea34fb7b29c05",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,13-23-35-65281-11-27-45-0-5-17513-16-10-43-18-51,25497-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_hello_len": {
+   "value": "1526",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_115_psk_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_115_psk_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_ja3_md5": {
+   "value": "8e494a6419f08a68d438dc930b4f951b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,10-13-23-45-65037-35-17513-51-27-11-18-16-0-65281-5-43,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_hello_len": {
+   "value": "1780",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_len_stable": {
+   "value": "NO",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_131_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_131_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_ja3_md5": {
+   "value": "41a1630b19c58de694b977cc0d783dd7",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,10-13-23-45-65037-35-17613-51-27-11-18-16-0-65281-5-43,4588-29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_hello_len": {
+   "value": "1780",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_len_stable": {
+   "value": "NO",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_chrome_133_ja3_stable": {
+   "value": "no",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^chrome_133_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_ja3_md5": {
+   "value": "0ffee3ba8e615ad22535e7f771690a28",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_ja3_text": {
+   "value": "771,49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-51-57-47-53-10,0-23-65281-10-11-35-16-5-13,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_hello_len": {
+   "value": "215",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_ext_count": {
+   "value": "9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_55_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_55_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_ja3_md5": {
+   "value": "0ffee3ba8e615ad22535e7f771690a28",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_ja3_text": {
+   "value": "771,49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-51-57-47-53-10,0-23-65281-10-11-35-16-5-13,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_hello_len": {
+   "value": "215",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_ext_count": {
+   "value": "9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_56_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_56_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_ja3_md5": {
+   "value": "b20b44b18b853ef29ab773e921b03422",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-51-57-47-53-10,0-23-65281-10-11-35-16-5-51-43-13-45-28-21,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_cipher_count": {
+   "value": "18",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_ext_count": {
+   "value": "14",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_63_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_63_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_ja3_md5": {
+   "value": "b20b44b18b853ef29ab773e921b03422",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-51-57-47-53-10,0-23-65281-10-11-35-16-5-51-43-13-45-28-21,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_cipher_count": {
+   "value": "18",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_ext_count": {
+   "value": "14",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_65_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_65_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_ja3_md5": {
+   "value": "6b5e0cfe988c723ee71faf54f8460684",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53-10,0-23-65281-10-11-35-16-5-34-51-43-13-45-28-21,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_cipher_count": {
+   "value": "18",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_99_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_99_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_ja3_md5": {
+   "value": "579ccef312d18482fc42e2b822ca2430",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-34-51-43-13-45-28-21,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_cipher_count": {
+   "value": "17",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_102_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_102_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_ja3_md5": {
+   "value": "579ccef312d18482fc42e2b822ca2430",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-34-51-43-13-45-28-21,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_cipher_count": {
+   "value": "17",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_105_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_105_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_ja3_md5": {
+   "value": "b5001237acdf006056b409cc433726b0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-34-51-43-13-45-28-65037,29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_hello_len": {
+   "value": "654",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_cipher_count": {
+   "value": "17",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_120_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_120_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_ja3_md5": {
+   "value": "7704a11cf87dfcf33080b90ce11d5527",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_ja3_text": {
+   "value": "771,4865-4867-4866-49195-49199-52393-52392-49196-49200-49162-49161-49171-49172-156-157-47-53,0-23-65281-10-11-16-5-34-18-51-43-13-28-27-65037,4588-29-23-24-25-256-257,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_hello_len": {
+   "value": "1881",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_cipher_count": {
+   "value": "17",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_firefox_148_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^firefox_148_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_ja3_md5": {
+   "value": "a69708a64f853c3bcc214c2c5faf84f3",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_ja3_text": {
+   "value": "771,49196-49195-49188-49187-49162-49161-52393-49200-49199-49192-49191-49172-49171-52392-157-156-61-60-53-47,65281-0-23-13-5-13172-18-16-11-10,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_hello_len": {
+   "value": "259",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_cipher_count": {
+   "value": "20",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_ext_count": {
+   "value": "10",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_11_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_11_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_ja3_md5": {
+   "value": "5c118da645babe52f060d0754256a73c",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_ja3_text": {
+   "value": "771,49196-49195-49188-49187-49162-49161-52393-49200-49199-49192-49191-49172-49171-52392-157-156-61-60-53-47-49160-49170-10,65281-0-23-13-5-13172-18-16-11-10,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_hello_len": {
+   "value": "269",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_cipher_count": {
+   "value": "23",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_ext_count": {
+   "value": "10",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_12_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_12_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_ja3_md5": {
+   "value": "6fa3244afc6bb6f9fad207b6b52af26b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_ja3_text": {
+   "value": "771,4865-4866-4867-49196-49195-49188-49187-49162-49161-52393-49200-49199-49192-49191-49172-49171-52392-157-156-61-60-53-47-49160-49170-10,65281-0-23-13-5-18-16-11-51-45-43-10-21,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_cipher_count": {
+   "value": "26",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_ext_count": {
+   "value": "13",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_ios_13_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^ios_13_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_ja3_md5": {
+   "value": "6c0f0a346dcd84cb4b97a0d9382c53fd",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_ja3_text": {
+   "value": "771,49195-49196-52393-49199-49200-52392-49171-49172-156-157-47-53,0-23-65281-10-11-5-13,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_hello_len": {
+   "value": "181",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_cipher_count": {
+   "value": "12",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_ext_count": {
+   "value": "7",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_android_11_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^android_11_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_ja3_md5": {
+   "value": "b32309a26951912be7dba376398abc3b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_ext_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_85_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_85_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_ja3_md5": {
+   "value": "cd08e31494f9531f560d64c695473da9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_edge_106_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^edge_106_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_ja3_md5": {
+   "value": "773906b0efdefa24a7f2b8eb6985bf37",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_ja3_text": {
+   "value": "771,4865-4866-4867-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27-21,29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_cipher_count": {
+   "value": "20",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_ext_count": {
+   "value": "14",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_16_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_16_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_ja3_md5": {
+   "value": "ecdf4f49dd59effc439639da29186671",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_ja3_text": {
+   "value": "771,4866-4867-4865-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27,4588-29-23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_hello_len": {
+   "value": "1529",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_cipher_count": {
+   "value": "20",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_ext_count": {
+   "value": "13",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_safari_26_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_ja3_md5": {
+   "value": "c405bbbe31c0e53ac4c8448355b2af5b",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_ja3_text": {
+   "value": "771,49162-49172-57-107-53-61-49159-49161-49187-49169-49171-49191-51-103-50-5-4-47-60-10,0-65281-10-11-35-13172-16-30031-5-13,23-24-25,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_hello_len": {
+   "value": "241",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_cipher_count": {
+   "value": "20",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_ext_count": {
+   "value": "10",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_7_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_7_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_ja3_md5": {
+   "value": "2b3a40903395f08c297cd63b9734cb75",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53-10,0-23-65281-10-11-35-16-5-13-18-30032-51-45-43-27-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_cipher_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_360_11_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^360_11_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_ja3_md5": {
+   "value": "cd08e31494f9531f560d64c695473da9",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_ja3_md5='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_ja3_text": {
+   "value": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_ja3_text='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_hello_len": {
+   "value": "512",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_hello_len='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_cipher_count": {
+   "value": "15",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_cipher_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_ext_count": {
+   "value": "16",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_ext_count='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_len_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_len_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  },
+  "fp_qq_11_ja3_stable": {
+   "value": "yes",
+   "cmd": "cargo run --quiet --example reflect-facts | grep '^qq_11_ja3_stable='",
+   "source": "examples/reflect-facts.rs",
+   "note": "指纹：由验证 CLI 实测，**不手抄**"
+  }
+ }
+}

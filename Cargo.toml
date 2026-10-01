@@ -1,0 +1,32 @@
+[workspace]
+members = ["crates/utls", "crates/utls-engine"]
+# 引擎 fork 是**被 patch 的依赖**，不是本 workspace 的成员 —— 否则 `cargo test --workspace`
+# 会去跑 rustls 自己那套庞大的测试。它由下面的 `[patch.crates-io]` 引入。
+exclude = ["crates/rustls"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/ArchivalEra/uTLS-Gone"
+
+[workspace.dependencies]
+# 唯一的非 std 依赖（指纹层）：OS 熵源，用于 HandshakeInputs::os()。
+# 指纹的 GREASE/乱序需要「每连接不同」，而那不是密码学用途 —— 但它仍然要不可预测。
+getrandom = "0.3"
+# JA3 是 MD5 —— 由 JA3 规范定死，不是我们选的。它是指纹的**验证工具**，
+# 所以进运行期依赖而不是 dev。
+md-5 = "0.10"
+# SHAKE256 与 HKDF-SHA3-256：uTLS 的**随机化指纹**由它们定义的流驱动
+# （`u_prng.go` 的 `prng` 就是一个 SHAKE256 流）。这不是密码学用途 ——
+# uTLS 自己对它的评语是「not for security use cases」；它只是那条流的**定义**，
+# 而「指纹要与参照实现一致」就意味着这条流必须逐字节一致。
+# 纯 Rust，无 FFI。
+sha3 = "0.10"
+hkdf = "0.12"
+
+[patch.crates-io]
+# fork 的 rustls：新增的 ClientHello 外供接缝（见 crates/rustls-fork/README.md）。
+# 用 path 而不是 git —— 补丁的「产地」是 patch.diff，仓库里 vendor 的是它的成品。
+rustls = { path = "crates/rustls" }

@@ -1,0 +1,1704 @@
+diff --git a/src/client/builder.rs b/src/client/builder.rs
+index ccecde2..6414e06 100644
+--- a/src/client/builder.rs
++++ b/src/client/builder.rs
+@@ -186,6 +186,8 @@ impl ConfigBuilder<ClientConfig, WantsClientCert> {
+             cert_decompressors: compress::default_cert_decompressors().to_vec(),
+             ech_mode: self.state.client_ech_mode,
+             send_ticket_request: None,
++            // FORK(utls-rs): nothing is externally supplied by default.
++            fork_client_hello: None,
+         }
+     }
+ }
+diff --git a/src/client/client_conn.rs b/src/client/client_conn.rs
+index 77b2dc5..329b2f4 100644
+--- a/src/client/client_conn.rs
++++ b/src/client/client_conn.rs
+@@ -5,6 +5,7 @@ use core::{fmt, mem};
+ 
+ use pki_types::{ServerName, UnixTime};
+ 
++use super::fork::SuppliesClientHello;
+ use super::handy::NoClientSessionStorage;
+ use super::hs::{self, ClientHelloInput};
+ #[cfg(feature = "std")]
+@@ -294,6 +295,13 @@ pub struct ClientConfig {
+     ///
+     /// [RFC 9149]: https://datatracker.ietf.org/doc/html/rfc9149
+     pub send_ticket_request: Option<TicketRequest>,
++
++    /// FORK(utls-rs): if set, this connection's ClientHello is built from the plan
++    /// this supplies rather than from the configuration alone — the caller may
++    /// supply the ClientHello bytes verbatim, suppress the extension-order shuffle
++    /// and the unconditional TLS 1.2 SCSV, advertise suites this engine cannot
++    /// negotiate, or bring its own key exchange. See [`crate::client::fork`].
++    pub fork_client_hello: Option<Arc<dyn SuppliesClientHello>>,
+ }
+ 
+ /// Desired session ticket counts for the RFC 9149 `ticket_request` extension.
+@@ -974,6 +982,7 @@ impl UnbufferedClientConnection {
+     pub fn tls13_tickets_received(&self) -> u32 {
+         self.inner.tls13_tickets_received
+     }
++
+ }
+ 
+ impl Deref for UnbufferedClientConnection {
+diff --git a/src/client/ech.rs b/src/client/ech.rs
+index 3d0b767..067a349 100644
+--- a/src/client/ech.rs
++++ b/src/client/ech.rs
+@@ -23,6 +23,7 @@ use crate::msgs::handshake::{
+     PresharedKeyOffer, Random, ServerHelloPayload, ServerNamePayload,
+ };
+ use crate::msgs::message::{Message, MessagePayload};
++use crate::enums::{ContentType, HandshakeType};
+ use crate::msgs::persist;
+ use crate::msgs::persist::Retrieved;
+ use crate::tls13::key_schedule::{
+@@ -308,7 +309,11 @@ pub(crate) struct EchState {
+     // A source of secure random data.
+     secure_random: &'static dyn SecureRandom,
+     // An HPKE sealer context that can be used for encrypting ECH data.
+-    sender: Box<dyn HpkeSealer>,
++    //
++    // FORK(utls-rs) (h): `None` when the caller sealed the offer itself (see
++    // `from_supplied`) — there is then nothing for this engine to seal, and the internal
++    // builder path (`ech_hello`) is refused rather than run with a wrong context.
++    sender: Option<Box<dyn HpkeSealer>>,
+     // The ID of the ECH configuration we've chosen - this is included in the outer ECH extension.
+     config_id: u8,
+     // The private server name we'll use for the inner protected hello.
+@@ -358,7 +363,7 @@ impl EchState {
+ 
+         Ok(Self {
+             secure_random,
+-            sender,
++            sender: Some(sender),
+             config_id: key_config.config_id,
+             inner_name,
+             outer_name: config_contents.public_name.clone(),
+@@ -373,6 +378,122 @@ impl EchState {
+         })
+     }
+ 
++    /// FORK(utls-rs) (h): the state of an ECH offer the **caller** built and sealed.
++    ///
++    /// The caller's ClientHello already contains the sealed inner hello, so the only thing
++    /// this engine still needs from the offer is what matters *after* the server answers:
++    ///
++    /// - the **inner transcript** and the **inner random** — on acceptance they replace the
++    ///   outer ones for the key schedule (RFC 9849 §6.1.6, and that is the whole point of
++    ///   ECH: the outer values must not be the ones that get authenticated);
++    /// - the **outer name** — what the session is authenticated against if the server
++    ///   rejects ECH;
++    /// - the **inner hello's extension types** — the "server sent an extension we did not
++    ///   offer" check is made against the inner hello once ECH is accepted.
++    ///
++    /// `inner_client_hello_body` is the inner hello **body** — the bytes the caller sealed
++    /// into the payload, *without* the four-byte handshake header and with an **empty**
++    /// `legacy_session_id` and no padding. That is what both reference implementations
++    /// encode for the inner hello:
++    ///
++    /// * rustls `msgs/handshake.rs::payload_encode(.., Encoding::EchInnerHello)` —
++    ///   "SessionID is required to be empty in the encoded inner client hello", and
++    ///   `payload_encode` writes no handshake header;
++    /// * uTLS `ech.go::encodeInnerClientHelloReorderOuterExts` strips four bytes
++    ///   (`h = h[4:]`), and its decoder says the inner "is missing its header (message
++    ///   type and length)".
++    ///
++    /// The transcript, however, is over the **handshake message** (header included) with
++    /// the padding removed — which is what this constructor rebuilds before hashing.
++    /// Getting this wrong does not fail loudly: it just authenticates a handshake nobody
++    /// else is having, which is why the format is spelled out here and checked.
++    pub(crate) fn from_supplied(
++        config: &EchConfig,
++        inner_client_hello_body: &[u8],
++        outer_session_id: &[u8],
++        secure_random: &'static dyn SecureRandom,
++        enable_sni: bool,
++    ) -> Result<Self, Error> {
++        let EchConfigPayload::V18(config_contents) = &config.config else {
++            unreachable!("ECH config version mismatch");
++        };
++        let key_config = &config_contents.key_config;
++
++        // ⚠️ 转录里的内层 hello 带的是**外层的 legacy_session_id**，而封进密文的那份是空的。
++        //
++        // 出处（三处一致）：uTLS 的 `inner.sessionId = uconn.HandshakeState.Hello.SessionId`
++        // （`u_conn.go:565`）；uTLS 的服务端在重建内层时把 `outer.sessionId` 插回去
++        // （`ech.go::decodeInnerClientHello` 的 `recon.AddBytes(outer.sessionId)`）；
++        // rustls 的 `encode_inner_hello` 也把 `session_id` 抄进 typed 内层，
++        // 只在**编码**时用 `SessionId::empty()`。
++        //
++        // 弄错的症状很具体：服务器照它的重建版本算转录，我们照空 session id 的版本算 ——
++        // 密钥调度分叉，于是**握手在 ECH 被接受之后**才炸（实测：`cannot decrypt peer's message`），
++        // 而 ECH 的接受/拒绝判定本身是对的。
++        // 无论交来的内层带不带 session id，都**换成外层的**（服务器的重建就是这么做的）：
++        // 所以这里不是「插入」，而是「替换」—— 交来的那份通常为空（编码规则），
++        // 但把「必须为空」当断言会让一个**本该被容忍**的输入变成 panic。
++        let body = {
++            let sid_len = usize::from(inner_client_hello_body[34]);
++            let mut b = Vec::with_capacity(inner_client_hello_body.len() + outer_session_id.len());
++            b.extend_from_slice(&inner_client_hello_body[..34]);
++            b.push(outer_session_id.len() as u8);
++            b.extend_from_slice(outer_session_id);
++            b.extend_from_slice(&inner_client_hello_body[35 + sid_len..]);
++            b
++        };
++
++        // Rebuild the handshake message from the body: `type(1) || u24 len || body`.
++        let mut message = Vec::with_capacity(body.len() + 4);
++        message.push(u8::from(HandshakeType::ClientHello));
++        let n = body.len();
++        message.extend_from_slice(&[(n >> 16) as u8, (n >> 8) as u8, n as u8]);
++        message.extend_from_slice(&body);
++
++        let payload = MessagePayload::new(ContentType::Handshake, ProtocolVersion::TLSv1_2, &message)?;
++        let MessagePayload::Handshake { parsed, .. } = &payload else {
++            return Err(Error::General(
++                "FORK(utls-rs): the supplied inner ClientHello is not a handshake message".into(),
++            ));
++        };
++        let HandshakePayload::ClientHello(inner) = &parsed.0 else {
++            return Err(Error::General(
++                "FORK(utls-rs): the supplied inner ClientHello is not a ClientHello".into(),
++            ));
++        };
++
++        // 先把要用的三样取出来，再移动 `payload` 进转录 —— 借用顺序不能反。
++        let mut inner_hello_random = [0u8; 32];
++        inner_hello_random.copy_from_slice(&inner.random.0);
++        // 内层体的前两个字节是 legacy_version，随机数紧随其后。
++        debug_assert_eq!(&body[..2], &[0x03, 0x03]);
++        let sent_extensions = inner.collect_used();
++
++        let mut inner_hello_transcript = HandshakeHashBuffer::new();
++        inner_hello_transcript.add_message(&Message {
++            version: ProtocolVersion::TLSv1_0,
++            payload,
++        });
++
++        Ok(Self {
++            secure_random,
++            // No sender: the offer is already sealed. `ech_hello` refuses to use this state.
++            sender: None,
++            config_id: key_config.config_id,
++            // Only used by the builder path; kept faithful to the config for diagnostics.
++            inner_name: config_contents.public_name.clone().into(),
++            outer_name: config_contents.public_name.clone(),
++            maximum_name_length: config_contents.maximum_name_length,
++            cipher_suite: config.suite.suite().sym,
++            enc: EncapsulatedSecret(inner_hello_random.to_vec()),
++            inner_hello_random: Random(inner_hello_random),
++            inner_hello_transcript,
++            early_data_key_schedule: None,
++            enable_sni,
++            sent_extensions,
++        })
++    }
++
+     /// Construct a ClientHelloPayload offering ECH.
+     ///
+     /// An outer hello, with a protected inner hello for the `inner_name` will be returned, and the
+@@ -387,6 +508,13 @@ impl EchState {
+         retry_req: Option<&HelloRetryRequest>,
+         resuming: &Option<Retrieved<&persist::Tls13ClientSessionValue>>,
+     ) -> Result<ClientHelloPayload, Error> {
++        if self.sender.is_none() {
++            return Err(Error::General(
++                "FORK(utls-rs): this ECH state came from a caller-supplied hello, so the engine \
++                 cannot build another one — supply the second hello (and its own EchOffer) too"
++                    .into(),
++            ));
++        }
+         trace!(
+             "Preparing ECH offer {}",
+             if retry_req.is_some() { "for retry" } else { "" }
+@@ -437,6 +565,14 @@ impl EchState {
+         // Next we compute the proper extension payload.
+         let payload = self
+             .sender
++            .as_mut()
++            .ok_or_else(|| {
++                Error::General(
++                    "FORK(utls-rs): no HPKE sender context — this ECH state came from a \
++                     caller-supplied hello"
++                        .into(),
++                )
++            })?
+             .seal(&outer_hello.get_encoding(), &encoded_inner_hello)?;
+ 
+         // And then we replace the placeholder extension with the real one.
+@@ -600,6 +736,10 @@ impl EchState {
+         };
+ 
+         inner_hello.order_seed = outer_hello.order_seed;
++        // FORK(utls-rs) (b): keep the inner hello's extension order as stable (or as
++        // shuffled) as the outer one's, so ECH does not reintroduce the per-connection
++        // entropy the caller asked to remove.
++        inner_hello.deterministic_order = outer_hello.deterministic_order;
+ 
+         // The inner hello will always have an inner variant of the ECH extension added.
+         // See Section 6.1 rule 4.
+diff --git a/src/client/fork.rs b/src/client/fork.rs
+new file mode 100644
+index 0000000..9882f93
+--- /dev/null
++++ b/src/client/fork.rs
+@@ -0,0 +1,451 @@
++//! FORK(utls-rs): the single seam through which an external ClientHello layer
++//! (a `uTLS`-style fingerprint engine) owns this engine's ClientHello.
++//!
++//! Upstream rustls has no public API for customising the ClientHello, and the
++//! maintainers have declined to add one (issues #1421, #1932, #2498; PRs #1564 and
++//! #1475 closed unmerged). This module adds exactly the five capabilities that
++//! layer needs, and nothing else. All of it is inert unless
++//! [`ClientConfig::fork_client_hello`] is set to `Some(..)`.
++//!
++//! | capability | upstream refusal | patch site |
++//! |---|---|---|
++//! | (a) use externally supplied ClientHello bytes verbatim | (no API at all) | `client/hs.rs::emit_external_client_hello` |
++//! | (b) suppress per-connection extension order shuffling | PR #1730 made it unconditional | `msgs/handshake.rs::ClientExtensions::order_insensitive_extensions_in_random_order` |
++//! | (c) advertise cipher suites this engine cannot negotiate | issue #2414 | `client/hs.rs::emit_client_hello_for_retry` |
++//! | (d) omit the unconditional TLS 1.2 SCSV | issue #2485 | `client/hs.rs::emit_client_hello_for_retry` |
++//! | (e) accept a caller-supplied key share / private key | (no API at all) | `client/hs.rs::ClientHelloInput::start_handshake` |
++//!
++//! The seam is deliberately **per connection**: capability (e) needs per-connection
++//! key material (an ephemeral private key reused across connections is a defect,
++//! not a feature), and a `uTLS`-style layer varies GREASE and padding per
++//! connection anyway. A plan that is literally fixed is just a [`ClientHelloPlan`]
++//! that ignores its `groups` argument; see [`FixedClientHello`].
++
++use alloc::boxed::Box;
++use alloc::vec::Vec;
++use core::fmt;
++
++use crate::client::ClientConfig;
++use crate::crypto::{ActiveKeyExchange, SharedSecret};
++use crate::error::Error;
++use crate::msgs::enums::NamedGroup;
++use crate::sync::Arc;
++
++/// FORK(utls-rs) (e): a key exchange whose ephemeral key material the caller owns.
++///
++/// The engine offers no way to import a raw private key into one of its own
++/// [`ActiveKeyExchange`] implementations, so instead the caller brings the whole
++/// exchange. This is what lets a fingerprint layer decide the contents of the
++/// `key_share` extension — which group, which public key — instead of accepting the
++/// engine's `initial_key_share()`.
++///
++/// `complete()` takes `&self` rather than consuming the exchange: the engine holds
++/// it behind an [`Arc`] and needs the public key available up to the moment the
++/// server's share arrives. Zeroizing private key material on drop is the
++/// implementation's responsibility.
++// FORK(utls-rs): `Debug` 是必需的 —— 这一层的类型要塞进 `ClientConfig`（它 derive 了 Debug）。
++pub trait ExternalKeyExchange: Send + Sync + fmt::Debug {
++    /// The group, by IANA value. This may be a value this engine's [`NamedGroup`]
++    /// enum has no name for.
++    fn group(&self) -> u16;
++
++    /// The public key, as it appears in this group's `key_share` entry
++    /// (RFC 8446 §4.2.8.1 for FFDHE, §4.2.8.2 for ECDHE).
++    fn pub_key(&self) -> Vec<u8>;
++
++    /// Complete the exchange with the server's public key, returning the raw shared
++    /// secret. For FFDHE the result must be left-padded with zeros, as required by
++    /// RFC 8446 §7.4.1.
++    fn complete(&self, peer_pub_key: &[u8]) -> Result<Vec<u8>, Error>;
++
++    /// For a hybrid (PQ) group: the classical component, as `(group, pub_key)`.
++    ///
++    /// Return `None` for a non-hybrid group (the default).
++    fn hybrid_component(&self) -> Option<(u16, Vec<u8>)> {
++        None
++    }
++
++    /// Complete only the classical component of a hybrid group, given the peer's
++    /// public key. Only called if [`Self::hybrid_component`] returned `Some(..)`.
++    fn complete_hybrid_component(&self, _peer_pub_key: &[u8]) -> Result<Vec<u8>, Error> {
++        Err(Error::General(
++            "FORK(utls-rs): hybrid_component() not implemented".into(),
++        ))
++    }
++}
++
++/// FORK(utls-rs): everything the caller may decide about one connection's
++/// ClientHello. Produced once per connection by a [`SuppliesClientHello`].
++#[derive(Clone, Default)]
++pub struct ClientHelloPlan {
++    /// FORK(utls-rs) (a): a complete ClientHello *handshake message* —
++    /// `HandshakeType::ClientHello` (`0x01`), a three-byte length, then the body.
++    ///
++    /// When present it is used **verbatim**: those exact bytes go on the wire and
++    /// those exact bytes are folded into the handshake transcript. The engine builds
++    /// no ClientHello of its own, and the caller is responsible for the bytes being
++    /// a well-formed ClientHello consistent with the rest of the configuration —
++    /// in particular with [`ClientConfig::versions`] and ALPN, since the engine's
++    /// subsequent handshake state is derived from those.
++    pub client_hello: Option<Vec<u8>>,
++
++    /// FORK(utls-rs) (a): every extension type present in [`Self::client_hello`],
++    /// by IANA value, **including types this engine does not understand** (GREASE,
++    /// browser-specific extensions).
++    ///
++    /// This engine's ClientHello decoder drops unknown extension types, but the
++    /// "the server sent an extension we did not offer" check compares against the
++    /// full set that was offered, so that set has to come from the side that wrote
++    /// the bytes. `None` means "derive it from the decoded ClientHello", which is
++    /// correct only when the hello contains no unknown extension types.
++    pub sent_extensions: Option<Vec<u16>>,
++
++    /// FORK(utls-rs) (e): the key exchanges backing the `key_share` entries of
++    /// [`Self::client_hello`], **one per entry**. A TLS 1.3 handshake cannot be completed
++    /// without them (a TLS 1.2 one does not need them).
++    ///
++    /// It is a list, not one exchange, because a `key_share` extension may carry several
++    /// entries (a browser sends one per group it wants to pre-empt a retry for) and the
++    /// server may select **any** of them. With a single exchange the handshake could only
++    /// complete for the one group the engine happened to be handed; the server picking
++    /// another group we had advertised failed with `WrongGroupForKeyShare`. Hand over
++    /// every group you put in the bytes, and the engine picks the one the server selects.
++    ///
++    /// Each exchange's `group()` must match a `key_share` entry in the supplied bytes;
++    /// the engine does not cross-check that (it cannot see the bytes' parse result here).
++    pub key_exchanges: Vec<Arc<dyn ExternalKeyExchange>>,
++
++    /// FORK(utls-rs) (b): emit extensions in a fixed, reproducible order instead of
++    /// shuffling them per connection. Only affects a ClientHello this engine builds
++    /// itself.
++    pub stable_extension_order: bool,
++
++    /// FORK(utls-rs) (c): cipher suites to advertise on top of the ones this engine
++    /// implements, by IANA value. Advertise-only: if the server selects one of
++    /// these the handshake fails, because rustls cannot negotiate a suite it does
++    /// not implement (upstream issue #2414). Only affects a ClientHello this engine
++    /// builds itself.
++    pub extra_cipher_suites: Vec<u16>,
++
++    /// FORK(utls-rs) (h): the caller declares that the `0xfe0d` extension in
++    /// [`Self::client_hello`] is a **real** ECH offer, not GREASE.
++    ///
++    /// This is the difference between "a fake ECH extension of the right shape" (which is
++    /// all a fingerprint needs) and "this connection is actually trying to hide its
++    /// SNI" (which is a protocol behaviour with consequences): with an offer the server
++    /// may *accept* it, and acceptance changes which ClientHello the handshake is
++    /// authenticated against — the **inner** one, whose transcript and random replace the
++    /// outer's for the key schedule (RFC 9849 §6.1.6).
++    ///
++    /// So the caller has to hand over the inner hello. It built it (it sealed it into the
++    /// payload) and this engine cannot recover it — the payload is ciphertext.
++    pub ech: Option<EchOffer>,
++
++    /// FORK(utls-rs) (g): the caller put a `pre_shared_key` extension in
++    /// [`Self::client_hello`] with a **placeholder** binder, and the engine should
++    /// replace that placeholder with the real one.
++    ///
++    /// This is what makes resumption possible with a caller-built hello. The binder is
++    /// `HMAC(finished_key, Hash(Truncate(ClientHello)))` (RFC 8446 §4.2.11.2) and its
++    /// inputs are the session secret and the message being hashed — both of which only
++    /// exist inside this engine. So the caller says *where* the binder goes and the
++    /// engine, which knows the session (see [`PlanRequest::resumption`]), computes it.
++    ///
++    /// This is a byte patch of a *serialized* message, which capability (a) otherwise
++    /// forbids. It is sound for exactly one reason: **only those `binder_len` bytes
++    /// change**, so every length field, the transcript hash of the truncated message,
++    /// and the handshake state derived from the supplied bytes are all unaffected. A
++    /// patch that changed any length would break the transcript and is refused.
++    pub psk_binder: Option<PskBinderSlot>,
++
++    /// FORK(utls-rs) (d): do not append `TLS_EMPTY_RENEGOTIATION_INFO_SCSV` when
++    /// TLS 1.2 is offered. Upstream appends it unconditionally and declined to make
++    /// that optional (issue #2485). Only affects a ClientHello this engine builds
++    /// itself.
++    pub suppress_renegotiation_scsv: bool,
++}
++
++impl fmt::Debug for ClientHelloPlan {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.debug_struct("ClientHelloPlan")
++            .field(
++                "client_hello",
++                &self.client_hello.as_ref().map(|bytes| bytes.len()),
++            )
++            .field("sent_extensions", &self.sent_extensions)
++            .field(
++                "key_exchanges",
++                &self
++                    .key_exchanges
++                    .iter()
++                    .map(|kx| KxGroupDebug(kx.group()))
++                    .collect::<Vec<_>>(),
++            )
++            .field("stable_extension_order", &self.stable_extension_order)
++            .field("extra_cipher_suites", &self.extra_cipher_suites)
++            .field(
++                "suppress_renegotiation_scsv",
++                &self.suppress_renegotiation_scsv,
++            )
++            .finish()
++    }
++}
++
++/// FORK(utls-rs): what a [`SuppliesClientHello`] is told when the server answers with
++/// a `HelloRetryRequest` and the engine needs a *second* ClientHello.
++///
++/// This is the minimum a fingerprint layer needs to compute its second hello: which
++/// group the server asked for, the cookie to echo, and which groups the engine can
++/// complete. Everything else the caller already knows — it holds the spec, and it is
++/// *required* to reuse the same per-connection inputs (RFC 8446 §4.1.2: only
++/// `key_share`, `cookie`, `pre_shared_key` and padding may change), so a second
++/// random or a second GREASE draw would be a protocol violation.
++#[derive(Clone, Debug, Default)]
++pub struct HelloRetryRequestPlan {
++    /// The group the server asked for, by IANA value, if its `HelloRetryRequest`
++    /// carried a `key_share` extension. `None` means the retry is cookie-only, and
++    /// the second hello must keep the same key share.
++    pub selected_group: Option<u16>,
++
++    /// The cookie to echo, if the server sent one.
++    pub cookie: Option<Vec<u8>>,
++
++    /// The groups the engine can complete for TLS 1.3 — the same list
++    /// [`ClientConfig::fork_key_exchange_groups`] returns.
++    pub engine_groups: Vec<u16>,
++
++    /// The same session the first ClientHello may have offered, when this connection
++    /// is still resuming.
++    ///
++    /// A retry does **not** invalidate the PSK: RFC 8446 §4.2.11.2 only requires the
++    /// binder to be *recomputed* over the new transcript (`message_hash || HRR ||
++    /// Truncate(ClientHello2)`), which is why the offer is repeated here rather than
++    /// being consumed by the first flight. The engine drops it when the retry's cipher
++    /// suite cannot resume from the session's (`UpdateOnHRR` does the same).
++    ///
++    /// The ticket and age are **unchanged**: the age is relative to when the session
++    /// was retrieved, which happened once, before the first flight.
++    pub resumption: Option<ResumptionOffer>,
++}
++
++/// FORK(utls-rs) (g): where the engine may write the real PSK binder.
++///
++/// `truncated_len` is the length of `Truncate(ClientHello)` from RFC 8446 §4.2.11.2 —
++/// everything up to and including the PSK identities, **excluding the binders vector
++/// and its own two-byte length**. The caller computes it (it wrote the bytes) and the
++/// engine hashes exactly `client_hello[..truncated_len]`.
++///
++/// The binder bytes are assumed to sit at the standard place for a single-binder
++/// offer: `binders_len(2) || binder_len(1) || binder`. The engine verifies that the
++/// byte at `truncated_len + 2` equals `binder_len` before patching, so a caller that
++/// gets the layout wrong is told rather than silently corrupted.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct PskBinderSlot {
++    /// Length of `Truncate(ClientHello)` — see the struct docs. The engine hashes
++    /// `client_hello[..truncated_len]`.
++    pub truncated_len: usize,
++    /// How many bytes the binder occupies. Must equal the session suite's hash output
++    /// length; the engine checks that before patching.
++    pub binder_len: usize,
++}
++
++/// FORK(utls-rs) (g): the session this connection may resume with, as **data**.
++///
++/// Note what is *not* here: the PSK or the binder key. The engine keeps those; the
++/// caller gets the two values it must write into the hello (the ticket, which is the
++/// PSK identity, and its obfuscated age) plus the binder length it has to reserve.
++/// The binder itself comes back through [`ClientHelloPlan::psk_binder`].
++#[derive(Clone, Debug)]
++pub struct ResumptionOffer {
++    /// The ticket to offer as the PSK identity (`PskIdentity.label`).
++    pub ticket: Vec<u8>,
++    /// `(now - ticket_created) in ms + age_add`, as the server taught us. Written
++    /// verbatim into the identity; the engine has already done the arithmetic.
++    pub obfuscated_ticket_age: u32,
++    /// The binder length to reserve: the hash output length of the session's suite.
++    pub binder_len: usize,
++}
++
++/// FORK(utls-rs): what the engine tells a [`SuppliesClientHello`] about *this*
++/// connection before asking it for a ClientHello.
++#[derive(Clone, Debug, Default)]
++pub struct PlanRequest {
++    /// The groups the engine can complete for TLS 1.3 — see
++    /// [`ClientConfig::fork_key_exchange_groups`].
++    pub groups: Vec<u16>,
++
++    /// `Some(..)` when this connection has a session to resume with. The caller may
++    /// ignore it (an ordinary full handshake) or write a `pre_shared_key` extension
++    /// from it and report [`ClientHelloPlan::psk_binder`].
++    pub resumption: Option<ResumptionOffer>,
++}
++
++/// FORK(utls-rs): the caller's side of the seam.
++///
++/// Called once per connection, before the first ClientHello is built.
++///
++/// `groups` is the ordered list of key exchange groups (IANA values) this engine
++/// can complete for the enabled protocol versions — which is also exactly the set
++/// of groups a `key_share` entry may be supplied for. That is the engine telling
++/// the caller which public keys it needs; it is the same list
++/// [`ClientConfig::fork_key_exchange_groups`] returns.
++// FORK(utls-rs): `Debug` is a supertrait because `ClientConfig` derives `Debug` and
++// holds an `Arc<dyn SuppliesClientHello>`. Without this the fork does not compile.
++pub trait SuppliesClientHello: Send + Sync + fmt::Debug {
++    /// Decide this connection's ClientHello.
++    fn plan(&self, request: &PlanRequest) -> Result<ClientHelloPlan, Error>;
++
++    /// FORK(utls-rs): decide the **second** ClientHello, the reply to a
++    /// `HelloRetryRequest`.
++    ///
++    /// The default refuses. That keeps the fork inert for a caller that only ever
++    /// supplies one hello ([`FixedClientHello`], and anything written before this
++    /// method existed): such a connection fails loudly if a server insists on a
++    /// retry, rather than sending a second hello that does not match the first.
++    ///
++    /// The returned plan's `client_hello` is written verbatim and folded into the
++    /// transcript, exactly like the first one. By the time this is called the engine
++    /// has already rolled the transcript up (`message_hash || HelloRetryRequest`), so
++    /// the returned bytes are just the message — the caller must **not** include the
++    /// retry in them, and must reuse the first hello's client random.
++    ///
++    /// A cookie-only retry arrives with `selected_group: None`: the second hello must
++    /// then keep the same `key_share`, and `key_exchange` may be `None` to say so (the
++    /// engine keeps using the first hello's exchange).
++    fn retry_plan(&self, _retry: &HelloRetryRequestPlan) -> Result<ClientHelloPlan, Error> {
++        Err(Error::General(
++            "FORK(utls-rs): this SuppliesClientHello does not implement retry_plan(), \
++             so an externally supplied ClientHello cannot be used after a HelloRetryRequest"
++                .into(),
++        ))
++    }
++}
++
++/// FORK(utls-rs): the degenerate [`SuppliesClientHello`] — the same plan for every
++/// connection, which is how "one fixed, byte-stable ClientHello" is expressed.
++///
++/// A fixed plan means a fixed `key_share` and therefore one ephemeral key reused
++/// across connections. That is a deliberate trade-off: byte-stability is the point
++/// of a `Stable` preset, and reusing one ECDHE key weakens forward secrecy rather
++/// than breaking the handshake. Callers that want per-connection key shares should
++/// implement [`SuppliesClientHello`] directly.
++#[derive(Debug)]
++pub struct FixedClientHello(pub ClientHelloPlan);
++
++impl SuppliesClientHello for FixedClientHello {
++    fn plan(&self, _request: &PlanRequest) -> Result<ClientHelloPlan, Error> {
++        Ok(self.0.clone())
++    }
++}
++
++impl ClientConfig {
++    /// FORK(utls-rs): the key exchange groups this engine can complete for TLS 1.3,
++    /// in the order it would prefer them, as IANA values.
++    ///
++    /// This is what the engine hands to a [`SuppliesClientHello`], and it is the set
++    /// of groups a `key_share` entry may be supplied for.
++    pub fn fork_key_exchange_groups(&self) -> Vec<u16> {
++        self.provider
++            .kx_groups
++            .iter()
++            .filter(|skxg| skxg.usable_for_version(crate::enums::ProtocolVersion::TLSv1_3))
++            .map(|skxg| u16::from(skxg.name()))
++            .collect()
++    }
++}
++
++/// FORK(utls-rs) (e): adapts an [`ExternalKeyExchange`] to the engine's own
++/// [`ActiveKeyExchange`].
++///
++/// Not public: outside the engine this is an implementation detail of the seam.
++pub(super) struct ExternalKx {
++    inner: Arc<dyn ExternalKeyExchange>,
++    pub_key: Vec<u8>,
++    hybrid: Option<(NamedGroup, Vec<u8>)>,
++}
++
++impl ExternalKx {
++    /// Wrap `inner` for use as the engine's key exchange.
++    ///
++    /// Returns `None` if the caller's public key cannot be represented for the
++    /// group it names (see [`NamedGroup`]).
++    pub(super) fn boxed(inner: Arc<dyn ExternalKeyExchange>) -> Box<dyn ActiveKeyExchange> {
++        let pub_key = inner.pub_key();
++        let hybrid = inner
++            .hybrid_component()
++            .map(|(group, key)| (NamedGroup::from(group), key));
++        Box::new(Self {
++            inner,
++            pub_key,
++            hybrid,
++        })
++    }
++}
++
++impl fmt::Debug for ExternalKx {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.debug_struct("ExternalKx")
++            .field("group", &KxGroupDebug(self.inner.group()))
++            .finish()
++    }
++}
++
++impl ActiveKeyExchange for ExternalKx {
++    fn complete(self: Box<Self>, peer_pub_key: &[u8]) -> Result<SharedSecret, Error> {
++        self.inner
++            .complete(peer_pub_key)
++            .map(|secret| SharedSecret::from(secret))
++    }
++
++    fn pub_key(&self) -> &[u8] {
++        &self.pub_key
++    }
++
++    fn group(&self) -> NamedGroup {
++        NamedGroup::from(self.inner.group())
++    }
++
++    fn hybrid_component(&self) -> Option<(NamedGroup, &[u8])> {
++        self.hybrid
++            .as_ref()
++            .map(|(group, key)| (*group, &key[..]))
++    }
++
++    fn complete_hybrid_component(
++        self: Box<Self>,
++        peer_pub_key: &[u8],
++    ) -> Result<SharedSecret, Error> {
++        self.inner
++            .complete_hybrid_component(peer_pub_key)
++            .map(|secret| SharedSecret::from(secret))
++    }
++}
++
++/// FORK(utls-rs) (h): a real ECH offer the caller built and sealed.
++#[derive(Clone, Debug)]
++pub struct EchOffer {
++    /// The `ECHConfigList` the offer was built from — the same bytes the caller used to
++    /// seal the inner hello. The engine parses it to learn the public name (what the
++    /// session is authenticated against if ECH is rejected) and the HPKE suite.
++    pub config_list: Vec<u8>,
++
++    /// The **inner** ClientHello: a complete handshake message (`type || u24 len || body`),
++    /// byte for byte the plaintext that went into the ECH payload.
++    ///
++    /// It is needed for two things that only exist on the inside: the inner transcript and
++    /// the inner client random. Getting the wrong bytes here does not fail loudly — it
++    /// authenticates a handshake nobody else is having — so the engine parses it and
++    /// refuses anything that is not a ClientHello.
++    pub inner_client_hello: Vec<u8>,
++}
++
++/// FORK(utls-rs): a group value printed as its IANA number even when this engine's
++/// [`NamedGroup`] enum has no name for it. `NamedGroup` implements `Debug` already,
++/// but printing the number keeps the fork's logs honest about unknown groups.
++struct KxGroupDebug(u16);
++
++impl fmt::Debug for KxGroupDebug {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        write!(f, "0x{:04x}", self.0)
++    }
++}
+diff --git a/src/client/hs.rs b/src/client/hs.rs
+index 4d22c04..71546f3 100644
+--- a/src/client/hs.rs
++++ b/src/client/hs.rs
+@@ -15,9 +15,13 @@ use crate::bs_debug;
+ use crate::check::inappropriate_handshake_message;
+ use crate::client::client_conn::ClientConnectionData;
+ use crate::client::common::ClientHelloDetails;
+-use crate::client::ech::EchState;
++use crate::client::ech::{EchConfig, EchState};
++// FORK(utls-rs): the externally supplied ClientHello seam.
++use crate::client::fork;
+ use crate::client::{ClientConfig, EchMode, EchStatus, tls13};
++use crate::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES as ALL_SUPPORTED_HPKE_SUITES;
+ use crate::common_state::{CommonState, HandshakeKind, KxState, State};
++use crate::msgs::enums::NamedGroup;
+ use crate::conn::ConnectionRandoms;
+ use crate::crypto::{ActiveKeyExchange, KeyExchangeAlgorithm};
+ use crate::enums::{
+@@ -36,15 +40,77 @@ use crate::msgs::handshake::{
+     TransportParameters,
+ };
+ use crate::msgs::message::{Message, MessagePayload};
++use pki_types::EchConfigListBytes;
+ use crate::msgs::persist;
+ use crate::sync::Arc;
+ use crate::tls13::key_schedule::KeyScheduleEarly;
++use crate::tls13::Tls13CipherSuite;
+ use crate::verify::ServerCertVerifier;
+ 
+ pub(super) type NextState<'a> = Box<dyn State<ClientConnectionData> + 'a>;
+ pub(super) type NextStateOrError<'a> = Result<NextState<'a>, Error>;
+ pub(super) type ClientContext<'a> = crate::common_state::Context<'a, ClientConnectionData>;
+ 
++/// FORK(utls-rs) (e): the key shares offered in one ClientHello.
++///
++/// Upstream always offers exactly one, so this was `Option<Box<dyn ActiveKeyExchange>>`.
++/// A caller-supplied hello may legitimately offer **several** — a browser sends one
++/// `key_share` entry per group it wants to pre-empt a HelloRetryRequest for — and then the
++/// server is free to select *any* of them. With a single entry the handshake could only
++/// complete for the one group the engine happened to hand over; the server picking another
++/// group we did advertise failed with `WrongGroupForKeyShare`, which is a defect, not a
++/// policy (see `ClientHelloPlan::key_exchanges`).
++///
++/// `take_for` is where that is fixed: it picks the share whose group the server selected,
++/// or — for hybrid groups — the one whose *classical component* matches, which is what
++/// upstream's `KeyExchangeChoice` already did for its single share.
++pub(super) struct OfferedKeyShares(Vec<Box<dyn ActiveKeyExchange>>);
++
++impl OfferedKeyShares {
++    pub(super) fn single(kx: Box<dyn ActiveKeyExchange>) -> Self {
++        OfferedKeyShares(vec![kx])
++    }
++
++    pub(super) fn new(shares: Vec<Box<dyn ActiveKeyExchange>>) -> Self {
++        OfferedKeyShares(shares)
++    }
++
++    fn any_group_matches(&self, group: NamedGroup) -> bool {
++        self.0.iter().any(|kx| kx.group() == group)
++    }
++
++    /// The share the server selected, if we offered it.
++    pub(super) fn take_for(&mut self, their: &KeyShareEntry) -> Option<Box<dyn ActiveKeyExchange>> {
++        let at = self
++            .0
++            .iter()
++            .position(|kx| kx.group() == their.group || {
++                kx.hybrid_component()
++                    .is_some_and(|(g, _)| u16::from(g) == u16::from(their.group))
++            })?;
++        Some(self.0.remove(at))
++    }
++
++    /// The single share of an engine-built ClientHello.
++    ///
++    /// Only reachable from the self-built path: a caller-supplied hello returns from
++    /// `emit_external_client_hello` before the extension-building code runs, so the
++    /// several-shares case never passes through here.
++    fn only(&self) -> &Box<dyn ActiveKeyExchange> {
++        self.0
++            .first()
++            .filter(|_| self.0.len() == 1)
++            .expect("FORK(utls-rs): the engine-built path offers exactly one key share")
++    }
++
++    fn take_first(self) -> Box<dyn ActiveKeyExchange> {
++        self.0
++            .into_iter()
++            .next()
++            .expect("FORK(utls-rs): a ClientHello always offers at least one key share")
++    }
++}
++
+ struct ExpectServerHello {
+     input: ClientHelloInput,
+     transcript_buffer: HandshakeHashBuffer,
+@@ -56,7 +122,7 @@ struct ExpectServerHello {
+     //
+     // If this is `None` then we do not support early data.
+     early_data_key_schedule: Option<KeyScheduleEarly>,
+-    offered_key_share: Option<Box<dyn ActiveKeyExchange>>,
++    offered_key_share: Option<OfferedKeyShares>,
+     suite: Option<SupportedCipherSuite>,
+     ech_state: Option<EchState>,
+ }
+@@ -75,6 +141,65 @@ pub(super) struct ClientHelloInput {
+     pub(super) session_id: SessionId,
+     pub(super) server_name: ServerName<'static>,
+     pub(super) prev_ech_ext: Option<EncryptedClientHello>,
++    /// FORK(utls-rs): this connection's externally supplied ClientHello plan,
++    /// resolved once in `new()`. `None` (the default) means the engine builds its own
++    /// ClientHello from `config`, exactly as upstream. See `crate::client::fork`.
++    pub(super) fork: Option<fork::ClientHelloPlan>,
++
++    /// FORK(utls-rs) (g): the resumption session behind `fork`, when the caller was
++    /// offered one. The engine keeps it because the PSK binder needs the session
++    /// secret, which never leaves this crate.
++    pub(super) fork_resumption: Option<ForkResumption>,
++}
++
++/// FORK(utls-rs) (g): a resumable session, split into what the caller may see
++/// ([`fork::ResumptionOffer`]) and what only the engine may hold.
++pub(super) struct ForkResumption {
++    pub(super) offer: fork::ResumptionOffer,
++    /// The session secret. Kept **zeroizing** and never handed out: the caller is told
++    /// the ticket, the age and the binder length, never this.
++    ///
++    /// It is kept (rather than a ready-made key schedule) because the schedule is
++    /// needed **once per ClientHello** — the binder of a retry is derived over a
++    /// different transcript but from the same secret. rustls' own path re-derives it
++    /// per flight too (`prepare_resumption` runs again on a retry).
++    secret: zeroize::Zeroizing<Vec<u8>>,
++    suite: &'static Tls13CipherSuite,
++}
++
++impl ForkResumption {
++    /// A fresh early key schedule for one ClientHello.
++    fn schedule(&self) -> KeyScheduleEarly {
++        KeyScheduleEarly::new(self.suite, &self.secret)
++    }
++}
++
++/// FORK(utls-rs) (g): turn `resuming` into a session the caller may offer.
++///
++/// Only TLS 1.3 tickets are offered: a TLS 1.2 session-id/ticket resumption is not a
++/// PSK and cannot be expressed in a caller-built hello at all (the caller would have
++/// to reproduce the whole abbreviated handshake), so it is not offered rather than
++/// half-offered.
++fn fork_resumption_offer(
++    resuming: Option<&persist::Retrieved<ClientSessionValue>>,
++) -> Option<ForkResumption> {
++    let resuming = resuming?;
++    if resuming.ticket().is_empty() {
++        return None;
++    }
++    // `Retrieved::map` is what keeps the retrieval timestamp attached: the obfuscated
++    // ticket age is `now - retrieved_at + age_add`, so dropping the wrapper would lose
++    // the age entirely (and the server would reject the PSK for a bogus age).
++    let tls13 = resuming.map(|v| v.tls13())?;
++    Some(ForkResumption {
++        offer: fork::ResumptionOffer {
++            ticket: tls13.ticket().to_vec(),
++            obfuscated_ticket_age: tls13.obfuscated_ticket_age(),
++            binder_len: tls13.suite().common.hash_provider.output_len(),
++        },
++        secret: zeroize::Zeroizing::new(tls13.secret().to_vec()),
++        suite: tls13.suite(),
++    })
+ }
+ 
+ impl ClientHelloInput {
+@@ -127,6 +252,24 @@ impl ClientHelloInput {
+             crate::rand::random_u16(config.provider.secure_random)?,
+         );
+ 
++        // ===== FORK(utls-rs) (a)(e)(g): resolve the externally supplied plan =====
++        // Once per connection, and only here: capability (e) needs per-connection key
++        // material, and a uTLS-style layer varies GREASE/padding per connection too.
++        // `config` is moved into `Self` below, so resolve before that.
++        let mut fork = None;
++        let mut fork_resumption = None;
++        if let Some(supplier) = &config.fork_client_hello {
++            // Capability (g): the session, as data for the caller plus the key schedule
++            // the engine needs to compute the binder from it. Built before the call so
++            // the caller can see what it may resume with.
++            let offer = fork_resumption_offer(resuming.as_ref());
++            fork = Some(supplier.plan(&fork::PlanRequest {
++                groups: config.fork_key_exchange_groups(),
++                resumption: offer.as_ref().map(|r| r.offer.clone()),
++            })?);
++            fork_resumption = offer;
++        }
++
+         Ok(Self {
+             resuming,
+             random: Random::new(config.provider.secure_random)?,
+@@ -135,6 +278,8 @@ impl ClientHelloInput {
+             session_id,
+             server_name,
+             prev_ech_ext: None,
++            fork,
++            fork_resumption,
+             config,
+         })
+     }
+@@ -154,11 +299,46 @@ impl ClientHelloInput {
+         }
+ 
+         let key_share = if self.config.needs_key_share() {
+-            Some(tls13::initial_key_share(
+-                &self.config,
+-                &self.server_name,
+-                &mut cx.common.kx_state,
+-            )?)
++            // ===== FORK(utls-rs) (e) =====
++            // If the caller brought its own key exchange, that is what backs the
++            // `key_share` entry (and what completes the handshake) instead of the
++            // group this engine would have picked. Note that no `kx_hint` is
++            // recorded in `kx_state` in this case: the group may be one this engine
++            // has no `SupportedKxGroup` for, so there is nothing to record.
++            let supplied = self
++                .fork
++                .as_ref()
++                .map(|plan| plan.key_exchanges.clone())
++                .unwrap_or_default();
++            match supplied.is_empty() {
++                true => Some(OfferedKeyShares::single(tls13::initial_key_share(
++                    &self.config,
++                    &self.server_name,
++                    &mut cx.common.kx_state,
++                )?)),
++                false => {
++                    // FORK(utls-rs): `kx_state` is a state machine, not just a resumption
++                    // hint — `KxState::complete()` asserts on it later in the handshake.
++                    // Record the first supplied group when this engine knows it, and the
++                    // anonymous variant when it does not; `handle_server_hello` then
++                    // corrects it to the group the server actually selects (see
++                    // `OfferedKeyShares::take_for`).
++                    let iana = supplied[0].group();
++                    cx.common.kx_state = match self
++                        .config
++                        .find_kx_group(NamedGroup::from(iana), ProtocolVersion::TLSv1_3)
++                    {
++                        Some(g) => KxState::Start(g),
++                        None => KxState::External,
++                    };
++                    Some(OfferedKeyShares::new(
++                        supplied
++                            .into_iter()
++                            .map(|kx| fork::ExternalKx::boxed(kx))
++                            .collect(),
++                    ))
++                }
++            }
+         } else {
+             None
+         };
+@@ -191,7 +371,7 @@ impl ClientHelloInput {
+ fn emit_client_hello_for_retry(
+     mut transcript_buffer: HandshakeHashBuffer,
+     retryreq: Option<&HelloRetryRequest>,
+-    key_share: Option<Box<dyn ActiveKeyExchange>>,
++    key_share: Option<OfferedKeyShares>,
+     extra_exts: ClientExtensionsInput<'static>,
+     suite: Option<SupportedCipherSuite>,
+     mut input: ClientHelloInput,
+@@ -212,6 +392,28 @@ fn emit_client_hello_for_retry(
+     // should be unreachable thanks to config builder
+     assert!(supported_versions.any(|_| true));
+ 
++    // ===== FORK(utls-rs) (a)(b)(c)(d): take this connection's supplied plan =====
++    // Everything from here to the end of this function exists to *build* a
++    // ClientHello. When the caller supplied one there is nothing to build, so we
++    // hand off to `emit_external_client_hello` before doing any of it — in
++    // particular before `prepare_resumption` gets to steer extensions that will not
++    // be sent. The plan's remaining knobs (b)(c)(d) steer the self-built path below.
++    let fork_plan = input.fork.clone().unwrap_or_default();
++    if let Some(bytes) = fork_plan.client_hello.clone() {
++        return emit_external_client_hello(
++            transcript_buffer,
++            retryreq,
++            key_share,
++            bytes,
++            fork_plan.sent_extensions.clone(),
++            fork_plan.psk_binder,
++            fork_plan.ech,
++            input,
++            cx,
++            supported_versions,
++        );
++    }
++
+     let mut exts = Box::new(ClientExtensions {
+         // offer groups which are usable for any offered version
+         named_groups: Some(
+@@ -288,7 +490,8 @@ fn emit_client_hello_for_retry(
+ 
+     if let Some(key_share) = &key_share {
+         debug_assert!(supported_versions.tls13);
+-        let mut shares = vec![KeyShareEntry::new(key_share.group(), key_share.pub_key())];
++        let one = key_share.only();
++        let mut shares = vec![KeyShareEntry::new(one.group(), one.pub_key())];
+ 
+         if !retryreq
+             .map(|rr| rr.key_share.is_some())
+@@ -299,7 +502,7 @@ fn emit_client_hello_for_retry(
+             // algorithm is also supported separately by our provider for this version
+             // (`find_kx_group` looks that up).
+             if let Some((component_group, component_share)) =
+-                key_share
++                one
+                     .hybrid_component()
+                     .filter(|(group, _)| {
+                         config
+@@ -377,6 +580,8 @@ fn emit_client_hello_for_retry(
+     // Extensions MAY be randomized
+     // but they also need to keep the same order as the previous ClientHello
+     exts.order_seed = input.hello.extension_order_seed;
++    // ===== FORK(utls-rs) (b): a reproducible order instead of the seed-driven shuffle.
++    exts.deterministic_order = fork_plan.stable_extension_order;
+ 
+     let mut cipher_suites: Vec<_> = config
+         .provider
+@@ -388,11 +593,31 @@ fn emit_client_hello_for_retry(
+         })
+         .collect();
+ 
+-    if supported_versions.tls12 {
++    // ===== FORK(utls-rs) (d) =====
++    // Upstream appends this SCSV unconditionally whenever TLS 1.2 is offered, and
++    // there is no way to avoid it (issue #2485). It is part of the advertised cipher
++    // suite list, so it changes a JA3; the caller may suppress it.
++    if supported_versions.tls12 && !fork_plan.suppress_renegotiation_scsv {
+         // We don't do renegotiation at all, in fact.
+         cipher_suites.push(CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+     }
+ 
++    // ===== FORK(utls-rs) (c) =====
++    // Upstream can only advertise suites it implements (issue #2414: "unlikely to
++    // happen"). A faithful fingerprint sometimes needs exactly that, so the caller
++    // may append suite IDs by IANA value. Advertise-only: this engine still cannot
++    // *negotiate* them, so a server selecting one fails the handshake rather than
++    // silently downgrading. Duplicates of already-advertised suites are dropped,
++    // since a duplicate entry would corrupt the advertised list and hence a JA3.
++    let fork_extra_suites: Vec<CipherSuite> = fork_plan
++        .extra_cipher_suites
++        .iter()
++        .copied()
++        .map(CipherSuite::from)
++        .filter(|cs| !cipher_suites.contains(cs))
++        .collect();
++    cipher_suites.extend(fork_extra_suites);
++
+     let mut chp_payload = ClientHelloPayload {
+         client_version: ProtocolVersion::TLSv1_2,
+         random: input.random,
+@@ -542,6 +767,253 @@ fn emit_client_hello_for_retry(
+     })
+ }
+ 
++/// FORK(utls-rs) (a): emit a ClientHello supplied by the caller, byte for byte.
++///
++/// The supplied bytes are used twice and never re-encoded: they are what is written
++/// to the wire, and they are what is folded into the handshake transcript. That is
++/// the whole point of the capability — a byte patch of a *serialized* ClientHello
++/// would break the transcript hash and the HelloRetryRequest consistency checks, so
++/// the customization has to happen here, at the typed build step, by replacing it
++/// wholesale.
++///
++/// The bytes are parsed once, for bookkeeping only: the state machine consults what
++/// we *offered* when the server's reply arrives (chosen cipher suite, ALPN, whether
++/// compressed certificates were offered, which extensions we sent). The parsed form
++/// is then discarded and the original bytes are sent. Nothing here re-validates the
++/// caller's bytes beyond that parse.
++#[allow(clippy::too_many_arguments)]
++fn emit_external_client_hello(
++    mut transcript_buffer: HandshakeHashBuffer,
++    retryreq: Option<&HelloRetryRequest>,
++    key_share: Option<OfferedKeyShares>,
++    mut bytes: Vec<u8>,
++    sent_extensions: Option<Vec<u16>>,
++    psk_binder: Option<fork::PskBinderSlot>,
++    ech: Option<fork::EchOffer>,
++    mut input: ClientHelloInput,
++    cx: &mut ClientContext<'_>,
++    supported_versions: SupportedProtocolVersions,
++) -> NextStateOrError<'static> {
++    // ===== FORK(utls-rs) (g): fill in the PSK binder =====
++    // The caller reserved `slot.binder_len` bytes for it and told us where the
++    // truncated message ends; the real value needs the session secret, so it can only
++    // be computed here. Same derivation the engine's own path uses
++    // (`tls13::fill_in_psk_binder`): hash `Truncate(ClientHello)` with the session
++    // suite's hash, then run the early key schedule's binder derivation over it.
++    //
++    // Only those `binder_len` bytes are written, so every length field, the transcript
++    // of the truncated message, and the state the engine derived from the supplied
++    // bytes are untouched. That is the one reason this byte patch is sound where
++    // capability (a) otherwise forbids patching.
++    let mut early_data_key_schedule = None;
++    // NOTE: borrowed, not taken — a retry needs the same session again (with a
++    // recomputed binder), so it must outlive this flight.
++    let fork_resumption = input.fork_resumption.as_ref();
++    match (psk_binder, fork_resumption) {
++        (Some(slot), Some(resumption)) => {
++            if slot.binder_len != resumption.offer.binder_len {
++                return Err(Error::General(
++                    "FORK(utls-rs): the supplied PSK binder length does not match the session's \
++                     hash output length"
++                        .into(),
++                ));
++            }
++            let len_byte = bytes.get(slot.truncated_len + 2).copied();
++            if len_byte != Some(slot.binder_len as u8) {
++                return Err(Error::General(
++                    "FORK(utls-rs): the supplied PSK binders layout is not \
++                     `binders_len(2) || binder_len(1) || binder` at the reported offset"
++                        .into(),
++                ));
++            }
++            let (start, end) = (slot.truncated_len + 3, slot.truncated_len + 3 + slot.binder_len);
++            if end > bytes.len() {
++                return Err(Error::General(
++                    "FORK(utls-rs): the reported PSK binder runs past the end of the ClientHello"
++                        .into(),
++                ));
++            }
++            // A fresh schedule per flight; the transcript already contains
++            // `message_hash || HelloRetryRequest` when this is the second flight, which
++            // is exactly the transcript the binder must cover.
++            let hs_hash = transcript_buffer.hash_given(
++                resumption.suite.common.hash_provider,
++                &bytes[..slot.truncated_len],
++            );
++            let real = resumption
++                .schedule()
++                .resumption_psk_binder_key_and_sign_verify_data(&hs_hash);
++            if real.as_ref().len() != slot.binder_len {
++                return Err(Error::General(
++                    "FORK(utls-rs): derived PSK binder has an unexpected length".into(),
++                ));
++            }
++            bytes[start..end].copy_from_slice(real.as_ref());
++            early_data_key_schedule = Some(resumption.schedule());
++        }
++        (Some(_), None) => {
++            // The caller reserved room for a binder but this connection has no session
++            // to derive it from. A zero binder is *not* a valid one, so going on would
++            // silently send a hello the server cannot resume from.
++            return Err(Error::General(
++                "FORK(utls-rs): the supplied ClientHello declares a PSK binder slot, but this \
++                 connection has no session to resume with"
++                    .into(),
++            ));
++        }
++        // No PSK offer: an ordinary full handshake, or a hello the caller built with a
++        // fake PSK extension of its own.
++        (None, _) => {}
++    }
++    // FORK(utls-rs): a second ClientHello (the reply to a HelloRetryRequest) arrives
++    // here too, now that the seam has `SuppliesClientHello::retry_plan`. The caller
++    // resolved the retry (new key share, echoed cookie, *reused* client random) and the
++    // transcript this function appends to has already been rolled up by
++    // `handle_hello_retry_request` — so the bytes are simply the message, and the
++    // HRR consistency checks have all run before we got here. `retryreq` stays in the
++    // signature because the two cases differ in one visible way: a retry is not an
++    // ECH offer, and it must not re-derive `EchStatus`.
++    debug_assert!(
++        retryreq.is_none() || sent_extensions.is_some(),
++        "FORK(utls-rs): a supplied retry ClientHello must also carry its extension list"
++    );
++
++    // FORK(utls-rs): the supplied hello may carry an ECH extension, in one of two very
++    // different senses:
++    //
++    // * **GREASE** — a fake of the right shape. `EchStatus` is *not* merely informative
++    //   here: the ServerHello path errors with `PeerMisbehaved::UnsolicitedEchExtension`
++    //   unless the status records that an ECH extension went out, and a server answering
++    //   GREASE ECH with retry configs is the *normal* case. Found by running a real
++    //   handshake against tls.browserleaks.com.
++    // * **a real offer** (capability (h)) — the caller says so via `plan.ech`, and then
++    //   the engine must additionally keep the *inner* hello's transcript and random,
++    //   because acceptance switches the handshake onto them.
++    // FORK(utls-rs): parse the message we are about to send **once, up front**. Two blocks
++    // below read facts out of it — the ECH state, and "learn what we offered" — and one of
++    // those facts is the **outer legacy session id**, which only exists on the wire:
++    //
++    // `EchState::from_supplied` rebuilds the inner hello's transcript with the *outer*
++    // session id inside it, because that is what a server does when it reconstructs the
++    // inner hello (`decodeInnerClientHello` inserts `outer.sessionId`). Handing it the
++    // engine's own `input.session_id` — the value generated in `ClientHelloInput::new`,
++    // which is what this function used to do, because the block that learns the caller's
++    // value ran *after* the ECH state was built — makes the two sides hash different
++    // inner transcripts. The symptom is specific and easy to misread: the server confirms
++    // acceptance, the client computes a different confirmation value, judges the offer
++    // *rejected*, and the handshake dies with `cannot decrypt peer's message`.
++    let payload = MessagePayload::new(ContentType::Handshake, ProtocolVersion::TLSv1_2, &bytes)?;
++    let outer_session_id = match &payload {
++        MessagePayload::Handshake { parsed, .. } => match &parsed.0 {
++            HandshakePayload::ClientHello(chp) => chp.session_id.clone(),
++            _ => input.session_id.clone(),
++        },
++        _ => input.session_id.clone(),
++    };
++
++    let mut ech_state = None;
++    let ech_ext_present = sent_extensions
++        .as_ref()
++        .is_some_and(|exts| exts.contains(&u16::from(ExtensionType::EncryptedClientHello)));
++    match ech {
++        Some(offer) => {
++            if !ech_ext_present {
++                return Err(Error::General(
++                    "FORK(utls-rs): an EchOffer was supplied but the ClientHello has no \
++                     encrypted_client_hello extension"
++                        .into(),
++                ));
++            }
++            let config = EchConfig::new(
++                EchConfigListBytes::from(&offer.config_list[..]),
++                ALL_SUPPORTED_HPKE_SUITES,
++            )?;
++            ech_state = Some(EchState::from_supplied(
++                &config,
++                &offer.inner_client_hello,
++                outer_session_id.as_ref(),
++                input.config.provider.secure_random,
++                input.config.enable_sni,
++            )?);
++            cx.data.ech_status = EchStatus::Offered;
++        }
++        None => {
++            if ech_ext_present {
++                cx.data.ech_status = EchStatus::Grease;
++            }
++        }
++    }
++
++    // FORK(utls-rs) (a): learn what we offered from the bytes we are about to send,
++    // rather than from the config — the two need not agree, and the bytes are the
++    // truth about what went on the wire.
++    if let MessagePayload::Handshake { parsed, .. } = &payload {
++        if let HandshakePayload::ClientHello(chp) = &parsed.0 {
++            input.hello.offered_cipher_suites = chp.cipher_suites.clone();
++            input.hello.offered_cert_compression =
++                chp.certificate_compression_algorithms.is_some();
++            // ALPN is checked against what we offered, so it has to come from here.
++            input.hello.alpn_protocols = chp.protocols.clone().unwrap_or_default();
++            // FORK(utls-rs): the legacy session id, likewise. This engine generates one
++            // for itself (RFC 8446 §4.1.2's compatibility measure) and later insists the
++            // server echo *that* value — but with a supplied hello the value on the wire
++            // is the caller's, so the engine's own is the wrong thing to check against.
++            // Found by putting a real HelloRetryRequest through this path: the retry
++            // failed with `IllegalHelloRetryRequestWithWrongSessionId`.
++            input.session_id = chp.session_id.clone();
++            // The decoder above drops extension types it does not know, but this
++            // engine rejects a server extension we did not offer — and a fingerprint
++            // hello is full of extensions this engine has no name for (GREASE
++            // included). So the caller's complete list wins when it supplied one.
++            input.hello.sent_extensions = match sent_extensions {
++                Some(types) => types.iter().copied().map(ExtensionType::from).collect(),
++                None => chp.collect_used(),
++            };
++        }
++    }
++
++    let ch = Message {
++        // Same legacy record version an engine-built initial ClientHello uses.
++        version: ProtocolVersion::TLSv1_0,
++        payload,
++    };
++
++    trace!(
++        "Sending externally supplied ClientHello ({} bytes, {} cipher suites)",
++        bytes.len(),
++        input.hello.offered_cipher_suites.len()
++    );
++
++    transcript_buffer.add_message(&ch);
++    cx.common.send_msg(ch, false);
++
++    let next = ExpectServerHello {
++        input,
++        transcript_buffer,
++        // FORK(utls-rs) (g): when the caller put a PSK for the offered session in the
++        // hello, this schedule is what lets the engine accept the server's
++        // `pre_shared_key` and derive the resumption keys — i.e. what makes the
++        // handshake *resumed* rather than merely PSK-looking.
++        early_data_key_schedule,
++        offered_key_share: key_share,
++        suite: None,
++        // FORK(utls-rs) (h): `Some(..)` for a real ECH offer (built from the caller's inner
++        // hello), `None` for a GREASE one — acceptance only makes sense for the former.
++        ech_state,
++    };
++
++    Ok(if supported_versions.tls13 {
++        Box::new(ExpectServerHelloOrHelloRetryRequest {
++            next,
++            // The engine contributes nothing to the extensions of a supplied
++            // ClientHello; the empty input is what a retry would have to build from.
++            extra_exts: ClientExtensionsInput::default(),
++        })
++    } else {
++        Box::new(next)
++    })
++}
++
+ /// Prepares `exts` and `cx` with TLS 1.2 or TLS 1.3 session
+ /// resumption.
+ ///
+@@ -839,7 +1311,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
+                     transcript,
+                     self.early_data_key_schedule,
+                     // We always send a key share when TLS 1.3 is enabled.
+-                    self.offered_key_share.unwrap(),
++                    self.offered_key_share
++                        .expect("FORK(utls-rs): TLS 1.3 always offers a key share"),
+                     &m,
+                     self.ech_state,
+                     self.input,
+@@ -880,21 +1353,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
+         cx.common.check_aligned_handshake()?;
+ 
+         // We always send a key share when TLS 1.3 is enabled.
+-        let offered_key_share = self.next.offered_key_share.unwrap();
++        let offered_key_share = self
++            .next
++            .offered_key_share
++            .expect("FORK(utls-rs): TLS 1.3 always offers a key share");
+ 
+         // A retry request is illegal if it contains no cookie and asks for
+         // retry of a group we already sent.
+         let config = &self.next.input.config;
+ 
+-        if let (None, Some(req_group)) = (&hrr.cookie, hrr.key_share) {
+-            let offered_hybrid = offered_key_share
+-                .hybrid_component()
+-                .and_then(|(group_name, _)| {
+-                    config.find_kx_group(group_name, ProtocolVersion::TLSv1_3)
++        // ===== FORK(utls-rs) (a)(e): the second ClientHello =====
++        // A supplied ClientHello cannot be *rebuilt* by this engine as the second hello
++        // (it would need a new key share, the cookie, and a rolled-up transcript). So
++        // the caller supplies that one too, through `retry_plan` — whose default is to
++        // refuse. Resolving it here, before the engine's own group lookup below, is
++        // deliberate: the group the server asks for may be one this engine has no
++        // `SupportedKxGroup` for, while the caller can still complete it.
++        //
++        // Everything else in this handler still applies to a supplied hello: the
++        // session_id echo, the version and cipher-suite checks, the ECH confirmation,
++        // and the transcript rollup — the retry bytes are folded in by
++        // `emit_external_client_hello` exactly like the first hello's.
++        // FORK(utls-rs) (h): a real ECH offer cannot survive a retry on this path.
++        // RFC 9849 re-seals for the second hello (and drops `enc`), which needs the HPKE
++        // context the *caller* holds — and rustls would need the inner transcript that
++        // belongs to that new offer. Rather than proceed with the outer transcript and
++        // silently authenticate the wrong handshake, refuse.
++        if cx.data.ech_status == EchStatus::Offered
++            && self.next.input.fork.as_ref().is_some_and(|p| p.client_hello.is_some())
++        {
++            return Err(Error::General(
++                "FORK(utls-rs): a caller-supplied ClientHello offering ECH cannot be used after \
++                 a HelloRetryRequest — the retry needs a re-sealed offer, which the caller must \
++                 supply (and this seam does not carry one yet)"
++                    .into(),
++            ));
++        }
++
++        let mut fork_retry: Option<fork::ClientHelloPlan> = None;
++        let mut fork_retry_kx: Option<Box<dyn ActiveKeyExchange>> = None;
++        let fork_supplied_hello = self
++            .next
++            .input
++            .fork
++            .as_ref()
++            .is_some_and(|p| p.client_hello.is_some());
++        if fork_supplied_hello {
++            // The *supplier* is consulted, not the resolved plan: deciding the second
++            // hello is a fresh decision with new inputs (the selected group, the cookie).
++            let Some(supplier) = config.fork_client_hello.clone() else {
++                return Err(Error::General(
++                    "FORK(utls-rs): a ClientHello plan was supplied but the config no longer has \
++                     a SuppliesClientHello"
++                        .into(),
++                ));
++            };
++            // The PSK survives a retry, but only if the suite the server picked can
++            // resume from the session's: RFC 8446 §4.2.11.2 requires the binder to be
++            // recomputed, and a different hash means a different binder anyway.
++            // uTLS's `UpdateOnHRR` drops the PSK in exactly this case
++            // ("cipher suite hash mismatch, PSK will not be used").
++            // The HRR's own cipher suite is looked up here (the later, authoritative
++            // lookup happens after the other validations) purely to compare hashes.
++            let hrr_hash = config
++                .find_cipher_suite(hrr.cipher_suite, cx.common.protocol)
++                .map(|s| s.hash_provider().algorithm());
++            let resumption = self
++                .next
++                .input
++                .fork_resumption
++                .as_ref()
++                .filter(|r| {
++                    hrr_hash == Some(r.suite.common.hash_provider.algorithm())
+                 })
+-                .map(|skxg| skxg.name());
++                .map(|r| r.offer.clone());
++            let req = fork::HelloRetryRequestPlan {
++                selected_group: hrr.key_share.map(u16::from),
++                cookie: hrr.cookie.as_ref().map(|c| c.0.to_vec()),
++                engine_groups: config.fork_key_exchange_groups(),
++                resumption,
++            };
++            let retry = supplier.retry_plan(&req)?;
++            if retry.client_hello.is_none() {
++                return Err(Error::General(
++                    "FORK(utls-rs): retry_plan() returned a plan with no client_hello — \
++                     the second ClientHello must be supplied"
++                        .into(),
++                ));
++            }
++            match (req.selected_group, retry.key_exchanges.first().cloned()) {
++                (Some(group), Some(kx)) => {
++                    if kx.group() != group {
++                        return Err(Error::General(alloc::format!(
++                            "FORK(utls-rs): retry_plan() brought a key exchange for group \
++                             0x{:04x} but the HelloRetryRequest asked for 0x{group:04x}",
++                            kx.group()
++                        )));
++                    }
++                    // `kx_state` is a state machine, not merely a hint: it is consulted
++                    // when the server's own key share arrives. Record the retry group the
++                    // same way the first hello records its own.
++                    cx.common.kx_state = match config.find_kx_group(
++                        NamedGroup::from(group),
++                        ProtocolVersion::TLSv1_3,
++                    ) {
++                        Some(g) => KxState::Start(g),
++                        None => KxState::External,
++                    };
++                    fork_retry_kx = Some(fork::ExternalKx::boxed(kx));
++                }
++                (Some(_), None) => {
++                    return Err(Error::General(
++                        "FORK(utls-rs): the HelloRetryRequest selects a group, so retry_plan() \
++                         must bring a key exchange for it"
++                            .into(),
++                    ));
++                }
++                // Cookie-only retry: the second hello keeps the key share it already had,
++                // and the engine's own `offered_key_share` below carries it forward.
++                (None, _) => {}
++            }
++            fork_retry = Some(retry);
++        }
+ 
+-            if req_group == offered_key_share.group() || Some(req_group) == offered_hybrid {
++        if let (None, Some(req_group)) = (&hrr.cookie, hrr.key_share) {
++            // FORK(utls-rs) (e): with several offered shares the check is "did we already
++            // send a share for the requested group" — the hybrid case included.
++            if offered_key_share.any_group_matches(req_group) {
+                 return Err({
+                     cx.common.send_fatal_alert(
+                         AlertDescription::IllegalParameter,
+@@ -1022,28 +1607,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
+             cx.data.early_data.rejected();
+         }
+ 
+-        let key_share = match hrr.key_share {
+-            Some(group) if group != offered_key_share.group() => {
+-                let Some(skxg) = config.find_kx_group(group, ProtocolVersion::TLSv1_3) else {
+-                    return Err(cx.common.send_fatal_alert(
+-                        AlertDescription::IllegalParameter,
+-                        PeerMisbehaved::IllegalHelloRetryRequestWithUnofferedNamedGroup,
+-                    ));
+-                };
++        // FORK(utls-rs) (e): the caller's retry exchange wins over the engine's own
++        // group lookup — it is the one whose public key is in the supplied bytes.
++        let key_share = match fork_retry_kx {
++            Some(kx) => kx,
++            None => match hrr.key_share {
++                Some(group) if !offered_key_share.any_group_matches(group) => {
++                    let Some(skxg) = config.find_kx_group(group, ProtocolVersion::TLSv1_3) else {
++                        return Err(cx.common.send_fatal_alert(
++                            AlertDescription::IllegalParameter,
++                            PeerMisbehaved::IllegalHelloRetryRequestWithUnofferedNamedGroup,
++                        ));
++                    };
+ 
+-                cx.common.kx_state = KxState::Start(skxg);
+-                skxg.start()?
+-            }
+-            _ => offered_key_share,
++                    cx.common.kx_state = KxState::Start(skxg);
++                    skxg.start()?
++                }
++                // The server asked for a group we did *not* send a share for: build one.
++                // (The engine's own lookup; the caller's retry exchange took precedence above.)
++                Some(group) => {
++                    let Some(skxg) = config.find_kx_group(group, ProtocolVersion::TLSv1_3) else {
++                        return Err(cx.common.send_fatal_alert(
++                            AlertDescription::IllegalParameter,
++                            PeerMisbehaved::IllegalHelloRetryRequestWithUnofferedNamedGroup,
++                        ));
++                    };
++                    cx.common.kx_state = KxState::Start(skxg);
++                    skxg.start()?
++                }
++                None => offered_key_share.take_first(),
++            },
+         };
+ 
++        // FORK(utls-rs) (a): when the caller supplied the second ClientHello too, the
++        // early return in `emit_client_hello_for_retry` must use *those* bytes.
++        let mut input = self.next.input;
++        if let Some(plan) = fork_retry {
++            input.fork = Some(plan);
++        }
++
+         emit_client_hello_for_retry(
+             transcript_buffer,
+             Some(hrr),
+-            Some(key_share),
++            Some(OfferedKeyShares::single(key_share)),
+             self.extra_exts,
+             Some(cs),
+-            self.next.input,
++            input,
+             cx,
+             self.next.ech_state,
+         )
+diff --git a/src/client/tls13.rs b/src/client/tls13.rs
+index 5507a9a..1ad7cd4 100644
+--- a/src/client/tls13.rs
++++ b/src/client/tls13.rs
+@@ -74,7 +74,7 @@ pub(super) fn handle_server_hello(
+     suite: &'static Tls13CipherSuite,
+     mut transcript: HandshakeHash,
+     early_data_key_schedule: Option<KeyScheduleEarly>,
+-    our_key_share: Box<dyn ActiveKeyExchange>,
++    mut our_key_shares: hs::OfferedKeyShares,
+     server_hello_msg: &Message<'_>,
+     ech_state: Option<EchState>,
+     input: ClientHelloInput,
+@@ -108,7 +108,26 @@ pub(super) fn handle_server_hello(
+         _ => None,
+     };
+ 
+-    let our_key_share = KeyExchangeChoice::new(&config, cx, our_key_share, their_key_share)
++    // FORK(utls-rs) (e): pick the share the server selected out of everything we offered.
++    // Upstream had exactly one, so this used to be a plain comparison; with several the
++    // server may pick any group we advertised, and failing here would be a defect.
++    let selected = our_key_shares
++        .take_for(their_key_share)
++        .ok_or_else(|| {
++            cx.common.send_fatal_alert(
++                AlertDescription::IllegalParameter,
++                PeerMisbehaved::WrongGroupForKeyShare,
++            )
++        })?;
++    // FORK(utls-rs) (e): `kx_state` should name the group the handshake actually used, and
++    // with several offered shares that is only known now. (The engine-built path sets it
++    // when it starts its one share; the hybrid path below does the same correction.)
++    cx.common.kx_state = match config.find_kx_group(their_key_share.group, ProtocolVersion::TLSv1_3)
++    {
++        Some(g) => KxState::Start(g),
++        None => KxState::External,
++    };
++    let our_key_share = KeyExchangeChoice::new(&config, cx, selected, their_key_share)
+         .map_err(|_| {
+             cx.common.send_fatal_alert(
+                 AlertDescription::IllegalParameter,
+diff --git a/src/common_state.rs b/src/common_state.rs
+index 8b1d499..136273f 100644
+--- a/src/common_state.rs
++++ b/src/common_state.rs
+@@ -1012,11 +1012,20 @@ pub(crate) enum KxState {
+     None,
+     Start(&'static dyn SupportedKxGroup),
+     Complete(&'static dyn SupportedKxGroup),
++    // FORK(utls-rs) (e): a caller-supplied key exchange whose group this engine has no
++    // `SupportedKxGroup` for. It exists so that `complete()` — which is a *state machine*,
++    // not merely a resumption hint — has a legal state to leave: without it a real
++    // handshake panics at the `complete()` assert. Found by running one.
++    //
++    // No payload: the group is the caller's, and `negotiated_key_exchange_group()` cannot
++    // report it anyway (it needs a `&'static dyn SupportedKxGroup`).
++    External,
+ }
+ 
+ impl KxState {
+     pub(crate) fn complete(&mut self) {
+-        debug_assert!(matches!(self, Self::Start(_)));
++        // FORK(utls-rs): the external state is legal here too (see `External`).
++        debug_assert!(matches!(self, Self::Start(_) | Self::External));
+         if let Self::Start(group) = self {
+             *self = Self::Complete(*group);
+         }
+diff --git a/src/lib.rs b/src/lib.rs
+index 8652415..8800e54 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -584,6 +584,8 @@ pub mod client {
+     mod client_conn;
+     mod common;
+     mod ech;
++    // FORK(utls-rs): the externally supplied ClientHello seam.
++    mod fork;
+     pub(super) mod handy;
+     mod hs;
+     #[cfg(test)]
+@@ -600,6 +602,10 @@ pub mod client {
+     #[cfg(feature = "std")]
+     pub use client_conn::{ClientConnection, WriteEarlyData};
+     pub use ech::{EchConfig, EchGreaseConfig, EchMode, EchStatus};
++    // FORK(utls-rs): the externally supplied ClientHello seam.
++    pub use fork::{ClientHelloPlan, EchOffer, ExternalKeyExchange, FixedClientHello,
++                    HelloRetryRequestPlan, PlanRequest, PskBinderSlot, ResumptionOffer,
++                    SuppliesClientHello};
+     pub use handy::AlwaysResolvesClientRawPublicKeys;
+     #[cfg(any(feature = "std", feature = "hashbrown"))]
+     pub use handy::ClientSessionMemoryCache;
+@@ -618,6 +624,27 @@ pub mod client {
+     };
+ }
+ 
++/// FORK(utls-rs) (h): re-serialize the retry configs a server sent in an ECH rejection
++/// into an `ECHConfigList` — the bytes a caller needs to **retry** the handshake with.
++///
++/// RFC 9849 §6.1.6 makes this a required part of the dance: a server that cannot decrypt
++/// the offer answers with its current configs, and the client is expected to try again
++/// with them. Upstream puts `EchConfigPayload` into the public error type but gives no
++/// public way to encode it back (`Codec` is `pub(crate)`), so "the server told us to
++/// retry" is, upstream, something a caller can read but not act on. This is that missing
++/// half — one call, no new types.
++pub fn ech_config_list_bytes(configs: &[msgs::handshake::EchConfigPayload]) -> alloc::vec::Vec<u8> {
++    use crate::msgs::codec::Codec;
++    let mut out = alloc::vec::Vec::new();
++    for c in configs {
++        c.encode(&mut out);
++    }
++    let mut list = alloc::vec::Vec::with_capacity(out.len() + 2);
++    list.extend_from_slice(&(out.len() as u16).to_be_bytes());
++    list.extend_from_slice(&out);
++    list
++}
++
+ pub use client::ClientConfig;
+ #[cfg(feature = "std")]
+ pub use client::ClientConnection;
+diff --git a/src/msgs/handshake.rs b/src/msgs/handshake.rs
+index 63b836a..b1a32ff 100644
+--- a/src/msgs/handshake.rs
++++ b/src/msgs/handshake.rs
+@@ -978,6 +978,12 @@ extension_struct! {
+ 
+         /// Extensions that must appear contiguously.
+         pub(crate) contiguous_extensions: Vec<ExtensionType>,
++
++        /// FORK(utls-rs) (b): if set, `order_seed` is ignored and the order-insensitive
++        /// extensions are emitted sorted by extension type, giving a reproducible
++        /// order with no per-connection entropy. See
++        /// `order_insensitive_extensions_in_random_order()`.
++        pub(crate) deterministic_order: bool,
+     }
+ }
+ 
+@@ -1010,6 +1016,8 @@ impl ClientExtensions<'_> {
+             encrypted_client_hello_outer,
+             order_seed,
+             contiguous_extensions,
++            // FORK(utls-rs) (b)
++            deterministic_order,
+         } = self;
+         ClientExtensions {
+             server_name: server_name.map(|x| x.into_owned()),
+@@ -1038,6 +1046,8 @@ impl ClientExtensions<'_> {
+             encrypted_client_hello_outer,
+             order_seed,
+             contiguous_extensions,
++            // FORK(utls-rs) (b)
++            deterministic_order,
+         }
+     }
+ 
+@@ -1086,6 +1096,18 @@ impl ClientExtensions<'_> {
+             ) || self.contiguous_extensions.contains(ext))
+         });
+ 
++        // ===== FORK(utls-rs) (b) =====
++        // Upstream shuffles these per connection, driven by `order_seed`, which is
++        // fresh random per connection (PR #1730). For a `uTLS`-style fingerprint
++        // that makes a deterministic ClientHello impossible, so when the caller asks
++        // for a stable order we sort by extension type instead: reproducible, and
++        // still a legal order (only PreSharedKey/ECH have positional requirements,
++        // and they were removed above and appended by the caller).
++        if self.deterministic_order {
++            order.sort_by_key(|ext| u16::from(*ext));
++            return order;
++        }
++
+         order.sort_by_cached_key(|new_ext| {
+             let seed = ((self.order_seed as u32) << 16) | (u16::from(*new_ext) as u32);
+             low_quality_integer_hash(seed)

@@ -1,0 +1,18 @@
+[package]
+name = "utls-engine"
+description = "把 utls 的指纹层接进真实握手：fork 过的 rustls + 本仓的 ClientHello"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+utls = { path = "../utls" }
+# 被 `[patch.crates-io]` 指到 vendor 的 fork（见根 Cargo.toml）。
+rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12", "aws_lc_rs", "logging"] }
+# 信任锚：纯数据，不依赖系统证书库。
+webpki-roots = "1"
+rustls-pki-types = "1"
+
+[[example]]
+name = "handshake"

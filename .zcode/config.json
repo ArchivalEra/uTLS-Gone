@@ -1,0 +1,42 @@
+{
+  "_why": [
+    "uTLS-rs 的 ZCode hook 接线。",
+    "⚠️ 配置文件的 hook **默认禁用**：没有 `hooks.enabled: true` 就一条都不跑（闸门全绿而什么都没发生）。",
+    "⚠️ hook 的 stdout 按**严格 JSON** 解析，多余的键会导致验证失败、效果被丢弃。",
+    "   所以 inject-state.py 默认发 {\"hookSpecificOutput\":{\"hookEventName\":…,\"additionalContext\":…}}，",
+    "   人手工跑时才发纯文本（--text）。上游那份纯文本直出在 ZCode 下注入从未生效过。",
+    "⚠️ Stop 走 stop-refresh.py，它**永远退出 0**：facts.py 在台账缺失时 SystemExit(2)，",
+    "   直接挂上去会把 Stop 变成阻塞（rc=2 = block），一次缺文件就能拿会话当人质。",
+    "支持的事件只有七个；PreCompact / Notification 不受支持。"
+  ],
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "SessionStart": [
+        {
+          "matcher": "startup|resume|clear|compact",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/inject-state.py\"",
+              "timeout": 20,
+              "statusMessage": "reflect: 注入活状态（未结案悬案 + 台账规模）"
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/stop-refresh.py\"",
+              "timeout": 120,
+              "statusMessage": "reflect: 刷新事实机器块"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

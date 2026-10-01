@@ -1,0 +1,44 @@
+{
+  "_why": [
+    "翻案台账：每条 = 一条**已被推翻**的断言、为什么错、复跑方式、现在哪里说对了。",
+    "check_retractions.py 的判据：活状态文档里出现 `text` 的那一行**必须带更正标记**，否则报错。",
+    "本仓这两条不是示例 —— 它们是本项目开工第一天真的走错过的两步，留着挡住下一次。"
+  ],
+  "retractions": [
+    {
+      "id": "R-001",
+      "text": "上游 rustls 可以直接实现 uTLS 的 ClientHello 定制",
+      "why": "rustls 没有任何公开的 ClientHello 定制 API：ClientConfig 的字段里没有扩展表、没有顺序、没有 GREASE；ClientConfig::dangerous() 只暴露一个 set_certificate_verifier。维护者在 issue #1421 / #1932 / #2498 里反复明确关闭了这个需求，原话是「rustls doesn't support the fingerprinting use case and doesn't intend to in the near future」。更致命的是 0.23.0 起（PR #1730）它**每连接随机化扩展顺序**，seed 来自每次连接的 rand::random_u16——所以即使密码套件与扩展集合完全正确，上游也产不出稳定 JA3。结论：必须 fork，这不是选择而是前提。",
+      "evidence": "cargo tree -i rustls 确认版本后，检查同版本源码里 ClientConfig 的公开字段与 ClientExtensions.order_seed；对照 github.com/rustls/rustls issue 1932 / 2498 的关闭理由",
+      "fixed_in": "README.md「为什么必须 fork」一节；STATE.md「架构定位」一节"
+    },
+    {
+      "id": "R-002",
+      "text": "Rust 生态里没有任何 uTLS 的替代方案",
+      "why": "第一次 gh 搜索只用了关键词 utls，结果被 utilities 的拼写淹没，于是误判为空白。实际上至少三条路线早已存在：craftls（3andne/craftls，rustls 0.22 的 fork，带 FingerprintBuilder，是 rustls 维护者在 issue 里亲自推荐的）、apify/rustls（跟到 0.23.43，是唯一还在跟着上游走的 fork）、XOR-op/rustls.delta + ja-tools（最小 delta，实测对 0.23.12 只改约 5 个文件十行左右，用 [patch.crates-io] 挂载）。此外 antof286/utls-rs 自称 utls 的 Rust 实现，但只提供两个握手函数、ClientHello 指纹还是 rustls 默认的，达不到 uTLS 的覆盖面。",
+      "evidence": "gh api repos/3andne/craftls repos/0x676e67/wreq repos/XOR-op/rustls.delta --jq '.full_name+\" \"+(.stargazers_count|tostring)+\" \"+.pushed_at'",
+      "fixed_in": "README.md「既有方案与它们的缺口」一节"
+    },
+    {
+      "id": "R-003",
+      "text": "未结案 0 条",
+      "why": "采集器把「未结案件数」写成拿子串 resolved 在悬案全文里找，而每条悬案文件里都有一句操作说明「把 `Status:` 改 `resolved`」—— 于是 4 条未结案的悬案被量成 0，并且那个 0 已经渲染进了 STATE.md 的机器块。这是本项目接入事实系统后抓到的第一个**真的错数字**，产生于接入当天。修法不是收紧正则，而是**共用闸门自己的 Status 解析器**：collect.py 的原则原话是「采集器与闸门必须用同一套读法，否则口径分叉，闸门查的就是另一套数字了」。",
+      "evidence": "python3 zreflect/facts.py show open_questions（值应为 4，不是 0）；对照 python3 zreflect/check_questions.py 报的「未结案 4」",
+      "fixed_in": "FACTS.json 的 open_questions；zreflect/facts.py 的 measure_facts() 里那段注释"
+    },
+    {
+      "id": "R-004",
+      "text": "fp_fp_",
+      "why": "指纹键名被加了两次 `fp_` 前缀：examples/reflect-facts.rs 自己打了 `fp_`，采集器 _fingerprint_facts() 又加一次，于是台账里出现 fp_fp_chrome_133_… 这样的键。是**采集器那两道守卫抓到的**（掉条守卫一次列出 7 条），不是靠眼睛看出来的 —— 而这种键名本身看起来完全正常，是「安静的错」。约定：示例打印**裸键名**，前缀由采集器加，两边只有一处生产它。",
+      "evidence": "cargo run --quiet --example reflect-facts | head -1（键名不得以 fp_fp_ 开头）；python3 zreflect/facts.py show fp_chrome_133_ja3_md5",
+      "fixed_in": "crates/utls/examples/reflect-facts.rs 头部注释；zreflect/facts.py 的 _fingerprint_facts()"
+    },
+    {
+      "id": "R-005",
+      "text": "「跑通 uTLS 原版全部测试」在本机的可达上界是 `-skip 'TestVerifyHostname|TestRealResumption'`，因为本机没有到 google / yahoo 的 egress",
+      "why": "前半句成立（那两条测试确实要真外网），后半句**不成立**：本机有 `127.0.0.1:2080` 一个 **SOCKS5h/HTTP 代理**，只是 Go 的 `net.Dial` 不认代理环境变量，所以最初误判成「不可达」。把 `www.google.com` / `yahoo.com` 指到 127.0.0.2 / 127.0.0.3，再用一个走 SOCKS5h 的小转发器接住 443，那两条测试就**真跑通**了：`go test -count=1 -timeout 480s ./...`（**不带 -skip**）⇒ `ok github.com/refraction-networking/utls 2.952s`，222 PASS / 0 FAIL / 1 SKIP（那一条 SKIP 是上游自己 `t.Skip(\"Skipping golang parroting tests until adjusting for new fingerprints\")`）。",
+      "evidence": "干净检出（codeload master tarball）上跑 `go test -count=1 -v -timeout 480s .`：`--- PASS: TestVerifyHostname (0.47s)`、`--- PASS: TestRealResumption (0.87s)`，逐条计数 222 PASS / 0 FAIL；未加任何 -skip。配方（/etc/hosts 两行 + 转发器）记在 questions/09-full-suite-oracle.md 的「怎么让那两条真跑」一节。",
+      "fixed_in": "questions/09-full-suite-oracle.md；STATE.md「下一步」一节"
+    }
+  ]
+}
