@@ -136,13 +136,16 @@ jobs:
           # 除它们之外**一条都不跳**，唯一被 skip 的是上游自己 t.Skip 的那条。
           go test -count=1 -timeout 480s -json \
             -skip 'TestVerifyHostname|TestRealResumption' ./... > /tmp/upstream.json
-          # 与 `upstream-no-skip` 那个 job 同一套断言：**跳过集**必须是这三个、
-          # **顶层 PASS 数必须非零**。少了这两条，一次「什么都没跑」的解析会安静地绿。
+          # 与 `upstream-no-skip` 那个 job 同一套断言：**跳过集恰如预期**、
+          # **顶层 PASS 数非零**、**那两条 egress 测试确实没被跑**。
+          # 少了这些，一次「什么都没跑」或「-skip 没生效」的解析会安静地绿。
+          # ⚠️ `-skip` 是**把测试从运行里摘掉**，不是让它报 skip —— 所以那两条
+          # 既不在 pass 里、也不在 skip 里（实测：跳过集只有上游自己 t.Skip 的那条）。
           python3 - <<'PY'
           import json, sys
-          expect = {'TestUTLSHandshakeClientParrotGolang',   # 上游自己 t.Skip
-                    'TestVerifyHostname', 'TestRealResumption'}  # 本 job 显式 -skip
-          top_pass, skips = 0, set()
+          upstream_self_skip = 'TestUTLSHandshakeClientParrotGolang'   # 上游自己 t.Skip
+          excluded = {'TestVerifyHostname', 'TestRealResumption'}      # 本 job 显式 -skip
+          top_pass, skips = set(), set()
           for line in open('/tmp/upstream.json'):
               line = line.strip()
               if not line.startswith('{'):
@@ -154,15 +157,20 @@ jobs:
               t, a = ev.get('Test'), ev.get('Action')
               if not t:
                   continue
-              if '/' not in t and a == 'pass':
-                  top_pass += 1
+              if '/' in t:
+                  continue
+              if a == 'pass':
+                  top_pass.add(t)
               elif a == 'skip':
                   skips.add(t)
-          print(f"原版套件（-skip 两条 egress）：顶层 {top_pass} PASS，跳过 {sorted(skips)}")
-          if top_pass == 0:
+          print(f"原版套件（-skip 两条 egress）：顶层 {len(top_pass)} PASS，跳过 {sorted(skips)}")
+          if not top_pass:
               sys.exit("⚠️ 顶层 PASS 数为 0 —— 这一跑什么都没验到（不是「通过」）")
-          if skips != expect:
-              sys.exit(f"⚠️ 跳过集与预期不符：{sorted(skips)} != {sorted(expect)}")
+          if skips != {upstream_self_skip}:
+              sys.exit(f"⚠️ 跳过集与预期不符：{sorted(skips)} != ['{upstream_self_skip}']")
+          ran = excluded & top_pass
+          if ran:
+              sys.exit(f"⚠️ 这两条本该被 -skip 摘掉，却出现在 PASS 里：{sorted(ran)}")
           PY
 
   # 与上面那个 job 互补 —— 两个都别删，它们判的不是同一件事：
