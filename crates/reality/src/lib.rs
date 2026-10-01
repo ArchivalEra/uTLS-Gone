@@ -27,6 +27,7 @@ pub mod auth;
 pub mod ch;
 pub mod client;
 pub mod mirror;
+pub mod mirror_tls;
 pub mod server;
 
 pub use client::PeerVerdict;

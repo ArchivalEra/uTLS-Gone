@@ -10,6 +10,8 @@ repository.workspace = true
 x25519-dalek.workspace = true
 aes-gcm.workspace = true
 sha2.workspace = true
+# 记录层 AEAD 的第三种套件（ChaCha20-Poly1305）
+chacha20poly1305 = "0.10"
 # HMAC-SHA512：镜像证书尾签（handshake_server_tls13.go:149）
 hmac = "0.12"
 hkdf.workspace = true

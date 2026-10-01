@@ -103,6 +103,14 @@ pub fn run_tls13_server_and_capture_flight(
 }
 
 /// 真站（rustls 服务端）的配置：用 vendored rustls 的测试证书。
+///
+/// ⚠️ 组偏好要与**真实真站的处境**一致：rustls 默认顺序是
+/// X25519 → P-256 → P-384 → MLKEM768，于是它会选 **P-256** —— 而 uTLS 客户端
+/// （`KeySharePrivateKeys` 只有 `Ecdhe`(X25519)/`Mlkem`/`MlkemEcdhe` 三个字段，
+/// `u_public.go:926-931`）**完不成** P-256 的握手。真实大站（Cloudflare/Google）
+/// 都优先 X25519MLKEM768，参照的镜像正是为那种真站写的。所以这里把顺序调成
+/// MLKEM768 → X25519 → 其余 —— 与 rustls 的 `prefer-post-quantum` 偏好一致
+/// （那个 feature 就是给「模仿真实互联网」用的）。
 pub fn dest_server_config() -> Arc<ServerConfig> {
     dest_server_config_with_groups(None)
 }
@@ -111,14 +119,16 @@ pub fn dest_server_config() -> Arc<ServerConfig> {
 pub fn dest_server_config_with_groups(
     only_groups: Option<Vec<rustls::NamedGroup>>,
 ) -> Arc<ServerConfig> {
-    let provider = match only_groups {
-        None => Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
-        Some(groups) => {
-            let mut p = rustls::crypto::aws_lc_rs::default_provider();
-            p.kx_groups.retain(|g| groups.contains(&g.name()));
-            Arc::new(p)
-        }
-    };
+    let mut p = rustls::crypto::aws_lc_rs::default_provider();
+    p.kx_groups.sort_by_key(|g| match u16::from(g.name()) {
+        4588 => 0, // X25519MLKEM768 最前
+        29 => 1,   // 次选 X25519
+        _ => 2,
+    });
+    if let Some(groups) = only_groups {
+        p.kx_groups.retain(|g| groups.contains(&g.name()));
+    }
+    let provider = Arc::new(p);
     Arc::new(
         ServerConfig::builder_with_provider(provider)
             .with_protocol_versions(&[&rustls::version::TLS13])

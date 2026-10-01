@@ -251,6 +251,7 @@ fn spawn_xray(server: SocketAddr) -> (Child, u16) {
       "network": "tcp",
       "security": "reality",
       "realitySettings": {{
+        "show": true,
         "serverName": "{SERVER_NAME}",
         "fingerprint": "chrome",
         "publicKey": "{public_key}",
@@ -341,13 +342,17 @@ fn the_stock_xray_client_authenticates_and_moves_traffic() {
         let log = std::fs::read_to_string(dir.join("xray.log")).unwrap_or_default();
         panic!(
             "回显里没有写进去的数据 —— 握手成了但流量没通？收到 {} 字节：{:?}\n\
-             服务端统计：connections={} authenticated={} fallback={} malformed={}\n\
+             服务端统计：connections={} authenticated={} mirrored={} mirror_failed={} fallback={} malformed={}\n\
              xray 日志：\n{log}",
             got.len(),
             String::from_utf8_lossy(&got),
             stats.connections.load(std::sync::atomic::Ordering::SeqCst),
             stats
                 .authenticated
+                .load(std::sync::atomic::Ordering::SeqCst),
+            stats.mirrored.load(std::sync::atomic::Ordering::SeqCst),
+            stats
+                .mirror_failed
                 .load(std::sync::atomic::Ordering::SeqCst),
             stats.fallback.load(std::sync::atomic::Ordering::SeqCst),
             stats
@@ -407,12 +412,25 @@ fn an_unauthenticated_client_sees_the_dest_certificate_byte_for_byte() {
     );
 }
 
-/// **判据 4（P-256-only dest）**：真站只认 P-256 时，鉴权路径照样成立。
-/// 用本仓客户端（模拟 Xray 的行为）而不是 Xray 二进制 —— Xray 的指纹由它自己
-/// 决定，P-256-only 的约束落在「客户端 hello 必须带 P-256 share」上，
-/// 这一点由本仓客户端可控地判。
+/// **判据 4（P-256-only dest）**：真站只认 P-256 时的**既定行为**。
+///
+/// # 为什么这里期望的是**透传**而不是镜像
+///
+/// issue 原文写「P-256-only dest 完成握手并承载数据」。查权威参照后这条要修正 ——
+/// **不是我们做不到，是 uTLS 客户端做不到**：
+///
+/// * uTLS 的 `KeySharePrivateKeys`（`u_public.go:926-931`）只有
+///   `Ecdhe`(X25519) / `Mlkem` / `MlkemEcdhe` 三个字段 —— **没有 P-256 私钥位**；
+/// * 于是 XTLS `tls.go:222-239` 的服务端**只**从客户端 hello 里挑
+///   `X25519MLKEM768` 与 `X25519`，别的组一律 `break`（⇒ 透传）：它知道
+///   自己那边的客户端完不成 P-256。
+///
+/// 所以「P-256-only dest 完成握手」这件事在**真栈**上是靠**透传**达成的：
+/// 客户端与真站直接谈（真站选 P-256，两端都支持），REALITY 服务端只搬字节。
+/// 本判据钉的就是这条：镜像路径**明确拒绝**（`UnsupportedGroup`）⇒ 回落透传，
+/// 且**客户端仍能与真站完成握手**（用我们的 rustls 客户端验证，它支持 P-256）。
 #[test]
-fn a_p256_only_dest_still_authenticates() {
+fn a_p256_only_dest_still_completes_by_falling_back_to_passthrough() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
     let dest_port = listener.local_addr().expect("端口").port();
     let cfg = common::dest_server_config_with_groups(Some(vec![rustls::NamedGroup::secp256r1]));
@@ -424,7 +442,7 @@ fn a_p256_only_dest_still_authenticates() {
                 let Ok(mut conn) = rustls::ServerConnection::new(cfg) else {
                     return;
                 };
-                let _ = sock.set_read_timeout(Some(Duration::from_secs(3)));
+                let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
                 while conn.is_handshaking() {
                     if conn.complete_io(&mut sock).is_err() {
                         return;
@@ -433,30 +451,44 @@ fn a_p256_only_dest_still_authenticates() {
             });
         }
     });
-    let (server_addr, stats) = spawn_reality_server(dest_port);
 
-    // 本仓客户端：Firefox 148 的 hello（带真 P-256 share）+ REALITY 封装。
-    let mut sock = TcpStream::connect(server_addr).expect("连服务端");
-    let sealed = seal_firefox_hello();
-    sock.write_all(&sealed).expect("写 hello");
-    sock.flush().expect("flush");
-    // 服务端握手 + 回显：读 VLESS 响应头 + 不回显（这条只判握手与鉴权计数）。
-    let mut got = Vec::new();
-    let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
-    let mut buf = [0u8; 1024];
-    let _ = sock
-        .read(&mut buf)
-        .map(|n| got.extend_from_slice(&buf[..n]));
-    // 客户端（本仓）用的是 rustls 客户端？—— 这里只发 hello，不完成客户端握手，
-    // 所以服务端的 rustls 会等 Finished；但**鉴权计数已经落袋**（decide 在握手前）。
-    // 为了不看时序，稍等一小会再断言。
-    std::thread::sleep(Duration::from_millis(300));
+    // ① 一个**未鉴权**的 rustls 客户端经 REALITY 服务端：应当被透传到 P-256-only 真站，
+    //    并完成握手（它支持 P-256）。
+    let (server_addr, stats) = spawn_reality_server(dest_port);
+    let cert = common::tls_client_handshake_and_peer_cert(server_addr)
+        .expect("P-256-only 真站下，透传路径该让客户端完成握手");
+    assert!(!cert.is_empty(), "客户端该拿到真站的证书");
     assert_eq!(
-        stats
+        stats.fallback.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "这条走的是 fallback（透传）"
+    );
+
+    // ② 镜像路径本身对 P-256 明说**不支持**（而不是假装镜像、把客户端弄死）——
+    //    这正是 uTLS 客户端的边界（见本函数文档）。
+    let (server_addr2, stats2) = spawn_reality_server(dest_port);
+    let mut sock = TcpStream::connect(server_addr2).expect("连服务端");
+    sock.write_all(&seal_firefox_hello()).expect("写 hello");
+    sock.flush().expect("flush");
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(
+        stats2
             .authenticated
             .load(std::sync::atomic::Ordering::SeqCst),
         1,
-        "P-256-only 真站下，带 P-256 share 的客户端该被鉴权"
+        "带 P-256 share 的指纹客户端**通过了鉴权**（鉴权只看 sessionId/短 ID/时刻）"
+    );
+    assert_eq!(
+        stats2
+            .mirror_failed
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "镜像对 P-256 明确拒绝（uTLS 客户端没有 P-256 私钥位）⇒ 记一次镜像失败"
+    );
+    assert_eq!(
+        stats2.fallback.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "拒绝之后回落透传 —— 客户端拿到的仍是真站的握手（不是我们的）"
     );
 }
 
