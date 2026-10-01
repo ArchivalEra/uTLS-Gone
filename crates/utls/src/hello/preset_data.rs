@@ -47,7 +47,7 @@
 
 use super::spec::{
     ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials,
-    EcPointFormats, Extension, GreaseEchOptions, Padding, RenegotiationInfo, SessionId,
+    EcPointFormats, Extension, GreaseEchOptions, KeyShare, Padding, RenegotiationInfo, SessionId,
     SessionTicket, Variability,
 };
 use crate::values as v;
@@ -203,7 +203,7 @@ pub(crate) fn chrome_70() -> ClientHelloSpec {
                 formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
             }),
             // &KeyShareExtension{GREASE{0}, X25519}（:145-148）
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             // &PSKKeyExchangeModesExtension{psk_dhe_ke}
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
@@ -300,7 +300,7 @@ pub(crate) fn chrome_72() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA1.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -382,7 +382,7 @@ pub(crate) fn chrome_83() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -463,7 +463,7 @@ pub(crate) fn chrome_87() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -545,7 +545,7 @@ pub(crate) fn chrome_96() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -630,7 +630,7 @@ pub(crate) fn chrome_100_102() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -718,7 +718,7 @@ pub(crate) fn chrome_106_shuffle() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -811,11 +811,11 @@ pub(crate) fn chrome_115_pq() -> ClientHelloSpec {
             ]),
             Extension::SignedCertificateTimestamp,
             // &KeyShareExtension{GREASE{0}, X25519Kyber768Draft00, X25519}（:653-657）
-            Extension::KeyShare(vec![
+            Extension::KeyShare(KeyShare::groups([
                 CodePoint::Grease,
                 v::X25519_KYBER768_DRAFT00.into(),
                 v::X25519.into(),
-            ]),
+            ])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -903,7 +903,7 @@ pub(crate) fn chrome_120() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -993,11 +993,11 @@ pub(crate) fn chrome_120_pq() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![
+            Extension::KeyShare(KeyShare::groups([
                 CodePoint::Grease,
                 v::X25519_KYBER768_DRAFT00.into(),
                 v::X25519.into(),
-            ]),
+            ])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -1084,11 +1084,11 @@ pub(crate) fn chrome_131() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![
+            Extension::KeyShare(KeyShare::groups([
                 CodePoint::Grease,
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
-            ]),
+            ])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -1243,7 +1243,7 @@ pub(crate) fn firefox_63_65() -> ClientHelloSpec {
             Extension::Alpn(vec![b"h2".to_vec(), b"http/1.1".to_vec()]),
             Extension::StatusRequest,
             // &KeyShareExtension{X25519, CurveP256}（:1060-1063）—— 两个组都真发密钥
-            Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into(), v::CURVE_P256.into()])),
             // 报 1.3/1.2/1.1/1.0（:1064-1068）
             Extension::SupportedVersions(vec![
                 v::VERSION_TLS13.into(),
@@ -1338,7 +1338,7 @@ pub(crate) fn firefox_99() -> ClientHelloSpec {
                     v::ECDSA_WITH_SHA1,
                 ],
             }),
-            Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into(), v::CURVE_P256.into()])),
             Extension::SupportedVersions(vec![
                 v::VERSION_TLS13.into(),
                 v::VERSION_TLS12.into(),
@@ -1429,7 +1429,7 @@ pub(crate) fn firefox_102() -> ClientHelloSpec {
                     v::ECDSA_WITH_SHA1,
                 ],
             }),
-            Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into(), v::CURVE_P256.into()])),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
                 v::ECDSA_WITH_P256_AND_SHA256.into(),
@@ -1521,7 +1521,7 @@ pub(crate) fn firefox_105() -> ClientHelloSpec {
                     v::ECDSA_WITH_SHA1,
                 ],
             }),
-            Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into(), v::CURVE_P256.into()])),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
                 v::ECDSA_WITH_P256_AND_SHA256.into(),
@@ -1609,7 +1609,7 @@ pub(crate) fn firefox_120() -> ClientHelloSpec {
                     v::ECDSA_WITH_SHA1,
                 ],
             }),
-            Extension::KeyShare(vec![v::X25519.into(), v::CURVE_P256.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into(), v::CURVE_P256.into()])),
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
                 v::ECDSA_WITH_P256_AND_SHA256.into(),
@@ -1875,7 +1875,7 @@ pub(crate) fn ios_13() -> ClientHelloSpec {
                 formats: vec![v::POINT_FORMAT_UNCOMPRESSED],
             }),
             // 只有一个组、且只有 X25519（:1769-1771）
-            Extension::KeyShare(vec![v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2023,7 +2023,7 @@ pub(crate) fn edge_85() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2106,7 +2106,7 @@ pub(crate) fn edge_106() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2201,7 +2201,7 @@ pub(crate) fn safari_16_0() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA1.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2296,11 +2296,11 @@ pub(crate) fn safari_26_3() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA1.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![
+            Extension::KeyShare(KeyShare::groups([
                 CodePoint::Grease,
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
-            ]),
+            ])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2466,7 +2466,7 @@ pub(crate) fn browser360_11_0() -> ClientHelloSpec {
             Extension::ChannelId {
                 old_codepoint: false,
             },
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },
@@ -2549,7 +2549,7 @@ pub(crate) fn qq_11_1() -> ClientHelloSpec {
                 v::PKCS1_WITH_SHA512.into(),
             ]),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![CodePoint::Grease, v::X25519.into()]),
+            Extension::KeyShare(KeyShare::groups([CodePoint::Grease, v::X25519.into()])),
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
             },

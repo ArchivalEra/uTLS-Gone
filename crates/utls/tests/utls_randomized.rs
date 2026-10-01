@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension, HandshakeInputs};
+use utls::hello::{ClientHelloId, ClientHelloSpec, HandshakeInputs};
 use utls::values as v;
 
 const FIXTURE: &str = include_str!("fixtures/utls-randomized.json");
@@ -36,19 +36,7 @@ fn id_of(name: &str) -> ClientHelloId {
 fn canonical_inputs(spec: &ClientHelloSpec) -> HandshakeInputs {
     let mut inputs = HandshakeInputs::deterministic([0u8; 32]);
     inputs.sni = Some("example.com".into());
-    let mut groups: Vec<u16> = Vec::new();
-    for e in &spec.extensions {
-        if let Extension::KeyShare(cps) = e {
-            for cp in cps {
-                if let CodePoint::Fixed(g) = cp
-                    && !v::is_grease(*g)
-                    && !groups.contains(g)
-                {
-                    groups.push(*g);
-                }
-            }
-        }
-    }
+    let groups: Vec<u16> = spec.key_share_groups();
     inputs.key_exchange = groups
         .into_iter()
         .map(|g| {

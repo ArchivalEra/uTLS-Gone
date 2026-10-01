@@ -56,8 +56,9 @@ pub use randomized::{DEFAULT_WEIGHTS, Weights};
 pub use spec::{
     ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, CookieExtension,
     DelegatedCredentials, EcPointFormats, ExtendedMasterSecret, Extension, GreaseEchOptions,
-    Padding, ParseError, PreSharedKey, PskIdentity, RenegotiationInfo, SessionId, SessionTicket,
-    SignatureAlgorithmsCert, SignedCertificateTimestamp, SpecError, StatusRequest, Variability,
+    KeyShare, Padding, ParseError, PreSharedKey, PskIdentity, RenegotiationInfo, SessionId,
+    SessionTicket, SignatureAlgorithmsCert, SignedCertificateTimestamp, SpecError, StatusRequest,
+    Variability,
 };
 
 /// 一条已序列化的 ClientHello：`type(1) || u24 长度 || 体`。

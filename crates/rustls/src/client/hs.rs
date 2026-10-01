@@ -76,17 +76,38 @@ impl OfferedKeyShares {
     }
 
     fn any_group_matches(&self, group: NamedGroup) -> bool {
-        self.0.iter().any(|kx| kx.group() == group)
+        self.0.iter().any(|kx| {
+            kx.group() == group
+                || kx.hybrid_component()
+                    .is_some_and(|(g, _)| g == group)
+        })
     }
 
     /// The share the server selected, if we offered it.
+    ///
+    /// FORK(utls-rs) (i): **exact group match wins over a hybrid-component match.**
+    ///
+    /// The upstream body matches "this entry's group *or* its hybrid component" in a
+    /// single `position()` pass. With one offered share that is unambiguous, but our
+    /// caller can offer several (see (e)), and then the order decides: for a hello
+    /// carrying `[X25519MLKEM768, X25519]` as *two independent* shares, a server that
+    /// selects `X25519` matched the *hybrid* entry first (via its component) and the
+    /// handshake then completed `complete_hybrid_component` — the hybrid's internal
+    /// X25519 secret, not the one whose public key was on the wire. Symptom:
+    /// `cannot decrypt peer's message`. Two passes fix it: an entry that *is* the
+    /// requested group is always the right one; the component fallback is for the case
+    /// where that group exists only as a hybrid's classical half (uTLS's
+    /// `ReuseHybridAndClassicalKeyShares`, where we offer the hybrid alone).
     pub(super) fn take_for(&mut self, their: &KeyShareEntry) -> Option<Box<dyn ActiveKeyExchange>> {
         let at = self
             .0
             .iter()
-            .position(|kx| kx.group() == their.group || {
-                kx.hybrid_component()
-                    .is_some_and(|(g, _)| u16::from(g) == u16::from(their.group))
+            .position(|kx| kx.group() == their.group)
+            .or_else(|| {
+                self.0.iter().position(|kx| {
+                    kx.hybrid_component()
+                        .is_some_and(|(g, _)| g == their.group)
+                })
             })?;
         Some(self.0.remove(at))
     }

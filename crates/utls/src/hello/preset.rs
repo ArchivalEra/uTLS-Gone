@@ -43,8 +43,8 @@
 use super::preset_data as pd;
 use super::spec::{
     ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials,
-    EcPointFormats, Extension, GreaseEchOptions, RenegotiationInfo, SessionId, SessionTicket,
-    SpecError, Variability,
+    EcPointFormats, Extension, GreaseEchOptions, KeyShare, RenegotiationInfo, SessionId,
+    SessionTicket, SpecError, Variability,
 };
 use crate::values as v;
 
@@ -336,11 +336,11 @@ fn chrome_133() -> ClientHelloSpec {
             // &SCTExtension{} —— 体为空
             Extension::SignedCertificateTimestamp,
             // &KeyShareExtension{GREASE{0}, X25519MLKEM768, X25519}
-            Extension::KeyShare(vec![
+            Extension::KeyShare(KeyShare::groups([
                 CodePoint::Grease,
                 v::X25519_MLKEM768.into(),
                 v::X25519.into(),
-            ]),
+            ])),
             // &PSKKeyExchangeModesExtension{psk_dhe_ke}
             Extension::PskKeyExchangeModes {
                 modes: vec![v::PSK_MODE_DHE],
@@ -439,11 +439,18 @@ fn firefox_148() -> ClientHelloSpec {
                 ],
             }),
             Extension::SignedCertificateTimestamp,
-            Extension::KeyShare(vec![
-                v::X25519_MLKEM768.into(),
-                v::X25519.into(),
-                v::CURVE_P256.into(),
-            ]),
+            Extension::KeyShare(
+                KeyShare::groups([
+                    v::X25519_MLKEM768.into(),
+                    v::X25519.into(),
+                    v::CURVE_P256.into(),
+                ])
+                // uTLS `u_parrots.go:1535`：Firefox 148 是**唯一**声明「混合组与经典组
+                // 共用同一份 X25519 材料」的预设（`ReuseHybridAndClassicalKeyShares`）。
+                // 引擎据此只交一把混合交换，经典条目的公钥取它的经典分量 ——
+                // 判据在 `crates/utls-engine/tests/key_share_reuse.rs`。
+                .reusing(v::X25519_MLKEM768, v::X25519),
+            ),
             // Firefox **不**在版本列表里放 GREASE。
             Extension::SupportedVersions(vec![v::VERSION_TLS13.into(), v::VERSION_TLS12.into()]),
             Extension::SignatureAlgorithms(vec![
@@ -1392,18 +1399,7 @@ mod tests {
     fn canonical_inputs(spec: &ClientHelloSpec) -> crate::hello::HandshakeInputs {
         let mut inputs = crate::hello::HandshakeInputs::deterministic([0u8; 32]);
         inputs.sni = Some("example.com".into());
-        let mut groups: Vec<u16> = Vec::new();
-        for e in &spec.extensions {
-            if let Extension::KeyShare(cps) = e {
-                for cp in cps {
-                    if let CodePoint::Fixed(g) = cp
-                        && !v::is_grease(*g)
-                    {
-                        groups.push(*g);
-                    }
-                }
-            }
-        }
+        let groups: Vec<u16> = spec.key_share_groups();
         inputs.key_exchange = groups
             .into_iter()
             .map(|g| (g, vec![0x5A; key_len(g)]))

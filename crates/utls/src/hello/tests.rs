@@ -1088,8 +1088,8 @@ fn for_hello_retry_keeps_only_the_selected_group_and_nothing_else() {
         s.extensions
             .iter()
             .find_map(|e| match e {
-                Extension::KeyShare(cps) => {
-                    Some(cps.iter().map(|c| c.resolve(0x0a0a)).collect::<Vec<u16>>())
+                Extension::KeyShare(ks) => {
+                    Some(ks.groups.iter().map(|c| c.resolve(0x0a0a)).collect())
                 }
                 _ => None,
             })

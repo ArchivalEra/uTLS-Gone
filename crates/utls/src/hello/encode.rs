@@ -219,9 +219,9 @@ pub(crate) fn marshal(
                     emit: true,
                 });
             }
-            Extension::KeyShare(cps) => {
-                let mut entries: Vec<(u16, Vec<u8>)> = Vec::with_capacity(cps.len());
-                for cp in cps {
+            Extension::KeyShare(ks) => {
+                let mut entries: Vec<(u16, Vec<u8>)> = Vec::with_capacity(ks.groups.len());
+                for cp in &ks.groups {
                     let g = cp.resolve(grease.key_share);
                     if v::is_grease(g) {
                         // uTLS：GREASE 的 key_share 条目带一个字节的 {0}。

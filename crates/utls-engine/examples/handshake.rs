@@ -122,18 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn keyshare_groups(spec: &ClientHelloSpec) -> Vec<u16> {
-    use utls::hello::{CodePoint, Extension};
-    let mut out = Vec::new();
-    for e in &spec.extensions {
-        if let Extension::KeyShare(cps) = e {
-            for cp in cps {
-                if let CodePoint::Fixed(g) = cp {
-                    out.push(*g);
-                }
-            }
-        }
-    }
-    out
+    spec.key_share_groups()
 }
 
 /// 从响应（可能是 chunked）里抠出第一个 JSON 对象。

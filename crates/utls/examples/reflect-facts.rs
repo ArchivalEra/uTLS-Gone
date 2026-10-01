@@ -117,19 +117,8 @@ fn report(id: ClientHelloId, spec: &ClientHelloSpec) {
 fn inputs_for(spec: &ClientHelloSpec, seed: u8) -> HandshakeInputs {
     let mut inputs = HandshakeInputs::deterministic([seed; 32]);
     inputs.sni = Some("example.com".into());
-    let mut groups: Vec<u16> = Vec::new();
-    for e in &spec.extensions {
-        if let utls::hello::Extension::KeyShare(cps) = e {
-            for cp in cps {
-                // GREASE 条目不需要公钥（编码器给它一个字节的 {0}）。
-                if let utls::hello::CodePoint::Fixed(g) = cp
-                    && !v::is_grease(*g)
-                {
-                    groups.push(*g);
-                }
-            }
-        }
-    }
+    // GREASE 条目不需要公钥（编码器给它一个字节的 {0}）。
+    let groups: Vec<u16> = spec.key_share_groups();
     inputs.key_exchange = groups
         .into_iter()
         .map(|g| {

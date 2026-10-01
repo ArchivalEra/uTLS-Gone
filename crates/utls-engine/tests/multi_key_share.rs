@@ -26,7 +26,7 @@ use std::sync::Arc;
 use rustls::client::{PlanRequest, SuppliesClientHello};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConnection, HandshakeKind, NamedGroup};
-use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension};
+use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension, KeyShare};
 use utls::values as v;
 use utls_engine::FingerprintClient;
 
@@ -41,10 +41,10 @@ fn spec_with_two_key_shares() -> ClientHelloSpec {
         .iter()
         .position(|e| matches!(e, Extension::KeyShare(_)))
         .expect("Chrome-70 有 key_share");
-    spec.extensions[at] = Extension::KeyShare(vec![
+    spec.extensions[at] = Extension::KeyShare(KeyShare::groups([
         CodePoint::Fixed(v::X25519),
         CodePoint::Fixed(v::CURVE_P384),
-    ]);
+    ]));
     spec
 }
 
@@ -137,7 +137,7 @@ fn a_single_share_the_server_cannot_use_gets_a_retry_request_instead() {
         .iter()
         .position(|e| matches!(e, Extension::KeyShare(_)))
         .unwrap();
-    spec.extensions[at] = Extension::KeyShare(vec![CodePoint::Fixed(v::X25519)]);
+    spec.extensions[at] = Extension::KeyShare(KeyShare::groups([CodePoint::Fixed(v::X25519)]));
 
     let config = Arc::new(common::client_config_with_verifier(
         FingerprintClient::new(spec, provider()).with_sni("localhost"),

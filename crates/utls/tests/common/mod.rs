@@ -8,7 +8,7 @@
 //! 所有函数都只做**字节层**的事，不依赖任何 `utls` 内部类型。
 #![allow(dead_code)] // 每个集成测试各自 `mod common;`，用不到的那些不该报警告。
 
-use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension, HandshakeInputs};
+use utls::hello::{ClientHelloId, ClientHelloSpec, HandshakeInputs};
 use utls::values as v;
 
 /// 与 `examples/reflect-facts.rs` 相同的规范输入：SNI 由调用方给、不给 ALPN
@@ -29,19 +29,7 @@ pub fn canonical_inputs_with_seed(
 ) -> HandshakeInputs {
     let mut inputs = HandshakeInputs::deterministic([seed; 32]);
     inputs.sni = sni.map(str::to_string);
-    let mut groups: Vec<u16> = Vec::new();
-    for e in &spec.extensions {
-        if let Extension::KeyShare(cps) = e {
-            for cp in cps {
-                if let CodePoint::Fixed(g) = cp
-                    && !v::is_grease(*g)
-                    && !groups.contains(g)
-                {
-                    groups.push(*g);
-                }
-            }
-        }
-    }
+    let groups: Vec<u16> = spec.key_share_groups();
     inputs.key_exchange = groups
         .into_iter()
         .map(|g| {

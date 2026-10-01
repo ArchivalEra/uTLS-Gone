@@ -40,8 +40,8 @@ use sha3::{Sha3_256, Shake256};
 use super::ClientHelloId;
 use super::randomized_tables as t;
 use super::spec::{
-    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, Extension, Padding, SessionId, SpecError,
-    Variability,
+    ApplicationSettingsAlps, ClientHelloSpec, CodePoint, Extension, KeyShare, Padding, SessionId,
+    SpecError, Variability,
 };
 use crate::values as v;
 
@@ -447,9 +447,12 @@ pub(crate) fn generate(
                 shares.insert(0, v::X25519_MLKEM768);
             }
         }
-        exts.push(Extension::KeyShare(
-            shares.iter().map(|g| CodePoint::Fixed(*g)).collect(),
-        ));
+        exts.push(Extension::KeyShare(KeyShare::groups(
+            shares
+                .iter()
+                .map(|g| CodePoint::Fixed(*g))
+                .collect::<Vec<_>>(),
+        )));
         exts.push(Extension::Opaque {
             id: v::EXT_PSK_KEY_EXCHANGE_MODES,
             body: vec![1, v::PSK_MODE_DHE],

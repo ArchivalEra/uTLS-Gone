@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use rustls::pki_types::ServerName;
 use rustls::{ClientConnection, HandshakeKind, NamedGroup};
-use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension};
+use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension, KeyShare};
 use utls::values as v;
 use utls_engine::FingerprintClient;
 
@@ -65,8 +65,13 @@ fn spec_with_key_shares(spec: &ClientHelloSpec, groups: &[u16]) -> ClientHelloSp
         .iter()
         .position(|e| matches!(e, Extension::KeyShare(_)))
         .expect("这个预设有 key_share");
-    spec.extensions[at] =
-        Extension::KeyShare(groups.iter().copied().map(CodePoint::Fixed).collect());
+    spec.extensions[at] = Extension::KeyShare(KeyShare::groups(
+        groups
+            .iter()
+            .copied()
+            .map(CodePoint::Fixed)
+            .collect::<Vec<_>>(),
+    ));
     spec
 }
 

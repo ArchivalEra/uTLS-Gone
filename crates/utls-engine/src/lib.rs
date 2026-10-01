@@ -262,20 +262,10 @@ impl FingerprintClient {
 
     /// spec 里 `key_share` 要求的非 GREASE 组，按声明顺序。
     fn keyshare_groups(&self) -> Vec<u16> {
-        let mut out = Vec::new();
-        for e in &self.spec.extensions {
-            if let Extension::KeyShare(cps) = e {
-                for cp in cps {
-                    if let CodePoint::Fixed(g) = cp
-                        && !v::is_grease(*g)
-                        && !out.contains(g)
-                    {
-                        out.push(*g);
-                    }
-                }
-            }
-        }
-        out
+        // 口径只有一处：指纹层的 `ClientHelloSpec::key_share_groups`。
+        // 这里曾经自己数一遍（还有另外 4 处也各数一遍），于是 `key_share` 的模型一改
+        // 就会各错各的 —— 那次是 `KeyShare::reuse` 加进来时被编译器抓出来的。
+        self.spec.key_share_groups()
     }
 
     /// 每连接的输入。`os()` 同时给客户端随机数与指纹的每连接变化；
@@ -445,8 +435,8 @@ impl FingerprintClient {
     /// 非 ECH 连接的指纹**一字节都不动**（那条 GREASE keyshare 照发）。
     fn scrub_grease_key_share(&self, spec: &mut ClientHelloSpec) {
         for e in &mut spec.extensions {
-            if let Extension::KeyShare(points) = e {
-                points.retain(|c| !matches!(c, CodePoint::Grease));
+            if let Extension::KeyShare(ks) = e {
+                ks.groups.retain(|c| !matches!(c, CodePoint::Grease));
             }
         }
     }
@@ -483,7 +473,53 @@ impl SuppliesClientHello for FingerprintClient {
         // 这种 hello 走 TLS 1.2，ECDHE 在第二飞（`ClientKeyExchange`）里由引擎自己做，
         // 所以「没有外部交换」不是缺陷，是这一档的正常形态。原来的代码把它与
         // 「声明了组但一个都完不成」混为一谈，于是这 8 档连字节都发不出去。
-        let exchanges = self.start_exchanges(&usable)?;
+        let mut exchanges = self.start_exchanges(&usable)?;
+
+        // ①′ 混合组与经典组**共用同一份密钥材料**（uTLS 的
+        // `ReuseHybridAndClassicalKeyShares`，`u_public.go:656`）。
+        //
+        // 为什么要有这条：真实 Firefox 只生成一把 X25519 密钥，混合组公钥的末 32 字节
+        // 就是它的经典组公钥。uTLS 复刻了这个关系，并且有一条专门的判据
+        // （`u_parrots_test.go:63`）。本仓的 `Firefox(148)` 预设声明它
+        // （`ClientHelloSpec::key_share_reuse`），**只有它**声明 ——
+        // Chrome 131 那种 `[GREASE, 4588, X25519]` 发的不是同一份材料，所以
+        // 顺带按「报了混合组也报了它的经典分量」来推断是错的，必须由声明驱动。
+        //
+        // 接法：**只交一把**（混合组那把）给引擎，经典条目的公钥取它的
+        // `hybrid_component()`。这样
+        //   * 线上两个条目的末 32 字节相同（＝ Firefox 的样子）；
+        //   * 服务器选中经典组时，fork 的 `OfferedKeyShares::take_for` 按
+        //     「组或它的 hybrid 分量」匹配到同一把交换（`rustls/src/client/hs.rs:83-92`），
+        //     再走 `complete_hybrid_component` 得到 X25519 的共享密钥（`client/tls13.rs:277-310`）
+        //     —— 与线上那半公钥一致。
+        // 这正是 rustls 自己那条「第二条 key_share 白送」的路径
+        // （`client/hs.rs:505-533`）用的机制，只是那边由引擎自建、这边由指纹层声明。
+        let mut reused_component: Option<(u16, Vec<u8>)> = None;
+        if let Some((hybrid, classical)) = self.spec.key_share_reuse() {
+            let component = exchanges
+                .iter()
+                .find(|(g, _)| *g == hybrid)
+                .and_then(|(_, kx)| kx.hybrid_component())
+                .filter(|(cg, _)| *cg == classical);
+            match component {
+                Some((cg, key)) if want.contains(&classical) => {
+                    // 独立那把不再需要：经典条目用的就是混合组那一把的经典分量。
+                    exchanges.retain(|(g, _)| *g != classical);
+                    reused_component = Some((cg, key));
+                }
+                // 声明了却做不到 ⇒ **响亮失败**。发一条「声称共用、实则各用各的」hello
+                // 是**假保真**：字节形状一样，而 Firefox 会做的事我们没做。
+                // （这条只在提供者不提供该混合组、或它不上报经典分量时才可能发生。）
+                _ => {
+                    return Err(Error::General(format!(
+                        "utls-engine: spec 声明了组 0x{hybrid:04x} 与 0x{classical:04x} 共用\
+                         密钥材料（uTLS 的 ReuseHybridAndClassicalKeyShares），但这个提供者\
+                         建不出那份混合交换（或不上报它的经典分量）—— 与其发一条与 Firefox \
+                         不同的 hello，不如在这里失败"
+                    )));
+                }
+            }
+        }
 
         // ② 会话复用：引擎把会话当**数据**交给我们（ticket / 混淆年龄 / binder 长度），
         //    我们填进 spec 的 PSK 槽位、binder 留**占位零字节**；真 binder 由引擎在
@@ -519,18 +555,27 @@ impl SuppliesClientHello for FingerprintClient {
         let mut inputs = self.fresh_inputs();
         inputs.key_exchange = want
             .iter()
-            .map(|g| match exchanges.iter().find(|(eg, _)| eg == g) {
-                Some((_, kx)) => Ok((*g, kx.pub_key())),
-                None => {
-                    let len = v::group_public_key_len(*g).ok_or_else(|| {
-                        Error::General(format!(
-                            "utls-engine: 组 0x{g:04x} 在 spec 的 key_share 里，但指纹层不知道\
+            .map(|g| {
+                // 共用的那一半：经典条目的公钥**就是**混合组的经典分量（见 ①′）。
+                // 少了这一步，线上两个条目会各用各的材料 —— 形状一样、关系不同。
+                if let Some((cg, key)) = &reused_component
+                    && cg == g
+                {
+                    return Ok((*g, key.clone()));
+                }
+                match exchanges.iter().find(|(eg, _)| eg == g) {
+                    Some((_, kx)) => Ok((*g, kx.pub_key())),
+                    None => {
+                        let len = v::group_public_key_len(*g).ok_or_else(|| {
+                            Error::General(format!(
+                                "utls-engine: 组 0x{g:04x} 在 spec 的 key_share 里，但指纹层不知道\
                              它的公钥长度 —— 发不出一条形状正确的 hello"
-                        ))
-                    })?;
-                    let mut placeholder = vec![0u8; len];
-                    self.provider.secure_random.fill(&mut placeholder)?;
-                    Ok((*g, placeholder))
+                            ))
+                        })?;
+                        let mut placeholder = vec![0u8; len];
+                        self.provider.secure_random.fill(&mut placeholder)?;
+                        Ok((*g, placeholder))
+                    }
                 }
             })
             .collect::<Result<Vec<_>, Error>>()?;

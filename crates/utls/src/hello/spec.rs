@@ -28,6 +28,50 @@ impl From<u16> for CodePoint {
     }
 }
 
+/// `key_share` 扩展的声明：**要报哪些组**，以及其中一对是否**共用密钥材料**。
+///
+/// # 为什么需要 `reuse`
+///
+/// uTLS 的 `ReuseHybridAndClassicalKeyShares(hybrid, classical)`（`u_public.go:656`）在
+/// *预设*里给混合组与经典组打一对哨兵标记，`ApplyPreset` 消费它，于是**一份 X25519 材料
+/// 同时喂给两个条目**：线上 `key_share` 里混合组公钥的**末 32 字节**与那个独立经典组的
+/// 公钥**逐字节相同**。这是**真实 Firefox 的做法**，也是 uTLS 的
+/// `TestParrotFingerprintsReuseHybridClassicalKeyShare`（`u_parrots_test.go:63`）断言的事。
+///
+/// 只有 `Firefox(148)` 用它（`u_parrots.go:1535` 是上游唯一的使用点）——
+/// 所以 Chrome 131 那种 `[GREASE, 4588, X25519]` 的 `key_share` **不能**被这条规则
+/// 顺带命中：它发的不是同一份材料。这一点由 `mixed_group_handshake.rs` 的互补判据钉住。
+///
+/// ⚠️ **密钥材料是引擎的事**：本层只声明「这两个组共用」，真正的接线在
+/// `utls-engine`（它才持有密钥交换）。见该 crate 里 `plan()` 的注释。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct KeyShare {
+    /// 要报的组，按线序（GREASE 位置也算指纹的一部分）。
+    pub groups: Vec<CodePoint>,
+    /// `Some((hybrid, classical))` ⇒ 混合组公钥的经典半分与经典组**共用同一份材料**。
+    pub reuse: Option<(u16, u16)>,
+}
+
+impl KeyShare {
+    /// 只报组、不共用材料（绝大多数预设）。
+    ///
+    /// 收 `impl Into<Vec<CodePoint>>` 是为了让调用点既能写 `vec![…]` 也能写数组字面量
+    /// `[…]`（`From<[T; N]> for Vec<T>` 已存在）—— 本仓的格式化会按上下文改写这两种写法，
+    /// 收窄成 `Vec` 会让其中一种编译不过。
+    pub fn groups(groups: impl Into<Vec<CodePoint>>) -> Self {
+        Self {
+            groups: groups.into(),
+            reuse: None,
+        }
+    }
+
+    /// 声明 `hybrid` 与 `classical` 共用密钥材料（uTLS `ReuseHybridAndClassicalKeyShares`）。
+    pub fn reusing(mut self, hybrid: u16, classical: u16) -> Self {
+        self.reuse = Some((hybrid, classical));
+        self
+    }
+}
+
 /// 填充（`padding` 扩展，类型 21）策略。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Padding {
@@ -249,7 +293,9 @@ pub enum Extension {
     SupportedGroups(Vec<CodePoint>),
     SignatureAlgorithms(Vec<CodePoint>),
     /// `key_share`，体里的公钥来自 `inputs.key_exchange`。
-    KeyShare(Vec<CodePoint>),
+    ///
+    /// 除了组列表，它还带一个「哪一对共用密钥材料」的声明 —— 见 [`KeyShare`]。
+    KeyShare(KeyShare),
     /// uTLS 的 GREASE ECH（`0xfe0d`）：GREASE 用的假 ECH。
     ///
     /// 候选集**随预设不同**：Chrome 列 1 个候选套件与 4 个载荷长度（⇒ 总长每连接会变），
@@ -526,8 +572,45 @@ impl ClientHelloSpec {
     ///
     /// 入参是**握手消息**（`type(1) || u24 || body`），不是整条 TLS record ——
     /// 剥掉 5 字节 record 头是调用方的事（那是另一个模块的职责）。
+    ///
+    /// ⚠️ **反解不出「混合/经典共用材料」那对声明**（[`KeyShare::reuse`]）：它在线上
+    /// 只表现为两个条目里出现同一串字节，而那串字节**每连接都随机** ——
+    /// 分不清「共用」与「恰好相同」。所以反解出来的 spec 一律 `reuse: None`，
+    /// 与 uTLS 的 `Fingerprinter` 同一取舍（它也不还原 `ReuseHybridAndClassicalKeyShares`）。
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ParseError> {
         parse::parse_client_hello(bytes)
+    }
+
+    /// `key_share` 里要报的组：按线序、**去掉 GREASE**、去重。
+    ///
+    /// 这是「引擎要为哪些组准备密钥交换」的唯一口径。做成方法而不是让各处各写一遍，
+    /// 是因为它曾经在 4 个地方各写了一遍（`reflect-facts` / `utls_randomized` /
+    /// 测试的 `common` / 预设自测）—— 而 `key_share` 的模型一改，那 4 份就会**静默地**
+    /// 各错各的（`KeyShare::reuse` 那次就是这样被编译器抓出来的）。
+    pub fn key_share_groups(&self) -> Vec<u16> {
+        let mut out: Vec<u16> = Vec::new();
+        for e in &self.extensions {
+            if let Extension::KeyShare(ks) = e {
+                for cp in &ks.groups {
+                    if let CodePoint::Fixed(g) = cp
+                        && !crate::values::is_grease(*g)
+                        && !out.contains(g)
+                    {
+                        out.push(*g);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// `Some((hybrid, classical))` ⇒ 这条 spec 声明了
+    /// uTLS `ReuseHybridAndClassicalKeyShares`（见 [`KeyShare::reuse`]）。
+    pub fn key_share_reuse(&self) -> Option<(u16, u16)> {
+        self.extensions.iter().find_map(|e| match e {
+            Extension::KeyShare(ks) => ks.reuse,
+            _ => None,
+        })
     }
 
     /// uTLS 的 `AlwaysAddPadding()`（`u_common.go:274-287`）。
@@ -646,8 +729,9 @@ impl ClientHelloSpec {
             return Err(SpecError::HelloRetryUnsupportedGroup(selected_group));
         }
 
-        if let Extension::KeyShare(cps) = &self.extensions[at]
-            && cps
+        if let Extension::KeyShare(ks) = &self.extensions[at]
+            && ks
+                .groups
                 .iter()
                 .any(|c| matches!(c, CodePoint::Fixed(g) if *g == selected_group))
         {
@@ -655,7 +739,10 @@ impl ClientHelloSpec {
         }
 
         let mut retry = self.clone();
-        retry.extensions[at] = Extension::KeyShare(vec![CodePoint::Fixed(selected_group)]);
+        // HRR 之后 `key_share` 只剩选中的那个组 ⇒ 复用那对声明随之消失
+        // （RFC 8446 §4.1.4：第二飞只带一项，「两个组共用材料」在这条飞上不存在）。
+        retry.extensions[at] =
+            Extension::KeyShare(KeyShare::groups([CodePoint::Fixed(selected_group)]));
         Ok(retry)
     }
 

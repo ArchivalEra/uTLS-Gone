@@ -467,7 +467,9 @@ fn bisect_what_the_openssl_family_rejects() {
             utls::hello::CodePoint::Fixed(0x0804),
             utls::hello::CodePoint::Fixed(0x0401),
         ]),
-        utls::hello::Extension::KeyShare(vec![utls::hello::CodePoint::Fixed(utls::values::X25519)]),
+        utls::hello::Extension::KeyShare(utls::hello::KeyShare::groups([
+            utls::hello::CodePoint::Fixed(utls::values::X25519),
+        ])),
         utls::hello::Extension::PskKeyExchangeModes { modes: vec![1] },
         utls::hello::Extension::SupportedVersions(vec![utls::hello::CodePoint::Fixed(0x0304)]),
     ];
@@ -507,9 +509,12 @@ fn bisect_2_which_preset_ornament_offends_openssl() {
         for e in &mut s.extensions {
             match e {
                 utls::hello::Extension::SupportedVersions(v)
-                | utls::hello::Extension::SupportedGroups(v)
-                | utls::hello::Extension::KeyShare(v) => {
+                | utls::hello::Extension::SupportedGroups(v) => {
                     v.retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
+                }
+                utls::hello::Extension::KeyShare(v) => {
+                    v.groups
+                        .retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
                 }
                 _ => {}
             }
@@ -564,8 +569,11 @@ fn bisect_3_which_grease_codepoint_offends() {
     let scrub = |which: &str, mut s: ClientHelloSpec| {
         for e in &mut s.extensions {
             match (which, e) {
-                ("key_share", utls::hello::Extension::KeyShare(v))
-                | ("groups", utls::hello::Extension::SupportedGroups(v))
+                ("key_share", utls::hello::Extension::KeyShare(ks)) => {
+                    ks.groups
+                        .retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
+                }
+                ("groups", utls::hello::Extension::SupportedGroups(v))
                 | ("versions", utls::hello::Extension::SupportedVersions(v)) => {
                     v.retain(|c| !matches!(c, utls::hello::CodePoint::Grease));
                 }

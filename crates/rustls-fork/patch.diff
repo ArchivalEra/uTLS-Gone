@@ -700,7 +700,7 @@ index 0000000..9882f93
 +    }
 +}
 diff --git a/src/client/hs.rs b/src/client/hs.rs
-index 4d22c04..32f9863 100644
+index 4d22c04..bf59090 100644
 --- a/src/client/hs.rs
 +++ b/src/client/hs.rs
 @@ -15,9 +15,13 @@ use crate::bs_debug;
@@ -718,7 +718,7 @@ index 4d22c04..32f9863 100644
  use crate::conn::ConnectionRandoms;
  use crate::crypto::{ActiveKeyExchange, KeyExchangeAlgorithm};
  use crate::enums::{
-@@ -36,15 +40,77 @@ use crate::msgs::handshake::{
+@@ -36,15 +40,98 @@ use crate::msgs::handshake::{
      TransportParameters,
  };
  use crate::msgs::message::{Message, MessagePayload};
@@ -758,17 +758,38 @@ index 4d22c04..32f9863 100644
 +    }
 +
 +    fn any_group_matches(&self, group: NamedGroup) -> bool {
-+        self.0.iter().any(|kx| kx.group() == group)
++        self.0.iter().any(|kx| {
++            kx.group() == group
++                || kx.hybrid_component()
++                    .is_some_and(|(g, _)| g == group)
++        })
 +    }
 +
 +    /// The share the server selected, if we offered it.
++    ///
++    /// FORK(utls-rs) (i): **exact group match wins over a hybrid-component match.**
++    ///
++    /// The upstream body matches "this entry's group *or* its hybrid component" in a
++    /// single `position()` pass. With one offered share that is unambiguous, but our
++    /// caller can offer several (see (e)), and then the order decides: for a hello
++    /// carrying `[X25519MLKEM768, X25519]` as *two independent* shares, a server that
++    /// selects `X25519` matched the *hybrid* entry first (via its component) and the
++    /// handshake then completed `complete_hybrid_component` — the hybrid's internal
++    /// X25519 secret, not the one whose public key was on the wire. Symptom:
++    /// `cannot decrypt peer's message`. Two passes fix it: an entry that *is* the
++    /// requested group is always the right one; the component fallback is for the case
++    /// where that group exists only as a hybrid's classical half (uTLS's
++    /// `ReuseHybridAndClassicalKeyShares`, where we offer the hybrid alone).
 +    pub(super) fn take_for(&mut self, their: &KeyShareEntry) -> Option<Box<dyn ActiveKeyExchange>> {
 +        let at = self
 +            .0
 +            .iter()
-+            .position(|kx| kx.group() == their.group || {
-+                kx.hybrid_component()
-+                    .is_some_and(|(g, _)| u16::from(g) == u16::from(their.group))
++            .position(|kx| kx.group() == their.group)
++            .or_else(|| {
++                self.0.iter().position(|kx| {
++                    kx.hybrid_component()
++                        .is_some_and(|(g, _)| g == their.group)
++                })
 +            })?;
 +        Some(self.0.remove(at))
 +    }
@@ -796,7 +817,7 @@ index 4d22c04..32f9863 100644
  struct ExpectServerHello {
      input: ClientHelloInput,
      transcript_buffer: HandshakeHashBuffer,
-@@ -56,7 +122,7 @@ struct ExpectServerHello {
+@@ -56,7 +143,7 @@ struct ExpectServerHello {
      //
      // If this is `None` then we do not support early data.
      early_data_key_schedule: Option<KeyScheduleEarly>,
@@ -805,7 +826,7 @@ index 4d22c04..32f9863 100644
      suite: Option<SupportedCipherSuite>,
      ech_state: Option<EchState>,
  }
-@@ -75,6 +141,65 @@ pub(super) struct ClientHelloInput {
+@@ -75,6 +162,65 @@ pub(super) struct ClientHelloInput {
      pub(super) session_id: SessionId,
      pub(super) server_name: ServerName<'static>,
      pub(super) prev_ech_ext: Option<EncryptedClientHello>,
@@ -871,7 +892,7 @@ index 4d22c04..32f9863 100644
  }
  
  impl ClientHelloInput {
-@@ -127,6 +252,24 @@ impl ClientHelloInput {
+@@ -127,6 +273,24 @@ impl ClientHelloInput {
              crate::rand::random_u16(config.provider.secure_random)?,
          );
  
@@ -896,7 +917,7 @@ index 4d22c04..32f9863 100644
          Ok(Self {
              resuming,
              random: Random::new(config.provider.secure_random)?,
-@@ -135,6 +278,8 @@ impl ClientHelloInput {
+@@ -135,6 +299,8 @@ impl ClientHelloInput {
              session_id,
              server_name,
              prev_ech_ext: None,
@@ -905,7 +926,7 @@ index 4d22c04..32f9863 100644
              config,
          })
      }
-@@ -154,11 +299,67 @@ impl ClientHelloInput {
+@@ -154,11 +320,67 @@ impl ClientHelloInput {
          }
  
          let key_share = if self.config.needs_key_share() {
@@ -978,7 +999,7 @@ index 4d22c04..32f9863 100644
          } else {
              None
          };
-@@ -191,7 +392,7 @@ impl ClientHelloInput {
+@@ -191,7 +413,7 @@ impl ClientHelloInput {
  fn emit_client_hello_for_retry(
      mut transcript_buffer: HandshakeHashBuffer,
      retryreq: Option<&HelloRetryRequest>,
@@ -987,7 +1008,7 @@ index 4d22c04..32f9863 100644
      extra_exts: ClientExtensionsInput<'static>,
      suite: Option<SupportedCipherSuite>,
      mut input: ClientHelloInput,
-@@ -212,6 +413,28 @@ fn emit_client_hello_for_retry(
+@@ -212,6 +434,28 @@ fn emit_client_hello_for_retry(
      // should be unreachable thanks to config builder
      assert!(supported_versions.any(|_| true));
  
@@ -1016,7 +1037,7 @@ index 4d22c04..32f9863 100644
      let mut exts = Box::new(ClientExtensions {
          // offer groups which are usable for any offered version
          named_groups: Some(
-@@ -288,7 +511,8 @@ fn emit_client_hello_for_retry(
+@@ -288,7 +532,8 @@ fn emit_client_hello_for_retry(
  
      if let Some(key_share) = &key_share {
          debug_assert!(supported_versions.tls13);
@@ -1026,7 +1047,7 @@ index 4d22c04..32f9863 100644
  
          if !retryreq
              .map(|rr| rr.key_share.is_some())
-@@ -299,7 +523,7 @@ fn emit_client_hello_for_retry(
+@@ -299,7 +544,7 @@ fn emit_client_hello_for_retry(
              // algorithm is also supported separately by our provider for this version
              // (`find_kx_group` looks that up).
              if let Some((component_group, component_share)) =
@@ -1035,7 +1056,7 @@ index 4d22c04..32f9863 100644
                      .hybrid_component()
                      .filter(|(group, _)| {
                          config
-@@ -377,6 +601,8 @@ fn emit_client_hello_for_retry(
+@@ -377,6 +622,8 @@ fn emit_client_hello_for_retry(
      // Extensions MAY be randomized
      // but they also need to keep the same order as the previous ClientHello
      exts.order_seed = input.hello.extension_order_seed;
@@ -1044,7 +1065,7 @@ index 4d22c04..32f9863 100644
  
      let mut cipher_suites: Vec<_> = config
          .provider
-@@ -388,11 +614,31 @@ fn emit_client_hello_for_retry(
+@@ -388,11 +635,31 @@ fn emit_client_hello_for_retry(
          })
          .collect();
  
@@ -1077,7 +1098,7 @@ index 4d22c04..32f9863 100644
      let mut chp_payload = ClientHelloPayload {
          client_version: ProtocolVersion::TLSv1_2,
          random: input.random,
-@@ -542,6 +788,267 @@ fn emit_client_hello_for_retry(
+@@ -542,6 +809,267 @@ fn emit_client_hello_for_retry(
      })
  }
  
@@ -1345,7 +1366,7 @@ index 4d22c04..32f9863 100644
  /// Prepares `exts` and `cx` with TLS 1.2 or TLS 1.3 session
  /// resumption.
  ///
-@@ -839,7 +1346,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
+@@ -839,7 +1367,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
                      transcript,
                      self.early_data_key_schedule,
                      // We always send a key share when TLS 1.3 is enabled.
@@ -1355,7 +1376,7 @@ index 4d22c04..32f9863 100644
                      &m,
                      self.ech_state,
                      self.input,
-@@ -880,21 +1388,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -880,21 +1409,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
          cx.common.check_aligned_handshake()?;
  
          // We always send a key share when TLS 1.3 is enabled.
@@ -1497,7 +1518,7 @@ index 4d22c04..32f9863 100644
                  return Err({
                      cx.common.send_fatal_alert(
                          AlertDescription::IllegalParameter,
-@@ -1022,28 +1642,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -1022,28 +1663,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
              cx.data.early_data.rejected();
          }
  
