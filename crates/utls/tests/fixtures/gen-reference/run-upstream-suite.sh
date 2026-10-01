@@ -71,6 +71,26 @@ fi
 printf '{"Replace":{"%s":"%s"}}\n' "$REF/tls_test.go" "$W/tls_test.go" > "$W/overlay.json"
 
 cd "$REF"
+
+# ── 把**我们自己的探针**从树里摘掉，再跑 ──
+# `ech_utls_server.rs` 那条判据会把 `ech_server_live_test.go` 复制进树里；手工跑探针时
+# 也可能留下别的几个。它们不是上游套件的一部分，而且有的要真外网、跑不了就
+# `t.Skip` —— 留在树里会让下面的「跳过集恰如预期」响（本轮实测就这么红过一次，
+# 而那次是**脚本对了**：树不干净）。只按**确切文件名**删，都是本仓 probes/ 里的
+# 已知文件；上游自己的 `ech_test.go` 不在名单里，绝不动。
+removed=""
+for probe in ech_inner_probe_test.go ech_decoder_probe_test.go ech_confirmation_probe_test.go \
+             ech_server_probe_test.go ech_server_live_test.go ech_live_probe_test.go \
+             egress_candidates_test.go; do
+    if [ -f "$REF/$probe" ]; then
+        rm -f "$REF/$probe"
+        removed="$removed $probe"
+    fi
+done
+if [ -n "$removed" ]; then
+    echo "（摘掉了本仓留在参照树里的探针：$removed —— 它们不属于上游套件）"
+fi
+
 # 模块代理：默认 `off` —— 本地这一跑因此**顺带证明它不需要联网取模块**（依赖都在
 # module cache 里）。CI runner 的缓存是冷的，必须显式覆盖（见 ci.yml 的 `upstream-no-skip`）。
 : "${GOPROXY:=off}"
