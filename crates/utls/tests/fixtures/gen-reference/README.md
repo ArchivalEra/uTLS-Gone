@@ -13,8 +13,10 @@
 export PATH="$HOME/.local/go/bin:$PATH" GOPROXY=https://goproxy.cn,direct
 curl -sSL -o /tmp/utls-master.tar.gz \
   https://codeload.github.com/refraction-networking/utls/tar.gz/refs/heads/master
-mkdir -p /tmp/utls-ref && tar xzf /tmp/utls-master.tar.gz -C /tmp/utls-ref \
-  && mv /tmp/utls-ref/utls-master-* /tmp/utls-ref/utls-master
+mkdir -p /tmp/utls-ref/utls-master
+# `--strip-components=1`：codeload 的顶层目录名随 ref 而变（分支是 `utls-master/`、
+# tag 是 `utls-1.8.2/`），写死 `mv utls-master-*` 会踩空（CI 上实测踩过）。
+tar xzf /tmp/utls-master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
 cp crates/utls/tests/fixtures/gen-reference/probes/ech_*_test.go /tmp/utls-ref/utls-master/
 ```
 

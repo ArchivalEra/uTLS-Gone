@@ -113,10 +113,12 @@ jobs:
       - name: 取 uTLS 源码树（探针要在这棵树上跑）
         run: |
           set -eu
-          mkdir -p /tmp/utls-ref && cd /tmp/utls-ref
-          curl -sSL -o master.tar.gz \
+          mkdir -p /tmp/utls-ref/utls-master
+          curl -sSL -o /tmp/master.tar.gz \
             https://codeload.github.com/refraction-networking/utls/tar.gz/refs/heads/master
-          tar xzf master.tar.gz && mv utls-master-* utls-master
+          # --strip-components=1：codeload 给的顶层目录名随 ref 而变
+          # （分支 ref 是 `utls-master/`，tag 是 `utls-1.8.2/`），写死 mv 会踩空。
+          tar xzf /tmp/master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
       - name: 内层与 uTLS 逐字节相同
         run: cargo test -p utls-engine --test ech_inner_utls -- --nocapture
       - name: 我们的客户端 vs uTLS 自己的 ECH 服务端（真握手）
@@ -136,10 +138,12 @@ jobs:
       - name: 取原版源码并跑它自己的测试
         run: |
           set -eu
-          mkdir -p /tmp/utls-ref && cd /tmp/utls-ref
-          curl -sSL -o master.tar.gz \
+          mkdir -p /tmp/utls-ref/utls-master
+          curl -sSL -o /tmp/master.tar.gz \
             https://codeload.github.com/refraction-networking/utls/tar.gz/refs/heads/master
-          tar xzf master.tar.gz && mv utls-master-* utls-master
+          # --strip-components=1：codeload 给的顶层目录名随 ref 而变
+          # （分支 ref 是 `utls-master/`，tag 是 `utls-1.8.2/`），写死 mv 会踩空。
+          tar xzf /tmp/master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
           cd utls-master
           # 那两条要 www.google.com / yahoo.com 的 egress（见文件头说明），这里跳过；
           # 除它们之外**一条都不跳**，唯一被 skip 的是上游自己 t.Skip 的那条。
