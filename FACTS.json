@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T20:36:03+0800",
+ "generated": "2026-10-01T20:53:38+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -44,7 +44,7 @@
    "note": "文档"
   },
   "md_lines": {
-   "value": 2953,
+   "value": 2964,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
    "source": "repo",
    "note": "文档"

@@ -1,11 +1,22 @@
 # 待提 issue：zcode-reflect 的三个机制缺口
 
-**状态**：未提。`gh` 现在用不了 —— `gh auth status` 报 `The token in ~/.config/gh/hosts.yml is invalid`，
-`gh repo create` / `gh repo view` 都是 `HTTP 401`。（注意：当时 `gh api repos/...` 这类 **REST** 调用是通的，
-挂的是 **GraphQL** 端点 —— 所以「gh 用不了」要分端点说，别一概而论。）
-token 修好后把下面三条拿去提即可，互相独立，可以拆成三个 issue。
+**状态**：已结账（2026-10-01）。token 修好后的提交去向：
 
-三条都带复跑方式。**标了「实测」的是在本仓真跑出来的；标了「按文档判定」的是读 schema 推的，
+| 本文档条目 | 去向 | 结果 |
+|---|---|---|
+| 1（`cmd` 没人验） | [Einfacht#2](https://github.com/ArchivalEra/Einfacht/issues/2) ① | 已修：`check_facts_replay.py` 落地 |
+| 2（`.zcode/config.json` 形状） | [Einfacht#4](https://github.com/ArchivalEra/Einfacht/issues/4) ① | 待上游处理 |
+| 3（pre-commit「重算」vs 重渲染） | [Einfacht#4](https://github.com/ArchivalEra/Einfacht/issues/4) ③ | 待上游处理 |
+| 4（`cmd` 引号进变量静默失效） | **未提** —— 属使用注意，一句话进 README/collect 契约即可 | — |
+| 5（`md_lines` 自指悖论） | [Einfacht#4](https://github.com/ArchivalEra/Einfacht/issues/4) ⑥（块排除 awk 模式） | 待上游处理 |
+
+#4 除承接上表外还带四条**使用方实战**新内容：闸门没有 CI 落点（②）、台账缺官方跨语言只读出口
+`--get KEY`（④）、「每跑必变」的值与复跑闸门冲突的样本 + `*_stable` 稳定性标记模式（⑤）。
+当初的 token 情况备注（历史，保留）：`gh auth status` 报 `The token in ~/.config/gh/hosts.yml is invalid`，
+`gh repo create` / `gh repo view` 都是 `HTTP 401`；而 `gh api repos/...` 这类 **REST** 调用是通的，
+挂的是 **GraphQL** 端点 —— 所以「gh 用不了」要分端点说，别一概而论。
+
+以下条目都带复跑方式。**标了「实测」的是在本仓真跑出来的；标了「按文档判定」的是读 schema 推的，
 没有活体触发**（SessionStart 无法从会话内触发）。
 
 ---
