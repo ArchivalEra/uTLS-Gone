@@ -31,7 +31,7 @@
 | `u_conn_test.go` 的 parrot 握手族 + `testdata/Client-TLSv*-UTLS-*`（55 个） | 已判 | `crates/utls/tests/utls_testdata.rs`：**39 个逐字节对账**（含 `Flow 1` 与 HRR 的 `Flow 3`）；16 个有理由地跳过，逐条写在 `fixtures/utls-testdata/README.md` |
 | `u_clienthello_json_test.go` + `testdata/ClientHello-JSON-*.json`（4 个） | **未做** | 我们连 uTLS 的 `ClientHelloSpec` JSON **格式**都还没有（`serde_json` 只是 dev-dep，用来读自己的夹具）。见「三」 |
 | `u_common_test.go`（`isGREASEUint16`） | 已判 | `crates/utls/src/ja3.rs`、`src/hello/stream.rs` 的 GREASE 判据 |
-| `u_ech_test.go`（`TestGREASEECHWrite`，对 inline raw vector） | **部分** | 结构 + 长度分布有判据（`src/hello/tests.rs` 的 `different_seeds_differ_only_through_grease_ech_payload`），但**没有**与上游那条 inline 向量做逐字节比。见「三」 |
+| `u_ech_test.go`（`TestGREASEECHWrite`，对 inline raw vector） | **已判** | `src/hello/tests.rs` 的 `grease_ech_matches_the_upstream_inline_vector_fields`：把上游那条 254 字节向量**逐字段**移植（先判向量自洽，再判我们编出来的体长度与每个结构字段相同）。上游那条判据本身也不比载荷字节（它是每连接的随机量），所以这就是它的等价形式 |
 | `u_parrots_test.go` 的 `ReuseHybridAndClassicalKeyShares`（`:63` + 互补 `:96`） | **本轮已补** | `crates/utls-engine/tests/key_share_reuse.rs`（4 条）：Firefox 148 线上末 32 字节相同 + 只认经典组时 `Full`、Chrome 133 必须独立、声明后选混合组仍 `Full`、`from_bytes` 不凭空补这个声明。实现：`KeyShare::reuse` + 引擎按 `hybrid_component()` 只交一把 |
 | `u_fingerprinter_test.go` 的**解析**半边（4 个 golden spec、内联的真实捕获） | **部分** | `real_world_client_hello_round_trips`（Google 捕获逐字节）；另两条捕获（Slack 的 KeepPSK、curl 的 dump-larger-than-extensions）**未判**。见「三」 |
 
@@ -65,15 +65,14 @@
    - `AllowBluntMimicry`：**我们恒 blunt**（`crates/utls/src/hello/parse.rs:20` 把未知扩展
      一律留成 `Opaque`，字节原样保留），与上游默认（`false`）不同 —— 要么补开关，
      要么把这条差异写死在表里（**不允许默默不同**）。
-4. **GREASE-ECH 的 golden vector**（上游 `u_ech_test.go:12` 的内联向量）。
-5. **一条被 `from_bytes` 挡住的等价性**：`parse.rs` 把 `key_share` 归成 `Opaque`
+4. **一条被 `from_bytes` 挡住的等价性**：`parse.rs` 把 `key_share` 归成 `Opaque`
    （这正是回放能逐字节相同的原因），代价是**反解出来的 spec 没有「组」**，
    于是它走不了引擎 —— 而 uTLS 那边可以：它在写出时**总是**用引擎新生成的密钥覆盖
    spec 里的 keyshare 数据（`handshake_client_tls13.go:391`，
    `// new ks seems to be generated either way`），所以一份 `Fingerprinter` 出的 spec
    照样能握手。这是「Fingerprinter 一族」的根，见 `tests/key_share_reuse.rs` 第四条里
    钉住的那条已知边界。
-6. **early data（0-RTT）**：上游 `quic_test.go` 里有 declined-early-data 的判据；
+5. **early data（0-RTT）**：上游 `quic_test.go` 里有 declined-early-data 的判据；
    我们一行没有。uTLS 的早期实现同样不支持（`u_conn.go` 的注释），但这属于「未做」，
    不写成「上游也没有」。
 

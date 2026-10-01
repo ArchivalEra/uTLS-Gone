@@ -86,6 +86,33 @@ fn grease_ech_body_len(bytes: &[u8]) -> Option<usize> {
     None
 }
 
+/// 从线字节里取出 GREASE-ECH 扩展（0xfe0d）的**体**。
+///
+/// 与 `grease_ech_body_len` 同一套定位逻辑，只是把体本身也交出来 ——
+/// 判「与上游那条向量逐字段相同」需要体，而判「长度分布」只需要长度。
+fn grease_ech_body_bytes(bytes: &[u8]) -> Option<&[u8]> {
+    let len = ((bytes[1] as usize) << 16) | ((bytes[2] as usize) << 8) | bytes[3] as usize;
+    let body = &bytes[4..4 + len];
+    let mut p = 2 + 32;
+    p += 1 + body[p] as usize;
+    let cs = u16::from_be_bytes([body[p], body[p + 1]]) as usize;
+    p += 2 + cs;
+    p += 1 + body[p] as usize;
+    let exts = u16::from_be_bytes([body[p], body[p + 1]]) as usize;
+    p += 2;
+    let ext_bytes = &body[p..p + exts];
+    let mut q = 0usize;
+    while q < ext_bytes.len() {
+        let id = u16::from_be_bytes([ext_bytes[q], ext_bytes[q + 1]]);
+        let bl = u16::from_be_bytes([ext_bytes[q + 2], ext_bytes[q + 3]]) as usize;
+        if id == v::EXT_ENCRYPTED_CLIENT_HELLO {
+            return Some(&ext_bytes[q + 4..q + 4 + bl]);
+        }
+        q += 4 + bl;
+    }
+    None
+}
+
 // ── 往返：接口最强的单条断言 ────────────────────────────────────────────────
 
 #[test]
@@ -1317,4 +1344,104 @@ fn extension_types_in_wire_order(bytes: &[u8]) -> Vec<u16> {
         q += 4 + bl;
     }
     out
+}
+
+/// 上游 `u_ech_test.go:12`（`TestGREASEECHWrite`）里那条**内联真向量**，在这里逐字段移植。
+///
+/// # 上游判的是什么
+///
+/// 把这条 `0xfe0d` 读进它的结构、再写出来，要求**长度与结构字段一致**：
+/// 候选套件 1 个 = `(HKDF_SHA256, AES_128_GCM)`、封装密钥 32 字节、
+/// 载荷长度字段 `0x00d0`（= 192 + 16 字节 AEAD tag）。它**不比载荷字节** ——
+/// 载荷在真实实现里是 HPKE 封装结果，本来就是每连接的随机量。
+///
+/// # 我们为什么能移植、以及判到哪里
+///
+/// 我们的编码器产的是同一个线格式（`[ECH_OUTER_CLIENT_HELLO] || kdf || aead ||
+/// config_id || enc_len || enc || payload_len || payload`），且**不**做真 HPKE 封装
+/// （用等长随机字节代替，取舍登记在 `STATE.md` 的已知缺口里）。所以能判的是
+/// **结构 + 长度**，而这恰好就是上游那条判据的全部内容：
+///
+/// 1. 向量自身自洽（类型、长度字段、各结构字段）—— 免得一个抄错的常量当权威；
+/// 2. 用**能表达这条向量的选项**（1 个候选套件 + 载荷候选 192）编出来的体，
+///    长度与每个结构字段都与它相同。
+///
+/// config_id / 封装密钥 / 载荷的**内容**是每连接的随机量，两边都不比 —— 只判长度。
+#[test]
+fn grease_ech_matches_the_upstream_inline_vector_fields() {
+    /// `u_ech_test.go:12` 的 `rawECH_HKDFSHA256_AES128GCM.raw`（254 字节 = 4 字节扩展头 + 250 体）。
+    const VECTOR: &[u8] = &[
+    0xfe, 0x0d, 0x00, 0xfa, 0x00, 0x00, 0x01, 0x00, 0x01, 0x77, 0x00, 0x20,
+    0x3d, 0x3e, 0xe0, 0xa6, 0x1f, 0x46, 0x4f, 0x89, 0x5f, 0x39, 0x4a, 0xfd,
+    0x6e, 0xbc, 0x7f, 0x4e, 0xe2, 0x5a, 0xdc, 0x4e, 0xda, 0x9a, 0x9f, 0x5f,
+    0x2b, 0xf5, 0x21, 0x0e, 0xc6, 0x33, 0x64, 0x32, 0x00, 0xd0, 0xae, 0xff,
+    0x25, 0xd6, 0x4a, 0x23, 0x3a, 0x13, 0x5b, 0xdc, 0xe4, 0xaf, 0x6c, 0xb8,
+    0xaf, 0x66, 0x57, 0xbd, 0x44, 0x2d, 0xca, 0xb6, 0xbb, 0xaf, 0xda, 0x8a,
+    0x6b, 0x12, 0xb2, 0x42, 0xf1, 0x3d, 0xf6, 0x26, 0xd4, 0x82, 0x30, 0x40,
+    0xd4, 0x53, 0x06, 0x7c, 0xf1, 0x10, 0xf3, 0x80, 0x16, 0x95, 0xa7, 0xfb,
+    0x08, 0x76, 0x82, 0x85, 0x86, 0xb4, 0x3a, 0x7b, 0xea, 0xfb, 0xaa, 0xc3,
+    0xe0, 0x51, 0xcf, 0x42, 0xf6, 0xa0, 0x15, 0x0e, 0x26, 0x4d, 0x37, 0x35,
+    0x95, 0x4d, 0xce, 0xf6, 0xd6, 0x58, 0x78, 0x67, 0x42, 0xd3, 0xc6, 0xac,
+    0xb5, 0xe9, 0x3e, 0xb6, 0x02, 0x87, 0x66, 0xb3, 0xb2, 0x56, 0x99, 0xb2,
+    0xdb, 0x8c, 0x3b, 0x04, 0xf1, 0x7c, 0x85, 0x5b, 0xc3, 0x93, 0x8e, 0xdb,
+    0x5d, 0x87, 0x66, 0xfb, 0x66, 0x54, 0xf3, 0xec, 0x25, 0xe5, 0x70, 0x3c,
+    0xd5, 0x0e, 0x8e, 0xd5, 0xd2, 0xbb, 0x24, 0x2b, 0xb5, 0x01, 0xa0, 0x5e,
+    0xba, 0x45, 0xaf, 0x68, 0x96, 0x8a, 0x83, 0x90, 0x20, 0x5b, 0x8c, 0x7d,
+    0x24, 0x00, 0x2f, 0x08, 0x7f, 0x29, 0x8c, 0x32, 0x5e, 0x57, 0xb5, 0x64,
+    0xaa, 0x0b, 0xf4, 0x42, 0x54, 0xdc, 0xe5, 0xd4, 0x08, 0xf4, 0x4d, 0x27,
+    0x5d, 0x90, 0x52, 0x32, 0x22, 0xc8, 0xb6, 0xd8, 0x80, 0xa6, 0x30, 0xa0,
+    0x20, 0x98, 0x2c, 0x0b, 0x3e, 0x55, 0x4a, 0x09, 0xa9, 0x09, 0xa4, 0x99,
+    0x89, 0x02, 0x6e, 0xab, 0xe3, 0xa1, 0xe9, 0xb8, 0x58, 0x20, 0xcc, 0xc8,
+    0xb0, 0x73,
+    ];
+
+    // ① 向量自身自洽 —— 结构字段写在断言里，好让「我们编出来的」有可比的对象。
+    assert_eq!(&VECTOR[0..2], &[0xfe, 0x0d], "扩展类型该是 GREASE-ECH");
+    assert_eq!(
+        u16::from_be_bytes([VECTOR[2], VECTOR[3]]) as usize,
+        VECTOR.len() - 4,
+        "长度字段该吃掉余下的全部字节"
+    );
+    let up = &VECTOR[4..];
+    assert_eq!(up[0], v::ECH_OUTER_CLIENT_HELLO, "体首字节");
+    assert_eq!(
+        u16::from_be_bytes([up[1], up[2]]),
+        v::HPKE_KDF_HKDF_SHA256,
+        "候选套件的 KDF"
+    );
+    assert_eq!(
+        u16::from_be_bytes([up[3], up[4]]),
+        v::HPKE_AEAD_AES_128_GCM,
+        "候选套件的 AEAD"
+    );
+    let up_enc_len = u16::from_be_bytes([up[6], up[7]]) as usize;
+    let up_payload_len = u16::from_be_bytes([up[40], up[41]]) as usize;
+    assert_eq!(up_enc_len, v::X25519_ENCAPSULATED_KEY_LEN, "封装密钥长度字段");
+    assert_eq!(
+        up_payload_len,
+        192 + 16,
+        "载荷长度字段 = 上游的 CandidatePayloadLens(192) + AEAD tag(16)"
+    );
+    assert_eq!(6 + 2 + up_enc_len + 2 + up_payload_len, up.len(), "向量自洽（无余量）");
+
+    // ② 我们的编码器用「能表达这条向量的选项」编一遍，逐字段对。
+    let mut spec = chrome();
+    let at = spec
+        .extensions
+        .iter()
+        .position(|e| matches!(e, Extension::GreaseEch(_)))
+        .expect("Chrome 133 自带 GREASE-ECH");
+    spec.extensions[at] = Extension::GreaseEch(GreaseEchOptions {
+        cipher_suites: vec![(v::HPKE_KDF_HKDF_SHA256, v::HPKE_AEAD_AES_128_GCM)],
+        payload_lens: vec![192],
+    });
+    let hello = spec.marshal(&inputs_with_keys(7)).unwrap();
+    let ours = grease_ech_body_bytes(hello.as_bytes()).expect("我们编出来的体里有 GREASE-ECH");
+
+    assert_eq!(ours.len(), up.len(), "体长该与上游向量相同（250）");
+    assert_eq!(ours[0], up[0], "体首字节（ECH_OUTER_CLIENT_HELLO）");
+    assert_eq!(&ours[1..3], &up[1..3], "KDF id");
+    assert_eq!(&ours[3..5], &up[3..5], "AEAD id");
+    assert_eq!(&ours[6..8], &up[6..8], "封装密钥长度字段（0x0020）");
+    assert_eq!(&ours[40..42], &up[40..42], "载荷长度字段（0x00d0）");
 }

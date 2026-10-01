@@ -206,7 +206,7 @@ for g in zreflect/check_*.py; do python3 "$g"; done && sh gates-selftest.sh
   没有正向结论）已补齐，见 `crates/utls-engine/tests/mixed_group_handshake.rs`。
 - **真缺口（uTLS 有、我们没有）**：QUIC 指纹层、`ClientHelloSpec` 的 JSON 格式、
   Fingerprinter 的三件事（KeepPSK 捕获 / dump-larger-than-extensions / `AllowBluntMimicry`
-  口径）、GREASE-ECH 的 golden vector、early data。
+  口径）、early data。
 - **不重写**：上游那些测 Go 引擎本身的用例（服务端、记录层、密钥计划、QUIC 连接状态机）。
 - **无 oracle**：`Roller` —— 上游自己零测试。
 
