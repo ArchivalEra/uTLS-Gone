@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T12:34:14+0800",
+ "generated": "2026-10-01T12:41:27+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -20,7 +20,7 @@
    "note": "我们自己写的 Rust"
   },
   "rs_lines": {
-   "value": 19633,
+   "value": 19640,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"

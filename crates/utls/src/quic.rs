@@ -402,7 +402,11 @@ mod tests {
         let read_versions = |s: &mut Stream| -> Vec<u32> {
             let val = vi.value(s);
             let (chunks, rest) = val.as_chunks::<4>();
-            assert!(rest.is_empty(), "体长该是 4 的整数倍，余下 {} 字节", rest.len());
+            assert!(
+                rest.is_empty(),
+                "体长该是 4 的整数倍，余下 {} 字节",
+                rest.len()
+            );
             chunks.iter().map(|c| u32::from_be_bytes(*c)).collect()
         };
 
@@ -452,7 +456,10 @@ mod tests {
         let mut s = stream(13);
         let v = vi.value(&mut s);
         let sentinel = u32::from_be_bytes(v[4..8].try_into().unwrap());
-        assert!(sentinel & 0x0f0f_0f0f == 0x0a0a_0a0a, "哨兵 {sentinel:#010x} 不是保留版本");
+        assert!(
+            sentinel & 0x0f0f_0f0f == 0x0a0a_0a0a,
+            "哨兵 {sentinel:#010x} 不是保留版本"
+        );
         assert_eq!(u32::from_be_bytes(v[0..4].try_into().unwrap()), VERSION_1);
     }
 
