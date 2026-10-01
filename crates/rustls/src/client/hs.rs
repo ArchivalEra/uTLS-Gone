@@ -186,6 +186,10 @@ pub(super) struct ForkResumption {
     /// per flight too (`prepare_resumption` runs again on a retry).
     secret: zeroize::Zeroizing<Vec<u8>>,
     suite: &'static Tls13CipherSuite,
+    /// 该票据是否允许 0-RTT，以及额度。0 = 票据没带 `early_data` 扩展。
+    /// 来自 `Tls13ClientSessionValue::max_early_data_size()` —— 与自建路径
+    /// `prepare_resumption` 读的是同一个值。
+    max_early_data_size: usize,
 }
 
 impl ForkResumption {
@@ -220,6 +224,7 @@ fn fork_resumption_offer(
         },
         secret: zeroize::Zeroizing::new(tls13.secret().to_vec()),
         suite: tls13.suite(),
+        max_early_data_size: tls13.max_early_data_size() as usize,
     })
 }
 
@@ -836,6 +841,9 @@ fn emit_external_client_hello(
     cx: &mut ClientContext<'_>,
     supported_versions: SupportedProtocolVersions,
 ) -> NextStateOrError<'static> {
+    // Cloned up front: the early-data arming below needs the key log *and* a
+    // mutable borrow of `input.sent_tls13_fake_ccs`, which must not overlap.
+    let key_log = input.config.key_log.clone();
     // ===== FORK(utls-rs) (g): fill in the PSK binder =====
     // The caller reserved `slot.binder_len` bytes for it and told us where the
     // truncated message ends; the real value needs the session secret, so it can only
@@ -1042,6 +1050,50 @@ fn emit_external_client_hello(
 
     transcript_buffer.add_message(&ch);
     cx.common.send_msg(ch, false);
+
+    // FORK(utls-rs) (g)+: arm early data on the supplied path, exactly as the
+    // self-built path does right after *its* hello goes out (the
+    // `derive_early_traffic_secret` call at the end of `emit_client_hello_for_retry`,
+    // with `prepare_resumption` having armed `early_data.enable(...)` first).
+    // Three facts make this sound here:
+    //
+    // * the schedule above came from the same session secret the binder used, and
+    // * the early traffic secret is bound to the transcript of the hello that just
+    //   went out — the caller's bytes, including the caller's client random (the
+    //   same wire-is-truth rule as the TLS 1.2 PRF fix) — which is exactly what
+    //   `derive_early_traffic_secret` hashes below, and
+    // * the caller's hello itself carries the zero-length `early_data` extension
+    //   (RFC 8446 §4.2.10) — the caller declares it in the spec, the same way it
+    //   declares every other extension.
+    //
+    // Without this, `early_traffic` never turns true on the supplied path and every
+    // early-data write is refused: the handshake would still complete *resumed*,
+    // but silently without 0-RTT — which is the worst kind of miss, because nothing
+    // errors. Found by writing the early-data judgment before this block existed.
+    if retryreq.is_none()
+        && input.config.enable_early_data
+        && early_data_key_schedule.is_some()
+    {
+        // Same condition `prepare_resumption` applies on the self-built path
+        // (`config.enable_early_data && max_early_data_size > 0 && !doing_retry`).
+        let resumption = input
+            .fork_resumption
+            .as_ref()
+            .expect("an armed early schedule implies a fork resumption session");
+        if resumption.max_early_data_size > 0 {
+            cx.data.early_data.enable(resumption.max_early_data_size);
+            let schedule = early_data_key_schedule.as_ref().unwrap();
+            tls13::derive_early_traffic_secret(
+                &*key_log,
+                cx,
+                resumption.suite.common.hash_provider,
+                schedule,
+                &mut input.sent_tls13_fake_ccs,
+                &transcript_buffer,
+                &input.random.0,
+            );
+        }
+    }
 
     let next = ExpectServerHello {
         input,

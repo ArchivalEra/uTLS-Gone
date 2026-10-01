@@ -305,6 +305,11 @@ pub enum Extension {
     /// rustls 的 QUIC 服务端要求 ClientHello 必须带它，否则握手直接失败 ——
     /// 这就是「指纹化 QUIC 客户端」必须走本扩展的原因。
     QuicTransportParameters(Vec<u8>),
+    /// `early_data`（RFC 8446 §4.2.10）：**零长度**体，只在恢复握手提供 0-RTT 时
+    /// 与 PSK 一起出现。上游自建路径在 `prepare_resumption` 里加
+    /// （`u_conn.rs` 的 `exts.early_data_request`）；外供路径由调用方在 spec 里声明
+    /// —— 它会改变指纹（扩展多一条），所以必须显式。
+    EarlyData,
     /// uTLS 的 GREASE ECH（`0xfe0d`）：GREASE 用的假 ECH。
     ///
     /// 候选集**随预设不同**：Chrome 列 1 个候选套件与 4 个载荷长度（⇒ 总长每连接会变），
@@ -445,6 +450,7 @@ impl Extension {
             Extension::GreaseEch(_) => v::EXT_ENCRYPTED_CLIENT_HELLO,
             Extension::PreSharedKey(_) => v::EXT_PRE_SHARED_KEY,
             Extension::QuicTransportParameters(_) => v::EXT_QUIC_TRANSPORT_PARAMETERS,
+            Extension::EarlyData => v::EXT_EARLY_DATA,
             Extension::StatusRequest => v::EXT_STATUS_REQUEST,
             Extension::ExtendedMasterSecret => v::EXT_EXTENDED_MASTER_SECRET,
             Extension::RenegotiationInfo(_) => v::EXT_RENEGOTIATION_INFO,

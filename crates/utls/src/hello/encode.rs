@@ -243,6 +243,14 @@ pub(crate) fn marshal(
                     emit: true,
                 });
             }
+            Extension::EarlyData => {
+                resolved.push(Resolved {
+                    ty: v::EXT_EARLY_DATA,
+                    body: Vec::new(),
+                    pinned: false,
+                    emit: true,
+                });
+            }
             Extension::QuicTransportParameters(bytes) => {
                 resolved.push(Resolved {
                     ty: v::EXT_QUIC_TRANSPORT_PARAMETERS,

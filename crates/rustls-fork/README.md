@@ -283,6 +283,29 @@ cd rustls-0.23.45 && git init -q . && git add -A \
 看起来像 PSK 写错了。本仓的复用测试第一版就是这么假绿的，诊断记录在
 `crates/utls-engine/tests/common/mod.rs` 的 `client_config_with_roots_and_store` 上。
 
+### (g) 补记二：早数据（0-RTT）在外供路径上的三件事
+
+rustls 的 TCP 0-RTT 只支持**有状态恢复**（RFC 8446 §8.1 防重放：服务端把会话值存在
+自己的 `session_storage` 里才能识别重放；无状态票据被 rustls 明确拒绝 ——
+`server/tls13.rs` 的 `warn!("early_data with stateless resumption is not allowed")`）。
+在这条路上，外供 hello 要发 0-RTT 需要**三件事**，缺一不可，且都在 fork 的
+`emit_external_client_hello` 里补齐（判据 `crates/utls-engine/tests/early_data.rs`）：
+
+1. **早数据调度**：`(psk_binder, fork_resumption)` 都存在时，`early_data_key_schedule`
+   接 (g) 时就已经武装 —— 这是顺手做对的。
+2. **`EarlyData::enable(max_early_data_size)`**：自建路径在 `prepare_resumption` 里调；
+   外供路径原本没人调 ⇒ `early_traffic` 永远是假 ⇒ 应用写早数据被拒。
+   `ForkResumption` 因此带上 `max_early_data_size`（来自同一张票据）。
+3. **`derive_early_traffic_secret`**：把 `early_traffic` 置真并装上早加密器 ——
+   哈希的是**刚上线的这份 hello**（含调用方的 client random，与 TLS 1.2 PRF 修复
+   同一条「线上的是事实」规则）。另外调用方 hello 还必须**自带**零长度
+   `early_data` 扩展（RFC 8446 §4.2.10；模型 `Extension::EarlyData`，插在 PSK 之前），
+   并满足 rustls 的门控：`retryreq.is_none()` + `config.enable_early_data` +
+   `max_early_data_size > 0`。
+
+少了 2 或 3 的任何一件，握手**照样完成且恢复**，0-RTT 却悄悄没了 ——
+不报错的缺失，是最需要一条判据的原因。
+
 ### (h) 真 ECH —— 「形状像」与「在提议」是两件不同的事
 
 指纹层只需要一条**形状正确**的 `0xfe0d` 扩展（GREASE ECH 就是干这个的）。但从协议上说
@@ -470,7 +493,8 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 
 1. ~~只支持一个 key exchange~~（已被 (e) 补记取代 —— 多组与 hybrid component 都在支持之列，
    另有 `tests/multi_key_share.rs`、`tests/key_share_reuse.rs` 的真握手判据）。
-2. ~~外部 hello 不支持恢复（PSK）、早数据、ECH~~（PSK 见 (g)、ECH 见 (h)；**早数据仍未做**）。
+2. ~~外部 hello 不支持恢复（PSK）、早数据、ECH~~（PSK 见 (g)、ECH 见 (h)；
+   **早数据也已接上** —— 见 (g) 补记第二条；判据 `crates/utls-engine/tests/early_data.rs`）。
 3. ~~外部 hello / 外部 key exchange 遇上 HelloRetryRequest 会明确报错~~
    （第二飞已跑通，见 (f)：`tests/hello_retry.rs`、`tests/hello_retry_e2e.rs`）。
 4. **`(c)` 是广播而非协商**（见第二节 `(c)`）。

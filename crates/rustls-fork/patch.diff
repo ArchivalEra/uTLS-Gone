@@ -700,7 +700,7 @@ index 0000000..9882f93
 +    }
 +}
 diff --git a/src/client/hs.rs b/src/client/hs.rs
-index 4d22c04..bf59090 100644
+index 4d22c04..607524b 100644
 --- a/src/client/hs.rs
 +++ b/src/client/hs.rs
 @@ -15,9 +15,13 @@ use crate::bs_debug;
@@ -826,7 +826,7 @@ index 4d22c04..bf59090 100644
      suite: Option<SupportedCipherSuite>,
      ech_state: Option<EchState>,
  }
-@@ -75,6 +162,65 @@ pub(super) struct ClientHelloInput {
+@@ -75,6 +162,70 @@ pub(super) struct ClientHelloInput {
      pub(super) session_id: SessionId,
      pub(super) server_name: ServerName<'static>,
      pub(super) prev_ech_ext: Option<EncryptedClientHello>,
@@ -854,6 +854,10 @@ index 4d22c04..bf59090 100644
 +    /// per flight too (`prepare_resumption` runs again on a retry).
 +    secret: zeroize::Zeroizing<Vec<u8>>,
 +    suite: &'static Tls13CipherSuite,
++    /// 该票据是否允许 0-RTT，以及额度。0 = 票据没带 `early_data` 扩展。
++    /// 来自 `Tls13ClientSessionValue::max_early_data_size()` —— 与自建路径
++    /// `prepare_resumption` 读的是同一个值。
++    max_early_data_size: usize,
 +}
 +
 +impl ForkResumption {
@@ -888,11 +892,12 @@ index 4d22c04..bf59090 100644
 +        },
 +        secret: zeroize::Zeroizing::new(tls13.secret().to_vec()),
 +        suite: tls13.suite(),
++        max_early_data_size: tls13.max_early_data_size() as usize,
 +    })
  }
  
  impl ClientHelloInput {
-@@ -127,6 +273,24 @@ impl ClientHelloInput {
+@@ -127,6 +278,24 @@ impl ClientHelloInput {
              crate::rand::random_u16(config.provider.secure_random)?,
          );
  
@@ -917,7 +922,7 @@ index 4d22c04..bf59090 100644
          Ok(Self {
              resuming,
              random: Random::new(config.provider.secure_random)?,
-@@ -135,6 +299,8 @@ impl ClientHelloInput {
+@@ -135,6 +304,8 @@ impl ClientHelloInput {
              session_id,
              server_name,
              prev_ech_ext: None,
@@ -926,7 +931,7 @@ index 4d22c04..bf59090 100644
              config,
          })
      }
-@@ -154,11 +320,67 @@ impl ClientHelloInput {
+@@ -154,11 +325,67 @@ impl ClientHelloInput {
          }
  
          let key_share = if self.config.needs_key_share() {
@@ -999,7 +1004,7 @@ index 4d22c04..bf59090 100644
          } else {
              None
          };
-@@ -191,7 +413,7 @@ impl ClientHelloInput {
+@@ -191,7 +418,7 @@ impl ClientHelloInput {
  fn emit_client_hello_for_retry(
      mut transcript_buffer: HandshakeHashBuffer,
      retryreq: Option<&HelloRetryRequest>,
@@ -1008,7 +1013,7 @@ index 4d22c04..bf59090 100644
      extra_exts: ClientExtensionsInput<'static>,
      suite: Option<SupportedCipherSuite>,
      mut input: ClientHelloInput,
-@@ -212,6 +434,28 @@ fn emit_client_hello_for_retry(
+@@ -212,6 +439,28 @@ fn emit_client_hello_for_retry(
      // should be unreachable thanks to config builder
      assert!(supported_versions.any(|_| true));
  
@@ -1037,7 +1042,7 @@ index 4d22c04..bf59090 100644
      let mut exts = Box::new(ClientExtensions {
          // offer groups which are usable for any offered version
          named_groups: Some(
-@@ -288,7 +532,8 @@ fn emit_client_hello_for_retry(
+@@ -288,7 +537,8 @@ fn emit_client_hello_for_retry(
  
      if let Some(key_share) = &key_share {
          debug_assert!(supported_versions.tls13);
@@ -1047,7 +1052,7 @@ index 4d22c04..bf59090 100644
  
          if !retryreq
              .map(|rr| rr.key_share.is_some())
-@@ -299,7 +544,7 @@ fn emit_client_hello_for_retry(
+@@ -299,7 +549,7 @@ fn emit_client_hello_for_retry(
              // algorithm is also supported separately by our provider for this version
              // (`find_kx_group` looks that up).
              if let Some((component_group, component_share)) =
@@ -1056,7 +1061,7 @@ index 4d22c04..bf59090 100644
                      .hybrid_component()
                      .filter(|(group, _)| {
                          config
-@@ -377,6 +622,8 @@ fn emit_client_hello_for_retry(
+@@ -377,6 +627,8 @@ fn emit_client_hello_for_retry(
      // Extensions MAY be randomized
      // but they also need to keep the same order as the previous ClientHello
      exts.order_seed = input.hello.extension_order_seed;
@@ -1065,7 +1070,7 @@ index 4d22c04..bf59090 100644
  
      let mut cipher_suites: Vec<_> = config
          .provider
-@@ -388,11 +635,31 @@ fn emit_client_hello_for_retry(
+@@ -388,11 +640,31 @@ fn emit_client_hello_for_retry(
          })
          .collect();
  
@@ -1098,7 +1103,7 @@ index 4d22c04..bf59090 100644
      let mut chp_payload = ClientHelloPayload {
          client_version: ProtocolVersion::TLSv1_2,
          random: input.random,
-@@ -542,6 +809,267 @@ fn emit_client_hello_for_retry(
+@@ -542,6 +814,314 @@ fn emit_client_hello_for_retry(
      })
  }
  
@@ -1129,6 +1134,9 @@ index 4d22c04..bf59090 100644
 +    cx: &mut ClientContext<'_>,
 +    supported_versions: SupportedProtocolVersions,
 +) -> NextStateOrError<'static> {
++    // Cloned up front: the early-data arming below needs the key log *and* a
++    // mutable borrow of `input.sent_tls13_fake_ccs`, which must not overlap.
++    let key_log = input.config.key_log.clone();
 +    // ===== FORK(utls-rs) (g): fill in the PSK binder =====
 +    // The caller reserved `slot.binder_len` bytes for it and told us where the
 +    // truncated message ends; the real value needs the session secret, so it can only
@@ -1336,6 +1344,50 @@ index 4d22c04..bf59090 100644
 +    transcript_buffer.add_message(&ch);
 +    cx.common.send_msg(ch, false);
 +
++    // FORK(utls-rs) (g)+: arm early data on the supplied path, exactly as the
++    // self-built path does right after *its* hello goes out (the
++    // `derive_early_traffic_secret` call at the end of `emit_client_hello_for_retry`,
++    // with `prepare_resumption` having armed `early_data.enable(...)` first).
++    // Three facts make this sound here:
++    //
++    // * the schedule above came from the same session secret the binder used, and
++    // * the early traffic secret is bound to the transcript of the hello that just
++    //   went out — the caller's bytes, including the caller's client random (the
++    //   same wire-is-truth rule as the TLS 1.2 PRF fix) — which is exactly what
++    //   `derive_early_traffic_secret` hashes below, and
++    // * the caller's hello itself carries the zero-length `early_data` extension
++    //   (RFC 8446 §4.2.10) — the caller declares it in the spec, the same way it
++    //   declares every other extension.
++    //
++    // Without this, `early_traffic` never turns true on the supplied path and every
++    // early-data write is refused: the handshake would still complete *resumed*,
++    // but silently without 0-RTT — which is the worst kind of miss, because nothing
++    // errors. Found by writing the early-data judgment before this block existed.
++    if retryreq.is_none()
++        && input.config.enable_early_data
++        && early_data_key_schedule.is_some()
++    {
++        // Same condition `prepare_resumption` applies on the self-built path
++        // (`config.enable_early_data && max_early_data_size > 0 && !doing_retry`).
++        let resumption = input
++            .fork_resumption
++            .as_ref()
++            .expect("an armed early schedule implies a fork resumption session");
++        if resumption.max_early_data_size > 0 {
++            cx.data.early_data.enable(resumption.max_early_data_size);
++            let schedule = early_data_key_schedule.as_ref().unwrap();
++            tls13::derive_early_traffic_secret(
++                &*key_log,
++                cx,
++                resumption.suite.common.hash_provider,
++                schedule,
++                &mut input.sent_tls13_fake_ccs,
++                &transcript_buffer,
++                &input.random.0,
++            );
++        }
++    }
++
 +    let next = ExpectServerHello {
 +        input,
 +        transcript_buffer,
@@ -1366,7 +1418,7 @@ index 4d22c04..bf59090 100644
  /// Prepares `exts` and `cx` with TLS 1.2 or TLS 1.3 session
  /// resumption.
  ///
-@@ -839,7 +1367,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
+@@ -839,7 +1419,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
                      transcript,
                      self.early_data_key_schedule,
                      // We always send a key share when TLS 1.3 is enabled.
@@ -1376,7 +1428,7 @@ index 4d22c04..bf59090 100644
                      &m,
                      self.ech_state,
                      self.input,
-@@ -880,21 +1409,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -880,21 +1461,133 @@ impl ExpectServerHelloOrHelloRetryRequest {
          cx.common.check_aligned_handshake()?;
  
          // We always send a key share when TLS 1.3 is enabled.
@@ -1518,7 +1570,7 @@ index 4d22c04..bf59090 100644
                  return Err({
                      cx.common.send_fatal_alert(
                          AlertDescription::IllegalParameter,
-@@ -1022,28 +1663,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -1022,28 +1715,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
              cx.data.early_data.rejected();
          }
  

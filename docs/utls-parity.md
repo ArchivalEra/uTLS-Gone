@@ -45,6 +45,7 @@
 | `TestRealResumption`（真外网 `yahoo.com`） | 已判（换域名） | `run-upstream-suite.sh`：目标域名换成直连可达、判据等价者，全量 222 PASS / 0 FAIL / 1 SKIP。**代理跑未改动树那条已退役**（`questions/09` 留历史） |
 | `TestVerifyHostname`（真外网 `www.google.com`） | 已判（换域名） | 同上 |
 | `TestECH` / `TestTLS13ECHRejectionCallbacks` / `TestUTLSECH` | 已判 | `tests/ech.rs`、`tests/ech_offer.rs`、`tests/ech_inner_utls.rs`（内层与 uTLS 逐字节）、`tests/ech_e2e.rs`（三族真服务器 `Accepted`）、`tests/ech_utls_server.rs`（过 uTLS 自己的服务端）；证据链在 `questions/10` |
+| `TestQUICEarlyData`（早数据 + declined）等 | **本轮已判（TCP）** | `tests/early_data.rs`：指纹化恢复握手 + 0-RTT —— 服务端 `Resumed` 且早数据逐字节读出；对照（原生 rustls）与二分（带扩展不写数据）各一条。rustls 的 TCP 0-RTT 只支持有状态恢复（防重放），服务端配置因此在判据里关掉 ticketer |
 
 ## 三、**未做 / 已写明的语义差异**
 
@@ -77,9 +78,9 @@
    `// new ks seems to be generated either way`），所以一份 `Fingerprinter` 出的 spec
    照样能握手。这是「Fingerprinter 一族」的根，见 `tests/key_share_reuse.rs` 第四条里
    钉住的那条已知边界。
-4. **early data（0-RTT）**：上游 `quic_test.go` 里有 declined-early-data 的判据；
-   我们一行没有。uTLS 的早期实现同样不支持（`u_conn.go` 的注释），但这属于「未做」，
-   不写成「上游也没有」。
+~~4. **early data（0-RTT）**~~ → **已判**（见「二」末行）：TCP 0-RTT 在指纹化恢复握手上
+   跑通，判据全部取服务端（`Resumed` + 早数据逐字节）。rustls 的 TCP 0-RTT 只支持
+   **有状态恢复**（防重放，RFC 8446 §8.1），这一点写进了 fork 文档。
 
 ## 四、**rustls 领地**（不重写，也不假装判过）
 

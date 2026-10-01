@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T14:07:41+0800",
+ "generated": "2026-10-01T15:06:10+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -14,13 +14,13 @@
    "source": "toolchain"
   },
   "rs_files": {
-   "value": 49,
+   "value": 50,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
   },
   "rs_lines": {
-   "value": 20637,
+   "value": 20929,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
@@ -44,7 +44,7 @@
    "note": "文档"
   },
   "md_lines": {
-   "value": 2850,
+   "value": 2875,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
    "source": "repo",
    "note": "文档"
@@ -56,7 +56,7 @@
    "note": "vendored 的 rustls fork（**不是**我们写的）"
   },
   "fork_rs_lines": {
-   "value": 49942,
+   "value": 49994,
    "cmd": "find crates/rustls -name '*.rs' -exec cat {} + | wc -l",
    "source": "crates/rustls",
    "note": "同上"
@@ -80,7 +80,7 @@
    "note": "补丁的 hunk 数 —— rebase 时按 hunk 定位，所以它是「要维护的行数」的尺度"
   },
   "fork_patch_plus": {
-   "value": 1383,
+   "value": 1435,
    "cmd": "grep '^+' crates/rustls-fork/patch.diff | grep -vc '^+++'",
    "source": "crates/rustls-fork/",
    "note": "补丁新增行数"

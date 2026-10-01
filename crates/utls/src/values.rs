@@ -149,7 +149,6 @@ pub const EXT_COMPRESS_CERTIFICATE: u16 = 27;
 pub const EXT_DELEGATED_CREDENTIALS: u16 = 34;
 pub const EXT_SESSION_TICKET: u16 = 35;
 pub const EXT_PRE_SHARED_KEY: u16 = 41;
-pub const EXT_EARLY_DATA: u16 = 42;
 pub const EXT_SUPPORTED_VERSIONS: u16 = 43;
 pub const EXT_COOKIE: u16 = 44;
 pub const EXT_PSK_KEY_EXCHANGE_MODES: u16 = 45;
@@ -157,6 +156,8 @@ pub const EXT_CERTIFICATE_AUTHORITIES: u16 = 47;
 pub const EXT_SIGNATURE_ALGORITHMS_CERT: u16 = 50;
 pub const EXT_KEY_SHARE: u16 = 51;
 pub const EXT_QUIC_TRANSPORT_PARAMETERS: u16 = 57;
+/// `early_data`（RFC 8446 §4.2.10）：提供 0-RTT 的 ClientHello 带一个**零长度**体。
+pub const EXT_EARLY_DATA: u16 = 42;
 pub const EXT_RENEGOTIATION_INFO: u16 = 0xff01;
 
 /// 非 IANA 分配（uTLS `u_common.go`）。
