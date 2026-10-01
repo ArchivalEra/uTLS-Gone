@@ -116,6 +116,13 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
     `X25519Kyber768Draft00` 是草案组，rustls 的提供者没有它。引擎给这个组发一个**长度正确**
     的占位公钥（形状与 Chrome 一致，总长对得上台账），真交换只交能完成的 X25519 ⇒
     服务器不认草案组时照常谈成；**认它并选了它**则响亮失败（不静默换组）。
+- **引擎会发的每个密钥交换组都有正向判据**（服务端把 `kx_groups` 滤成只认那一个组，
+  于是「谈成了」本身就等于「用的是它」）：P-256 三条在
+  [`tests/p256_handshake.rs`](crates/utls-engine/tests/p256_handshake.rs)、混合组
+  `X25519MLKEM768(4588)` 三条在
+  [`tests/mixed_group_handshake.rs`](crates/utls-engine/tests/mixed_group_handshake.rs)。
+  两种情形都覆盖：第一飞就被选中、`key_share` 里只给它一把、以及服务端强要它时的 HRR ——
+  第二飞带上**新的**共享（混合组 1216 字节）且 client random 逐字节不变。
 - ⚠️ **`Browser360(7)` 谈不成**，原因在**密码套件**而不在引擎：它报的 20 个套件全是
   CBC/RC4/3DES，而现代 TLS 栈（rustls 只实现 6 个 TLS 1.2 套件：AES-GCM 与 CHACHA20）
   与它**交集为 0** —— uTLS 底下的 Go 默认同样不实现那些套件。它的字节仍然保真，
