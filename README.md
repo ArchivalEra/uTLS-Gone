@@ -55,25 +55,28 @@ master (tarball sha256 `ae5e90b0…`; fetch command in
 |---|---|---|---|
 | **Marginal CPU per hello** (39-preset mean) | **102 µs** | **13.3 µs** (**7.7×**) | 13.2 µs — within noise of default |
 | Single-preset `Chrome(70)` marginal | 75 µs | 11.8 µs | 9.3 µs |
-| Batch mean (39 presets × 48, one-time cost amortized in) | 104.6 µs | 31.6 µs | 30.8 µs |
-| First hello (cold process, unwarmed) | ~77 µs | ≈33 ms | ≈33 ms |
-| First hello (after `warm_up()`) | ~77 µs (no one-time cost) | **~81 µs** | ~81 µs |
+| Batch mean (39 presets × 48) | 104.6 µs | 13.3 µs | ~13.2 µs |
+| First hello (cold process) | ~77 µs | **~110 µs** | ~110 µs |
 | **Allocated bytes per hello** (39-preset mean, cumulative heap allocs in the loop) | **20.8 KB** | **9.7 KB** (reused planner) / 10.8 KB (per-connection) | same (LTO does not change allocation behavior) |
 | Peak RSS (empty run = 18,720 hellos) | ~16 MB, flat | ~16 MB, flat | ~16 MB, flat |
 
 Written in full, including the rows that favor the other side:
 
-- **The first-hello ~33 ms: root cause pinned, fix shipped and measured**. The cost is aws-lc's
-  first in-process `RAND_bytes` running its jitter-entropy collection — pure userspace
-  (`strace -c`: all syscalls of the entire process total 0.4 ms), the second fill takes
-  **~330 ns**, and keygen-first pays it too (keygen goes through RAND). Known upstream as
-  [aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140) (open), and `aws_lc_rs::init()`
-  is a no-op. The engine ships an explicit warm-up, **`utls_engine::warm_up(&provider)`** (a
-  single 32-byte RNG fill): one line at server startup takes the first hello from
-  **≈33 ms to ~81 µs** — same ballpark as Go's cold first hello (~77 µs). The table keeps the
-  unwarmed ≈33 ms because **a cold process that never calls `warm_up()` really does pay it**;
-  the benchmark measures cold by default, warmed numbers via `PLANCOST_WARM=1`. TLS 1.2-era
-  presets never touch the provider RNG: ~50 µs each, never affected.
+- **The first-hello ~33 ms: eliminated at the source, not warmed around.** The cost was aws-lc's
+  first in-process `RAND_bytes` running its CPU-jitter entropy collection — pure userspace
+  (`strace -c`: all syscalls of the entire process total 0.4 ms), the second fill ~330 ns, and
+  keygen-first paid it too. aws-lc-sys ships a **supported compile-time opt-out**: setting
+  `AWS_LC_SYS_NO_JITTER_ENTROPY=1` swaps the entropy source from a jitter-rooted Tree-DRBG to an
+  OS-CSPRNG seed plus an RDRAND second source
+  (`crypto/fipsmodule/rand/entropy/entropy_sources.c`,
+  `opt_out_cpu_jitter_entropy_source_methods`). It is committed in the project's
+  [`.cargo/config.toml`](.cargo/config.toml), so every `cargo build` picks it up. Measured: the
+  first hello went **32.4 ms → ~0.11 ms** (99.6% gone), and the marginal cost is unchanged. The
+  trust base becomes the OS CSPRNG — the same one ring and BoringSSL use; the only thing given up
+  is CPU-timing-jitter as an entropy source (the config file carries the full note).
+  `utls_engine::warm_up()` is kept as an API but is now optional — there is no expensive one-time
+  init left to prepay. TLS 1.2-era presets never touched the provider RNG anyway, and the
+  benchmark measures a cold process by default — which is now ~110 µs.
 - **Memory**: peak RSS is a tie — **~16 MB on both sides**, and the empty run equals the
   18,720-hello run exactly (allocator/GC reuse everything; neither grows with the count).
   The difference is **allocation volume per hello**: Go **20.8 KB** vs ours **9.7 KB** (reused

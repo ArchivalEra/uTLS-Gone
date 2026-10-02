@@ -47,23 +47,24 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 |---|---|---|---|
 | **每条 hello 的边际 CPU**（39 档均值） | **102 µs** | **13.3 µs**（**7.7×**） | 13.2 µs —— 与默认在噪声内 |
 | 单档 `Chrome(70)` 的边际 | 75 µs | 11.8 µs | 9.3 µs |
-| 批量均值（39 档 × 48 条，一次性成本摊薄在内） | 104.6 µs | 31.6 µs | 30.8 µs |
-| 首条 hello（未预热的冷进程） | ~77 µs | ≈33 ms | ≈33 ms |
-| 首条 hello（`warm_up()` 预热后） | ~77 µs（无一次性成本） | **~81 µs** | ~81 µs |
+| 批量均值（39 档 × 48 条） | 104.6 µs | 13.3 µs | ~13.2 µs |
+| 首条 hello（冷进程） | ~77 µs | **~110 µs** | ~110 µs |
 | **每条 hello 的分配字节**（39 档均值，循环内累计堆分配） | **20.8 KB** | **9.7 KB**（复用规划器）/ 10.8 KB（每连接新建） | 同左（LTO 不改分配行为） |
 | 峰值 RSS（空跑 = 18720 条） | ~16 MB 持平 | ~16 MB 持平 | ~16 MB 持平 |
 
 如实写全，包括对我们不利的那几行：
 
-- **首条 hello 的 ~33 ms：根因已定位，修法已给且实测生效**。那笔钱是 aws-lc 进程内首次
-  `RAND_bytes` 的 jitter-entropy 收集 —— 纯用户态（`strace -c`：全进程系统调用总共
-  0.4 ms），第二次 fill 只要 **~330 ns**，先 keygen 同样要付（keygen 内部走 RAND）；上游
-  [aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140) 开放中，`aws_lc_rs::init()`
-  是空操作。引擎给出显式预热 **`utls_engine::warm_up(&provider)`**（一次 32 字节 RNG
-  fill）：启动时调一行，首条 hello **≈33 ms → ~81 µs**，与 Go 的冷首条（~77 µs）同量级。
-  表里仍保留未预热的 ≈33 ms，因为**不调 `warm_up()` 的冷进程确实还要付这笔** —— 基准
-  默认测冷进程，预热后的数字用 `PLANCOST_WARM=1` 量。TLS 1.2 时代的档全程不碰
-  provider RNG，单条 ~50 µs，从来不受影响。
+- **首条 hello 的 ~33 ms：从源头消除，不是预热绕开**。那笔钱是 aws-lc 进程内首次
+  `RAND_bytes` 的 CPU-jitter 熵收集 —— 纯用户态（`strace -c`：全进程系统调用总共 0.4 ms），
+  第二次 fill 只要 ~330 ns，先 keygen 同样要付。aws-lc-sys 自带**受支持的编译期 opt-out**：
+  设 `AWS_LC_SYS_NO_JITTER_ENTROPY=1` 把熵源从「以 jitter 为根的 Tree-DRBG」换成
+  「OS CSPRNG 为 seed 源 + RDRAND 第二源」（`crypto/fipsmodule/rand/entropy/entropy_sources.c`
+  的 `opt_out_cpu_jitter_entropy_source_methods`）。已写进项目的
+  [`.cargo/config.toml`](.cargo/config.toml)，任何 `cargo build` 自动生效。实测：首条 hello
+  **32.4 ms → ~0.11 ms**（消 99.6%），边际成本不变。信任基变成 OS CSPRNG —— 与 ring /
+  BoringSSL 同一基；放弃的只是「CPU 计时抖动」这一路熵（config 文件里写了完整说明）。
+  `utls_engine::warm_up()` 作为 API 保留，但已是可选 —— 没有昂贵的一次性初始化可预付了。
+  TLS 1.2 时代的档本就不碰 provider RNG；基准默认测冷进程，如今是 ~110 µs。
 - **内存**：峰值 RSS 两边打平 —— **~16 MB**，而且空跑与 18720 条完全一样（分配器/GC
   全程复用，谁都不随条数涨）。有差别的是**每条 hello 的分配量**：Go **20.8 KB** vs 本仓
   **9.7 KB**（复用规划器）/ 10.8 KB（`PLANCOST_FRESH=1`，每连接新建 —— 对齐 uTLS

@@ -1,20 +1,21 @@
-//! **`warm_up` 的判据**：预付真的把 crypto backend 的一次性初始化付掉了，
-//! 而且不改变任何可观测行为。
+//! **`warm_up` 的功能判据**：成功、可重复调用、不改任何可观测行为 —— 以及这个 API
+//! 仍然好用。**一次性成本本身已从源头消除**（见下），所以「预付」现在多半无物可预付；
+//! 本文件保留为 `warm_up` 的功能判据。
 //!
-//! # 背景（2026-10-02 定位）
+//! # 背景与现状（2026-10-02 定位 → 从源头解决）
 //!
-//! aws-lc 的进程内首次 `RAND_bytes` 要 **~33 ms** —— 纯用户态的 jitter-entropy 收集
-//! （`strace -c`：全进程系统调用总共 0.4 ms；第二次 fill **~330 ns**；先 keygen 同样
-//! 要付，keygen 内部走 RAND）。这是 aws-lc-rs 的已知上游问题
-//! （[aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140)，开放中、无官方修法），
-//! 且 `aws_lc_rs::init()` 实测是空操作 —— 要预付只能真做一次密码学操作。
-//! TLS 1.3 预设的**第一条** plan 会替它付钱（keygen 走 provider 的 RAND）；
-//! TLS 1.2 时代的档全程不碰 provider RNG，实测单条 ~50 µs，不受影响。
-//! 本进程里每一个测试二进制此前都在不知不觉中付过这笔 —— `warm_up` 把它变成
-//! 显式的一次 startup 调用。
+//! aws-lc 的进程内首次 `RAND_bytes` 曾要 **~33 ms** —— 纯用户态的 CPU-jitter-entropy
+//! 收集（`strace -c`：全进程系统调用总共 0.4 ms；第二次 fill **~330 ns**；先 keygen 同样
+//! 要付，keygen 内部走 RAND）。上游 [aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140)
+//! 开着、`aws_lc_rs::init()` 是空操作 —— 当时只能靠真做一次密码学操作来预付（`warm_up`）。
+//!
+//! 现在**不再需要**：项目根 [`.cargo/config.toml`](../../../.cargo/config.toml) 设了
+//! `AWS_LC_SYS_NO_JITTER_ENTROPY=1`，把熵源换成「OS CSPRNG + RDRAND」，首条 hello 从
+//! ~32 ms 降到 ~0.11 ms。冷启动本身由 [`cold_start.rs`](../cold_start.rs) 判
+//! （独立进程、单独一个测试，阈值哨兵）。
 //!
 //! 判据口径：功能判据进 CI；延迟判据 `#[ignore]`（量本机时钟，不进门禁），
-//! 判据取**差**不取绝对值 —— 上游修了或换提供者后两边都趋零，照样绿。
+//! 判据取**差**不取绝对值 —— 无物可预付时只打印、不断言。
 
 mod common;
 

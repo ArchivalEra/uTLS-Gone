@@ -33,30 +33,31 @@
 //! # 用法
 //!
 //! ```bash
-//! cargo build --release --example plan-cost        # 预热
+//! cargo build --release --example plan-cost        # 构建
 //! ./target/release/examples/plan-cost 'Chrome(70)' 'Chrome(120)'   # 限定预设（可选）
-//! PLANCOST_WARM=1 ./target/release/examples/plan-cost 'Chrome(70)' # 先 warm_up 再计时
+//! PLANCOST_WARM=1 ./target/release/examples/plan-cost 'Chrome(70)' # 先 warm_up 再计时（现已有无不影响）
 //! ```
 //!
 //! 判据是**它真的做了那件事**：`checksum=` 是所有产出字节的 FNV-1a ——
 //! 少了它就得防「快是因为什么都没干」。
 //!
-//! # 本轮实测（2026-10-01，Ryzen 9 3900X；`bench/main.go` 是 Go 侧的对等物）
+//! # 本轮实测（2026-10-03，Ryzen 9 3900X；`bench/main.go` 是 Go 侧的对等物）
 //!
 //! 39 档公共交集（两边支持集合的交集 —— bench 名单无 Ios(14)），n=48 与 10n=480 各三次取
 //! 中位，单档探针分离一次性初始化（完整矩阵与协议见 README 的测法一节）：
 //!
-//! | | 首条 hello 前的一次性初始化 | **每条 hello 的边际 CPU** |
+//! | | 首条 hello（冷进程） | **每条 hello 的边际 CPU** |
 //! |---|---|---|
-//! | uTLS（Go 1.27，默认构建） | ≈4 ms | **102 µs** |
-//! | 本仓（Rust，默认 release） | ≈33 ms | **13.3 µs**（7.7×） |
-//! | 本仓（+ fat LTO，CGU=1） | ≈33 ms | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
+//! | uTLS（Go 1.27，默认构建） | ~77 µs | **102 µs** |
+//! | 本仓（Rust，默认 release） | **~110 µs** | **13.3 µs**（7.7×） |
+//! | 本仓（+ fat LTO，CGU=1） | ~110 µs | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
 //!
-//! 那 ~33 ms 的根因（2026-10-02 定位）：aws-lc **进程内首次 `RAND_bytes` 的
-//! jitter-entropy 收集** —— 纯用户态（`strace -c`：全进程系统调用共 0.4 ms），
-//! 第二次 fill **~330 ns**，`aws_lc_rs::init()` 是空操作（上游 aws-lc-rs#1140
-//! 开放中）。不碰 provider RNG 的 TLS 1.2 时代档实测单条 ~50 µs。
-//! 引擎的 [`utls_engine::warm_up`] 预付它；`PLANCOST_WARM=1` 量预热后的数字。
+//! 曾经有一次型 ~33 ms（aws-lc 进程内首次 `RAND_bytes` 的 CPU-jitter 熵收集 ——
+//! 纯用户态、`strace -c` 全进程系统调用共 0.4 ms、第二次 fill 只要 ~330 ns）。
+//! **已从源头消除**：项目根的 `.cargo/config.toml` 设 `AWS_LC_SYS_NO_JITTER_ENTROPY=1`，
+//! 把熵源换成「OS CSPRNG + RDRAND」，首条 hello **32.4 ms → ~0.11 ms**（消 99.6%），
+//! 边际成本不变。`PLANCOST_WARM=1` 仍能跑 `utls_engine::warm_up`，但已无钱可预付。
+//! TLS 1.2 时代的档（Chrome 58/62 等）全程不碰 provider RNG，单条 ~50 µs。
 //!
 //! # 内存（2026-10-02 加的口径）
 //!

@@ -48,9 +48,9 @@
   <text x="348" y="324" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#56d364">6.4×</text>
 
   <rect x="24" y="344" width="832" height="72" rx="10" fill="#12261a" stroke="#2ea043" stroke-opacity="0.55"/>
-  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">first hello after warm_up(): 33 ms → 81 µs (≈400×)</text>
+  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">first hello: 33 ms → 0.11 ms (99.6% gone) — compile-time opt-out, no warm-up</text>
   <text x="440" y="400" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="13" fill="#c9d1d9">9.7 KB allocated per hello vs 20.8 KB for Go (2.1×) · peak RSS ~16 MB on both sides, flat</text>
 
   <text x="24" y="446" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">measured 2026-10-01/02 · AMD Ryzen 9 3900X · plan ↔ UClient+BuildHandshakeState, same layer · n and 10n runs, 3 reps, medians</text>
-  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">alloc bytes = cumulative heap allocs in the loop · TLS 1.2 presets never touch the RNG: ~50 µs · repro: plan-cost</text>
+  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">one-time init: AWS_LC_SYS_NO_JITTER_ENTROPY=1 · TLS 1.2 presets never touch the RNG (~50 µs) · repro: plan-cost</text>
 </svg>

@@ -917,22 +917,29 @@ fn put_or_replace_ech_ext(spec: &mut ClientHelloSpec, body: Vec<u8>) {
     }
 }
 
-/// **预付 crypto provider 的一次性初始化**，让首条 hello 不背这笔钱。
+/// **预付 crypto provider 的一次性初始化**（保留 API —— 现已**可选**）。
 ///
-/// 实测（2026-10-01，Ryzen 9 3900X）：aws-lc 的进程内首次 `RAND_bytes` 要 **~33 ms** ——
-/// 纯用户态的 jitter-entropy 收集（`strace -c`：全进程系统调用总共只有 0.4 ms；
-/// 第二次 fill 只要 **~330 ns**；先 keygen 同样要付 —— keygen 内部走 RAND）。
-/// 这是 aws-lc-rs 的已知上游问题（[#1140](https://github.com/aws/aws-lc-rs/issues/1140)，
-/// 开放中、无官方修法），且 `aws_lc_rs::init()` 是空操作 —— 要预付只能真做一次
-/// 密码学操作，这里就做最便宜的那次：32 字节 [`CryptoProvider::secure_random`] fill
-/// （这正是外供路径上 provider RNG 的唯一入口，见 [`plan`](SuppliesClientHello::plan)
-/// 里的占位公钥）。
+/// # 为什么现在还留着，但通常不必调
 ///
-/// 服务启动时调用一次；此后每条 hello 的边际成本回到 ~13 µs（README 的测法一节）。
-/// 不调用的话：TLS 1.3 预设（要 key exchange / 占位公钥）的**第一条连接**多付这 33 ms；
-/// TLS 1.2 时代的档（Chrome 58/62 等，全程不碰 provider RNG）本来就不受影响 ——
-/// 实测单条 ~50 µs。基准侧用 `PLANCOST_WARM=1` 量预热后的数字（默认仍测冷进程，
-/// 那是真实 CLI 的体验）。
+/// 本仓已从**源头**消掉了那笔一次性成本：项目根的 `.cargo/config.toml` 设了
+/// `AWS_LC_SYS_NO_JITTER_ENTROPY=1`，把 aws-lc 的熵源从「CPU jitter 为根的
+/// Tree-DRBG」换成「OS CSPRNG + RDRAND」——实测首条 hello 从 ~32 ms 降到 ~0.11 ms
+/// （见 `README` 的测法一节与那份 config 文件的说明）。所以**新建的进程里已经没有
+/// 一笔 ~33 ms 的钱可预付**了。
+///
+/// 这个函数保留是因为：它仍是「用一次最便宜的密码学操作把 provider 的进程内状态
+/// 推到热」的一般手段，且判据（`tests/warm_up.rs`）仍以它为准。代价是**熵源信任基**
+/// 的取舍：关掉 jitter 后 seed 来自 OS CSPRNG（与 ring / BoringSSL 相同），放弃的
+/// 是「CPU 计时抖动」这一路独立熵。若某个部署环境要求 jitter 作为熵源（例如合规），
+/// 就把那份 config 那一行删掉重建 —— 届时 `warm_up()` 又会变得有用。
+///
+/// 历史（2026-10-01 定位）：aws-lc 进程内首次 `RAND_bytes` 要 **~33 ms** —— 纯用户态
+/// 的 jitter-entropy 收集（`strace -c`：全进程系统调用总共只有 0.4 ms；第二次 fill
+/// 只要 **~330 ns**；先 keygen 同样要付 —— keygen 内部走 RAND）。上游 aws-lc-rs#1140
+/// 当时开着、无修法，`aws_lc_rs::init()` 是空操作 —— 那时只能靠真做一次密码学操作来
+/// 预付。现在有了编译期 opt-out，不再需要。
+///
+/// 服务启动时调用一次即可；不调也不再有 33 ms 的冷启动。边际成本本就 ~13 µs。
 pub fn warm_up(provider: &CryptoProvider) -> Result<(), Error> {
     let mut buf = [0u8; 32];
     provider.secure_random.fill(&mut buf)?;

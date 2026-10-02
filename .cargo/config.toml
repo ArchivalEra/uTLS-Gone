@@ -1,0 +1,21 @@
+# ── 首条 hello 的 ~33 ms 一次性初始化：从源头消除，而不是预热绕开 ──────────────
+#
+# 现象：进程内**首次** RAND 要 ~32 ms（aws-lc 的 jitter-entropy 冷启动，纯用户态、
+# 系统调用只占 0.4 ms；第二次只要 ~330 ns）。上游 aws-lc-rs#1140 开着、无修法。
+#
+# 解法：aws-lc-sys 自带的**受支持 opt-out** —— `AWS_LC_SYS_NO_JITTER_ENTROPY=1`
+# 把熵源从「以 CPU jitter 为根的 Tree-DRBG」换成「OS 为 seed 源 + RDRAND 第二源」
+# （`crypto/fipsmodule/rand/entropy/entropy_sources.c` 的
+# `opt_out_cpu_jitter_entropy_source_methods`）。实测：首条 hello 32.4 ms → ~0.11 ms
+# （消 99.6%），且不再需要 `utls_engine::warm_up()` 预付。
+#
+# ⚠️ 这是**熵源信任基的取舍**，不是白拿：关掉 jitter 后 seed 来自 OS CSPRNG
+# （`getrandom(2)`），与 ring / BoringSSL 的信任基相同，密码学上没有弱点；代价是
+# 失去「CPU 计时抖动」这一路独立熵（合规场景若要求 jitter 作为熵源，别设这个变量）。
+# 本仓是可离线复现的协议实现，采信 OS CSPRNG。
+#
+# 为什么写进 config 而不是让调用方每台机器自己设：项目级配置对所有 `cargo build`
+# 生效，编译期就定死，不依赖运行环境。要退回 jitter：删掉下面一行重建即可。
+
+[env]
+AWS_LC_SYS_NO_JITTER_ENTROPY = "1"
