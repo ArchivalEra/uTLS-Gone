@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated": "2026-10-01T23:02:27+0800",
+ "generated": "2026-10-02T08:44:34+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "rustc_version": {
@@ -14,13 +14,13 @@
    "source": "toolchain"
   },
   "rs_files": {
-   "value": 65,
+   "value": 66,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
   },
   "rs_lines": {
-   "value": 24877,
+   "value": 25056,
    "cmd": "find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l",
    "source": "repo",
    "note": "我们自己写的 Rust"
@@ -44,7 +44,7 @@
    "note": "文档"
   },
   "md_lines": {
-   "value": 3429,
+   "value": 3445,
    "cmd": "find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l",
    "source": "repo",
    "note": "文档"

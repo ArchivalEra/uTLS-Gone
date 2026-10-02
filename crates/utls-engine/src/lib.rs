@@ -33,9 +33,14 @@
 //! - **真实 ECH**：三族真服务器报 `Accepted`，另有离线判据（`tests/ech_e2e.rs`、
 //!   `tests/ech_utls_server.rs`；内层与 uTLS 逐字节相同）。
 //! - **TLS 1.2 时代的指纹**（没有 `key_share` 的 8 档）：`tests/tls12_presets.rs`。
+//! - **early data（0-RTT）**：外供路径的三件事（调度 / `enable` / derive early traffic
+//!   secret），`tests/early_data.rs`。
+//! - **QUIC**：指纹编码层在 `utls`（`src/quic.rs`）；外供 hello 在 QUIC 状态机路径上仍然
+//!   生效（服务端看到的是我们 spec 里那份传输参数字节），`tests/quic_handshake.rs`。
 //!
-//! 仍然**没做**的（如实写）：early data（0-RTT）；QUIC 那条路（`u_quic*.go` 的指纹层
-//! 尚未移植，见 `docs/utls-parity.md`）。
+//! ⚠️ 上面这两条曾被本清单自己列为「没做」—— 判据落地了、清单没人跟着改，文档开始
+//! **低估**自己（比高估更容易误导后来的人）。改这份清单之前，先对一遍
+//! `docs/utls-parity.md` 与 `tests/` 的名录。
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -910,6 +915,28 @@ fn put_or_replace_ech_ext(spec: &mut ClientHelloSpec, body: Vec<u8>) {
             body,
         }),
     }
+}
+
+/// **预付 crypto provider 的一次性初始化**，让首条 hello 不背这笔钱。
+///
+/// 实测（2026-10-01，Ryzen 9 3900X）：aws-lc 的进程内首次 `RAND_bytes` 要 **~33 ms** ——
+/// 纯用户态的 jitter-entropy 收集（`strace -c`：全进程系统调用总共只有 0.4 ms；
+/// 第二次 fill 只要 **~330 ns**；先 keygen 同样要付 —— keygen 内部走 RAND）。
+/// 这是 aws-lc-rs 的已知上游问题（[#1140](https://github.com/aws/aws-lc-rs/issues/1140)，
+/// 开放中、无官方修法），且 `aws_lc_rs::init()` 是空操作 —— 要预付只能真做一次
+/// 密码学操作，这里就做最便宜的那次：32 字节 [`CryptoProvider::secure_random`] fill
+/// （这正是外供路径上 provider RNG 的唯一入口，见 [`plan`](SuppliesClientHello::plan)
+/// 里的占位公钥）。
+///
+/// 服务启动时调用一次；此后每条 hello 的边际成本回到 ~13 µs（README 的测法一节）。
+/// 不调用的话：TLS 1.3 预设（要 key exchange / 占位公钥）的**第一条连接**多付这 33 ms；
+/// TLS 1.2 时代的档（Chrome 58/62 等，全程不碰 provider RNG）本来就不受影响 ——
+/// 实测单条 ~50 µs。基准侧用 `PLANCOST_WARM=1` 量预热后的数字（默认仍测冷进程，
+/// 那是真实 CLI 的体验）。
+pub fn warm_up(provider: &CryptoProvider) -> Result<(), Error> {
+    let mut buf = [0u8; 32];
+    provider.secure_random.fill(&mut buf)?;
+    Ok(())
 }
 
 /// 用一份指纹 spec 建 `ClientConfig`。信任锚用 `webpki-roots`（纯数据，不碰系统证书库）。

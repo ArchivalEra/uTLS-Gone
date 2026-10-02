@@ -54,13 +54,22 @@ master (tarball sha256 `ae5e90b0…`; fetch command in
 | **Marginal CPU per hello** (39-preset mean) | **102 µs** | **13.3 µs** (**7.7×**) | 13.2 µs — within noise of default |
 | Single-preset `Chrome(70)` marginal | 75 µs | 11.8 µs | 9.3 µs |
 | Batch mean (39 presets × 48, one-time cost amortized in) | 104.6 µs | 31.6 µs | 30.8 µs |
-| One-time init before the first hello | ≈4 ms (nearly invisible) | ≈33 ms | ≈33 ms |
+| One-time init before the first hello (cold process; `warm_up()` can prepay it) | ≈4 ms (nearly invisible) | ≈33 ms | ≈33 ms |
 
 Written in full, including the rows that favor the other side:
 
-- **Our one-time initialization is more expensive than Go's** (~33 ms vs ~4 ms): the
-  crypto-provider-side init before the first real `plan` is paid once per process — a resident
-  process amortizes it; **for a one-shot CLI that emits a single hello, Go wins this dimension**.
+- **Our one-time initialization is more expensive than Go's (~33 ms vs ~4 ms) — root cause
+  pinned, fix shipped**: the cost is aws-lc's **first in-process `RAND_bytes` running its
+  jitter-entropy collection** — pure userspace (`strace -c`: all syscalls of the entire process
+  total 0.4 ms), the second fill takes **~330 ns**, and keygen-first pays it too (keygen goes
+  through RAND). Known upstream as
+  [aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140) (open, no official fix), and
+  `aws_lc_rs::init()` is a no-op — prepaying it takes a real crypto operation. The engine
+  therefore exposes **`utls_engine::warm_up(&provider)`** (a single 32-byte RNG fill): call it
+  once at server startup and the first hello drops from ~33 ms back to **~81 µs**; the benchmark
+  takes `PLANCOST_WARM=1` to measure the warmed numbers (by default it still measures a **cold
+  process** — the real CLI experience; Go wins this dimension, stated as-is). TLS 1.2-era
+  presets never touch the provider RNG and were never affected: measured **~50 µs** each.
 - **LTO was measured and changes nothing** (fat LTO + codegen-units=1: marginal 13.3 → 13.2 µs,
   within noise): the hot spots are the crypto primitives (aws-lc-rs assembly, with runtime
   instruction dispatch) and the runtime init — **not inlining opportunities**. PGO was not

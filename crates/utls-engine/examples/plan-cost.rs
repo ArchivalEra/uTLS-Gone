@@ -35,6 +35,7 @@
 //! ```bash
 //! cargo build --release --example plan-cost        # 预热
 //! ./target/release/examples/plan-cost 'Chrome(70)' 'Chrome(120)'   # 限定预设（可选）
+//! PLANCOST_WARM=1 ./target/release/examples/plan-cost 'Chrome(70)' # 先 warm_up 再计时
 //! ```
 //!
 //! 判据是**它真的做了那件事**：`checksum=` 是所有产出字节的 FNV-1a ——
@@ -50,6 +51,12 @@
 //! | uTLS（Go 1.27，默认构建） | ≈4 ms | **102 µs** |
 //! | 本仓（Rust，默认 release） | ≈33 ms | **13.3 µs**（7.7×） |
 //! | 本仓（+ fat LTO，CGU=1） | ≈33 ms | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
+//!
+//! 那 ~33 ms 的根因（2026-10-02 定位）：aws-lc **进程内首次 `RAND_bytes` 的
+//! jitter-entropy 收集** —— 纯用户态（`strace -c`：全进程系统调用共 0.4 ms），
+//! 第二次 fill **~330 ns**，`aws_lc_rs::init()` 是空操作（上游 aws-lc-rs#1140
+//! 开放中）。不碰 provider RNG 的 TLS 1.2 时代档实测单条 ~50 µs。
+//! 引擎的 [`utls_engine::warm_up`] 预付它；`PLANCOST_WARM=1` 量预热后的数字。
 //!
 //! 模型校验：39 档 × 480 条/档（18720 条/进程），实测 Go 1.9185 s / 本仓 283.6 ms ——
 //! 线性模型（一次性 + 边际 × 条数）预测 1919 / 283.6 ms，成立。⚠️ 这些是**这台机器**上的；
@@ -84,6 +91,15 @@ fn main() {
         .filter(|g| g.usable_for_version(rustls::ProtocolVersion::TLSv1_3))
         .map(|g| u16::from(g.name()))
         .collect();
+
+    // PLANCOST_WARM=1：t0 之前先 `warm_up()`（预付 aws-lc 首次 RAND 的 ~33 ms
+    // jitter-entropy，见 `utls_engine::warm_up` 的文档），用来把「预热后的首条 hello」
+    // 与冷进程分开量。默认保持冷测量 —— 那是真实 CLI 的体验。
+    if std::env::var("PLANCOST_WARM").as_deref() == Ok("1") {
+        let t = Instant::now();
+        utls_engine::warm_up(&provider).expect("warm_up");
+        eprintln!("warm_up（预付一次性初始化）: {:?}", t.elapsed());
+    }
 
     let mut checksum: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a 起步值
     let (mut units, mut presets) = (0usize, 0usize);
