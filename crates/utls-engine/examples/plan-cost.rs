@@ -58,6 +58,14 @@
 //! 开放中）。不碰 provider RNG 的 TLS 1.2 时代档实测单条 ~50 µs。
 //! 引擎的 [`utls_engine::warm_up`] 预付它；`PLANCOST_WARM=1` 量预热后的数字。
 //!
+//! # 内存（2026-10-02 加的口径）
+//!
+//! `alloc_bytes=` = 计时区内的累计堆分配（计数分配器，realloc 按新尺寸计；与 Go 侧
+//! `runtime.MemStats.TotalAlloc` 同口径，见 `gen-reference/bench/main.go`）。
+//! `PLANCOST_FRESH=1` 每条 hello 新建规划器 —— 对齐 uTLS「每连接一个 UClient」的形状，
+//! 两种口径都量得出来。峰值 RSS 用 `getrusage(RUSAGE_CHILDREN)` 量（本机实测两边都
+//! ~16 MB，且空跑 = 18720 条 —— 谁都不随条数涨）。
+//!
 //! 模型校验：39 档 × 480 条/档（18720 条/进程），实测 Go 1.9185 s / 本仓 283.6 ms ——
 //! 线性模型（一次性 + 边际 × 条数）预测 1919 / 283.6 ms，成立。⚠️ 这些是**这台机器**上的；
 //! 换机器请重跑，别把数字搬走（`checksum` 也随进程不同，它只用来证明「确实做了事」）。
@@ -70,6 +78,39 @@ use rustls::client::{PlanRequest, SuppliesClientHello};
 use rustls::crypto::aws_lc_rs::default_provider;
 use utls::hello::{ClientHelloId, ClientHelloSpec};
 use utls_engine::FingerprintClient;
+
+/// 累计分配字节计数器：`alloc_bytes=` 行的来源。只增不减（realloc 按新尺寸计），
+/// 口径与 Go 侧 `runtime.MemStats.TotalAlloc` 相同 —— 量「分配了多少」，不是「占着多少」
+/// （后者是 RSS 的事，见 README 的内存行）。
+mod counting {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub static TOTAL: AtomicU64 = AtomicU64::new(0);
+
+    pub struct Counting;
+
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            TOTAL.fetch_add(layout.size() as u64, Ordering::Relaxed);
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            TOTAL.fetch_add(new_size as u64, Ordering::Relaxed);
+            unsafe { System.realloc(ptr, layout, new_size) }
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            TOTAL.fetch_add(layout.size() as u64, Ordering::Relaxed);
+            unsafe { System.alloc_zeroed(layout) }
+        }
+    }
+}
+
+#[global_allocator]
+static GLOBAL: counting::Counting = counting::Counting;
 
 /// 每个预设跑几次（uTLS 的参照发生器用 48，这里对齐它）。
 /// 可用 `PLANCOST_RUNS` 覆盖 —— 用来把「每进程固定开销」与「每条 hello 的边际成本」分开量：
@@ -101,11 +142,16 @@ fn main() {
         eprintln!("warm_up（预付一次性初始化）: {:?}", t.elapsed());
     }
 
+    // PLANCOST_FRESH=1：每条 hello 都新起一个 FingerprintClient —— 对齐 uTLS「每连接一个
+    // UClient」的真实形状，把「复用规划器」与「每连接新建」两种口径的分配都量得出来。
+    let fresh = std::env::var("PLANCOST_FRESH").as_deref() == Ok("1");
+
     let mut checksum: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a 起步值
     let (mut units, mut presets) = (0usize, 0usize);
     let mut built: Vec<String> = Vec::new();
     let mut refused: Vec<String> = Vec::new();
 
+    let alloc0 = counting::TOTAL.load(std::sync::atomic::Ordering::Relaxed);
     let t0 = Instant::now();
     for id in ClientHelloId::implemented() {
         let name = format!("{id:?}");
@@ -116,11 +162,15 @@ fn main() {
             continue;
         };
         presets += 1;
-        let client = FingerprintClient::new(spec, provider.clone()).with_sni("example.com");
+        let client = FingerprintClient::new(spec.clone(), provider.clone()).with_sni("example.com");
         let mut ok = true;
         let mut refused_reason = String::new();
         for _ in 0..runs() {
-            let plan = match client.plan(&PlanRequest {
+            // fresh 模式下每条 hello 一个新规划器；默认复用外层那把（spec 是数据，进程内可缓存）。
+            let per_conn = fresh.then(|| {
+                FingerprintClient::new(spec.clone(), provider.clone()).with_sni("example.com")
+            });
+            let plan = match per_conn.as_ref().unwrap_or(&client).plan(&PlanRequest {
                 groups: groups.clone(),
                 resumption: None,
             }) {
@@ -150,4 +200,8 @@ fn main() {
     println!("refused_no_usable_key_share={}", refused.join(","));
     println!("elapsed={:?}", t0.elapsed());
     println!("checksum={checksum:016x}");
+    println!(
+        "alloc_bytes={}",
+        counting::TOTAL.load(std::sync::atomic::Ordering::Relaxed) - alloc0
+    );
 }

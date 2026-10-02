@@ -58,6 +58,8 @@ master (tarball sha256 `ae5e90b0…`; fetch command in
 | Batch mean (39 presets × 48, one-time cost amortized in) | 104.6 µs | 31.6 µs | 30.8 µs |
 | First hello (cold process, unwarmed) | ~77 µs | ≈33 ms | ≈33 ms |
 | First hello (after `warm_up()`) | ~77 µs (no one-time cost) | **~81 µs** | ~81 µs |
+| **Allocated bytes per hello** (39-preset mean, cumulative heap allocs in the loop) | **20.8 KB** | **9.7 KB** (reused planner) / 10.8 KB (per-connection) | same (LTO does not change allocation behavior) |
+| Peak RSS (empty run = 18,720 hellos) | ~16 MB, flat | ~16 MB, flat | ~16 MB, flat |
 
 Written in full, including the rows that favor the other side:
 
@@ -72,6 +74,13 @@ Written in full, including the rows that favor the other side:
   unwarmed ≈33 ms because **a cold process that never calls `warm_up()` really does pay it**;
   the benchmark measures cold by default, warmed numbers via `PLANCOST_WARM=1`. TLS 1.2-era
   presets never touch the provider RNG: ~50 µs each, never affected.
+- **Memory**: peak RSS is a tie — **~16 MB on both sides**, and the empty run equals the
+  18,720-hello run exactly (allocator/GC reuse everything; neither grows with the count).
+  The difference is **allocation volume per hello**: Go **20.8 KB** vs ours **9.7 KB** (reused
+  planner) / 10.8 KB (`PLANCOST_FRESH=1`, a fresh planner per hello — matching uTLS's real
+  one-UClient-per-connection shape), about **2.1×**. Metric: cumulative heap allocations
+  inside the loop — Go `TotalAlloc` ↔ Rust counting allocator (realloc counted at the new
+  size); `plan-cost` prints an `alloc_bytes=` line.
 - **LTO was measured and changes nothing** (fat LTO + codegen-units=1: marginal 13.3 → 13.2 µs,
   within noise): the hot spots are the crypto primitives (aws-lc-rs assembly, with runtime
   instruction dispatch) and the runtime init — **not inlining opportunities**. PGO was not

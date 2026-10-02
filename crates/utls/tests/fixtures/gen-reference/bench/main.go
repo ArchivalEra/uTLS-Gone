@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"hash/fnv"
 	"net"
+	"runtime"
 	"time"
 
 	tls "github.com/refraction-networking/utls"
@@ -100,6 +101,11 @@ func main() {
 	}
 	h := fnv.New64a()
 	units, nPresets := 0, 0
+	// 分配口径与 Rust 侧 plan-cost 的 alloc_bytes 相同：循环内累计堆分配字节数
+	// （TotalAlloc 不受 GC 影响）—— 量「分配了多少」，不是「占着多少」（后者是 RSS）。
+	var memBefore, memAfter runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&memBefore)
 	t0 := time.Now()
 	for _, n := range names {
 		id := presets[n]
@@ -116,6 +122,8 @@ func main() {
 	fmt.Printf("presets=%d runs_each=%d units=%d\n", nPresets, runs, units)
 	fmt.Printf("elapsed=%v\n", time.Since(t0))
 	fmt.Printf("checksum=%016x\n", h.Sum64())
+	runtime.ReadMemStats(&memAfter)
+	fmt.Printf("alloc_bytes=%d\n", memAfter.TotalAlloc-memBefore.TotalAlloc)
 }
 
 func build(id tls.ClientHelloID) (raw []byte, err error) {
