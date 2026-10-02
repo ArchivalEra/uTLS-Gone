@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "reality"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -831,7 +831,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "utls"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "getrandom 0.3.4",
  "hkdf",
@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "utls-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rustls",
  "rustls-pki-types",

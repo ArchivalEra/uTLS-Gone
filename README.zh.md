@@ -14,8 +14,9 @@
 `uTLS-Gone` 是 [`refraction-networking/utls`](https://github.com/refraction-networking/utls)
 的纯 Rust 复刻：给定一个浏览器指纹（例如「Chrome 133」），产生一个**与那个浏览器一致**的
 ClientHello，并让这个一致性**可以被一条命令复跑证明**。在这个之上，它还交付了 uTLS 生态里
-最大的生产消费者 —— **XTLS/REALITY 的 Rust 等价实现**（issue #1，随
-[`v0.1.0-reality.1`](https://github.com/ArchivalEra/uTLS-Gone/releases/tag/v0.1.0-reality.1) 发布）。
+最大的生产消费者 —— **XTLS/REALITY 的 Rust 等价实现**（issue #1），外加组支持面的补齐
+（issue #3）与首条 hello 启动成本在源头上的消除。当前发布：
+[`v1.0.0`](https://github.com/ArchivalEra/uTLS-Gone/releases/tag/v1.0.0)。
 
 > English: [README.md](README.md)
 
@@ -131,7 +132,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 **指纹层不引用任何 rustls 类型。** 理由是实测的：rustls 在两年内两次重构内部扩展表示。
 把易变的部分关进一个薄适配层，补丁的 delta 才只剩插桩点，跟随上游的成本才从「重写」降为「对行」。
 
-## REALITY（issue #1，已随 v0.1.0-reality.1 发布）
+## REALITY（issue #1，v0.1.0-reality.1 → v1.0.0 完成）
 
 本仓的第一个 issue 要求：以 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) 为**权威参照**
 （不引二手移植），给出 REALITY 的 Rust 等价实现。交付在 `crates/reality/`，**36 条判据全绿**

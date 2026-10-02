@@ -17,8 +17,9 @@ that comes out different every time and that nobody can prove correct.**
 fingerprint (say, "Chrome 133"), it produces a ClientHello **identical to that browser's**, and
 makes that identity **provable by re-running a single command**. On top of that, it also delivers
 the biggest production consumer of the uTLS ecosystem — **a Rust equivalent of XTLS/REALITY**
-(issue #1, shipped in
-[`v0.1.0-reality.1`](https://github.com/ArchivalEra/uTLS-Gone/releases/tag/v0.1.0-reality.1)).
+(issue #1) — plus the group-coverage completion (issue #3) and the first-hello startup cost
+removed at the source. Current release:
+[`v1.0.0`](https://github.com/ArchivalEra/uTLS-Gone/releases/tag/v1.0.0).
 
 > 中文版：[README.zh.md](README.zh.md)
 
@@ -155,7 +156,7 @@ reworked its internal extension representation twice in two years. Keeping the v
 inside a thin adapter is what reduces the cost of following upstream from "rewrite" to
 "re-align the lines".
 
-## REALITY (issue #1, shipped in v0.1.0-reality.1)
+## REALITY (issue #1, completed across v0.1.0-reality.1 → v1.0.0)
 
 This repo's first issue asked for a Rust equivalent of REALITY with
 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) as the **authoritative reference** (no
