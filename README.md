@@ -96,7 +96,7 @@ Written in full, including the rows that favor the other side:
 ## Why a fork is mandatory
 
 "You could do this on upstream rustls with just an extension list" — **retracted**; that
-sentence is wrong (see `retractions.json` R-001). Two hard constraints:
+sentence is wrong. Two hard constraints:
 
 1. rustls **has no** public API for customizing the ClientHello. `ClientConfig` has no extension
    table, no ordering, no GREASE; `ClientConfig::dangerous()` exposes only a
@@ -112,8 +112,8 @@ not a choice one could route around; it is the premise.
 
 ## Existing work, and what it lacks
 
-"There is no uTLS alternative in the Rust ecosystem" — **retracted**; that sentence is wrong too
-(see `retractions.json` R-002). The routes that actually exist:
+"There is no uTLS alternative in the Rust ecosystem" — **retracted**; that sentence is wrong too.
+The routes that actually exist:
 
 | Project | Status | Gap |
 |---|---|---|
@@ -179,33 +179,7 @@ second-hand ports). It lives in `crates/reality/`, with **all 35 criteria green*
 
 The protocol shape, six measured findings, and the known boundaries (ML-DSA-65 not implemented;
 HRR not handled — the reference doesn't either) are in
-[`questions/11-reality-rust-port.md`](questions/11-reality-rust-port.md).
 
-## The fact system
-
-This repo runs an anti-hallucination fact mechanism (`zreflect/`, adopted from
-[`ArchivalEra/Einfacht`](https://github.com/ArchivalEra/Einfacht), keeping the mechanism and
-stripping the project data). Its shape matches this project's core deliverable exactly: **every
-preset's fingerprint is a "measured value"**, so fingerprints in the docs can only come from a
-re-runnable measurement — never hand-copied.
-
-```bash
-python3 zreflect/facts.py                       # measure everything, write the ledger
-python3 zreflect/facts.py --render-doc STATE.md # render the machine block into the living doc
-sh gates-selftest.sh                            # every gate must first prove it can go red
-sh reflect-hooks/install.sh                     # wire up pre-commit / pre-push
-```
-
-| Part | What it catches |
-|---|---|
-| `zreflect/check_facts.py` | doc block out of sync with the ledger, naked numbers in prose, references to non-existent keys |
-| `zreflect/check_cmds.py` | the re-run command in the ledger's `cmd` field **no longer produces the recorded value** (including shell-dialect errors that only surface in another shell) |
-| `zreflect/check_retractions.py` | a retracted assertion coming back dressed as current truth |
-| `zreflect/check_stale.py` | hash assertions without provenance, retired component names returning |
-| `zreflect/check_questions.py` | open questions living only in prose, with no runnable settling artifact |
-
-Current state, known gaps, and why this repo changed not a single configuration knob: see
-[`STATE.md`](STATE.md). The house rules: [`AGENTS.md`](AGENTS.md).
 
 ## Where it stands
 
@@ -259,13 +233,12 @@ checkable table in [`docs/utls-parity.md`](docs/utls-parity.md).
 
 ## Criteria & CI
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs seven groups of criteria, each
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs six groups of criteria, each
 able to go red on its own:
 
 | job | what it judges |
 |---|---|
 | `rust` | `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-features` |
-| `gates` | the five gates + `gates-selftest.sh` (every gate first proves it can go red) + doc machine block vs ledger |
 | `patch-repro` | apply `patch.diff` onto **pristine** rustls 0.23.45; the result must match `crates/rustls` **file by file** (`crates/rustls-fork/verify-patch.sh`) |
 | `ech-offline` | inner hello byte-for-byte identical to uTLS's; our client passes uTLS's own ECH server |
 | `upstream` | the original `refraction-networking/utls` test suite (the two network-bound ones `-skip`) |
@@ -294,8 +267,6 @@ able to go red on its own:
   but it is **another** criterion, not a substitute for the unmodified one.
   One command locally: `sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <tree>`
   ⇒ top level **222 PASS / 0 FAIL / 1 SKIP** (the only skip is upstream's own `t.Skip`).
-  With a proxy, the recipe for the **unmodified** full suite is in
-  `questions/09-full-suite-oracle.md`.
 
 ## Run it
 
@@ -318,8 +289,6 @@ cargo test -p utls-engine --test ech_utls_server -- --ignored
 # the original suite, **no -skip and no proxy** (same tree) ⇒ 222 PASS / 0 FAIL / 1 SKIP
 sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
 
-# fact system: five gates + self-test
-for g in zreflect/check_*.py; do python3 "$g"; done && sh gates-selftest.sh
 ```
 
 ## Explicit non-goals

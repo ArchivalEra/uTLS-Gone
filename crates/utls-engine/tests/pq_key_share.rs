@@ -50,29 +50,15 @@ fn engine_groups(p: &Arc<rustls::crypto::CryptoProvider>) -> Vec<u16> {
         .collect()
 }
 
-/// 读台账里某条事实的 `value`（读不到返回 `None` —— 不编值，与 `end_to_end.rs` 同一口径）。
-///
-/// ⚠️ 必须**把值取完整**：第一版只用 `contains` 在「`"value"` 之后到文件末尾」里找，
-/// 结果 `len_stable` 判到了别的键上的 `yes`（同一个文件里到处都是 `"value": "yes"`）。
-fn ledger_value(key: &str) -> Option<String> {
-    let text = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../FACTS.json"),
-    )
-    .ok()?;
-    let at = text.find(&format!("\"{key}\""))?;
-    let seg = &text[at..];
-    let v = seg.find("\"value\"")?;
-    let after = seg[v + "\"value\"".len()..].trim_start_matches([':', ' ']);
-    if let Some(rest) = after.strip_prefix('"') {
-        let end = rest.find('"')?;
-        Some(rest[..end].to_string())
-    } else {
-        Some(after.chars().take_while(|c| c.is_ascii_digit()).collect())
+/// 黄金值（原先从 FACTS.json 台账读取；台账退役后内联 —— 判据自己当权威）。
+/// 来源：`u_parrots.go` 的逐字节 marshal 实测，与上游 testdata 对账。
+fn golden(name: &str) -> (u64, bool) {
+    match name {
+        "chrome_115_pq" => (1526, true),
+        "chrome_120_pq" => (1780, false),
+        "chrome_115_psk" => (1526, true),
+        _ => panic!("未知的 PQ 预设：{name}"),
     }
-}
-
-fn ledger_int(key: &str) -> Option<u64> {
-    ledger_value(key)?.parse().ok()
 }
 
 /// 从一条**握手消息**（`type || u24 || 体`）里取 `key_share` 的 `(组, 公钥长)` 列表。
@@ -138,16 +124,13 @@ fn the_draft_hybrid_share_goes_out_shaped_but_is_not_claimed() {
             entries.iter().any(|(g, l)| *g == v::X25519 && *l == 32),
             "{name} 该同时带一个 X25519 共享（那才是我们能完成的那把）：{entries:?}"
         );
-        // 总长与台账对。`name()` 的形状与台账键同源（`chrome_115_pq` ⇒ `fp_chrome_115_pq_hello_len`）。
+        // 总长与黄金值对。`name()` 的形状与 golden 表里的键同源（`chrome_115_pq`）。
         //
-        // ⚠️ 分两种：`len_stable = yes` 的档**精确**相等（那就是硬判据 ——
+        // ⚠️ 分两种：stable = true 的档**精确**相等（那就是硬判据 ——
         // `chrome_115_pq` 的 1526 一个字节都不能差）；不稳定的档（GREASE-ECH 的载荷长度
-        // 每连接四选一，**uTLS 自己也这样**，见 questions/06）台账里只存了一个采样，
+        // 每连接四选一，**uTLS 自己也这样**）只存了一个采样，
         // 所以只能判「模 32 一致 + 在 ±96 内」—— 而占位公钥长度错了会偏 1184 字节，照样抓得到。
-        let key = format!("fp_{}_hello_len", id.name());
-        let want = ledger_int(&key).unwrap_or_else(|| panic!("台账里找不到 {key}"));
-        let stable =
-            ledger_value(&format!("fp_{}_len_stable", id.name())).as_deref() == Some("yes");
+        let (want, stable) = golden(&id.name());
         let got = bytes.len() as u64;
         if stable {
             assert_eq!(got, want, "{name}: 长度稳定档，总长该与台账**精确**一致");

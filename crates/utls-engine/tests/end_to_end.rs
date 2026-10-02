@@ -28,20 +28,52 @@ fn preset(name: &str) -> ClientHelloSpec {
     ClientHelloSpec::from_preset(id).unwrap()
 }
 
-/// 读根仓库 `FACTS.json` 里那条黄金事实（离线产出）。读不到就返回 `None` —— 不编值。
-fn ledger_ja3(preset_name: &str) -> Option<String> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../FACTS.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    let needle = format!("\"fp_{preset_name}_ja3_md5\"");
-    let i = text.find(&needle)?;
-    let rest = &text[i..];
-    let j = rest.find("\"value\"")?;
-    let rest = &rest[j..];
-    let k = rest.find(':')?;
-    let rest = rest[k + 1..].trim_start();
-    let rest = rest.strip_prefix('"')?;
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
+/// 黄金 JA3 MD5（原先从 FACTS.json 台账读取；台账退役后内联 —— 判据自己当权威）。
+fn golden_ja3(preset_name: &str) -> Option<String> {
+    let md5 = match preset_name {
+        "360_11" => "2b3a40903395f08c297cd63b9734cb75",
+        "360_7" => "c405bbbe31c0e53ac4c8448355b2af5b",
+        "android_11" => "6c0f0a346dcd84cb4b97a0d9382c53fd",
+        "chrome_100" => "cd08e31494f9531f560d64c695473da9",
+        "chrome_100_psk" => "e1d8b04eeb8ef3954ec4f49267a783ef",
+        "chrome_102" => "cd08e31494f9531f560d64c695473da9",
+        "chrome_106" => "def317a12dc7ed05a1b27f43af514602",
+        "chrome_112_psk" => "3f9ed491ea677a123655db3560fe9dc5",
+        "chrome_114_psk" => "6d720efbfea20c5396c1e146b3686ae4",
+        "chrome_115_pq" => "0e56ea8d7576172d3325596634e6c05f",
+        "chrome_115_psk" => "8813703eeb522d2179bea34fb7b29c05",
+        "chrome_120" => "4e9f1c0a7ee4ceec80faed41334e1dcf",
+        "chrome_120_pq" => "c99b8581a3e59b0bae7aef14a6e5e3bf",
+        "chrome_131" => "8e494a6419f08a68d438dc930b4f951b",
+        "chrome_133" => "41a1630b19c58de694b977cc0d783dd7",
+        "chrome_58" => "94c485bca29d5392be53f2b8cf7f4304",
+        "chrome_62" => "94c485bca29d5392be53f2b8cf7f4304",
+        "chrome_70" => "6a958df291c3f2ee216e80434750d4e1",
+        "chrome_72" => "66918128f1b9b03303d77c6f2eefd128",
+        "chrome_83" => "b32309a26951912be7dba376398abc3b",
+        "chrome_87" => "b32309a26951912be7dba376398abc3b",
+        "chrome_96" => "cd08e31494f9531f560d64c695473da9",
+        "edge_106" => "cd08e31494f9531f560d64c695473da9",
+        "edge_85" => "b32309a26951912be7dba376398abc3b",
+        "firefox_102" => "579ccef312d18482fc42e2b822ca2430",
+        "firefox_105" => "579ccef312d18482fc42e2b822ca2430",
+        "firefox_120" => "b5001237acdf006056b409cc433726b0",
+        "firefox_148" => "7704a11cf87dfcf33080b90ce11d5527",
+        "firefox_55" => "0ffee3ba8e615ad22535e7f771690a28",
+        "firefox_56" => "0ffee3ba8e615ad22535e7f771690a28",
+        "firefox_63" => "b20b44b18b853ef29ab773e921b03422",
+        "firefox_65" => "b20b44b18b853ef29ab773e921b03422",
+        "firefox_99" => "6b5e0cfe988c723ee71faf54f8460684",
+        "ios_11" => "a69708a64f853c3bcc214c2c5faf84f3",
+        "ios_12" => "5c118da645babe52f060d0754256a73c",
+        "ios_13" => "6fa3244afc6bb6f9fad207b6b52af26b",
+        "ios_14" => "656b9a2f4de6ed4909e157482860ab3d",
+        "qq_11" => "cd08e31494f9531f560d64c695473da9",
+        "safari_16" => "773906b0efdefa24a7f2b8eb6985bf37",
+        "safari_26" => "ecdf4f49dd59effc439639da29186671",
+        _ => return None,
+    };
+    Some(md5.to_string())
 }
 
 fn check(name: &str) {
@@ -105,7 +137,7 @@ fn check(name: &str) {
     );
 
     if stable {
-        if let Some(golden) = ledger_ja3(name) {
+        if let Some(golden) = golden_ja3(name) {
             assert_eq!(
                 ours.hash_hex(),
                 golden,

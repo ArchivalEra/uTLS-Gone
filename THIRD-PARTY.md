@@ -16,7 +16,7 @@
   完整补丁在 `crates/rustls-fork/patch.diff`，**可验证**：打到一份全新的 0.23.45 上应得到
   与 `crates/rustls` **逐文件相同**的树（做法见 `crates/rustls-fork/README.md`）。
 - 为什么必须 vendored：上游没有公开的 ClientHello 定制 API 且自 0.23.0 起每连接随机化扩展
-  顺序 —— 见 `README.md`「为什么必须 fork」与 `retractions.json` 的 R-001。
+  顺序 —— 见 `README.md`「为什么必须 fork」。
 
 ## 2. 从 `refraction-networking/utls` 派生的数据与表
 

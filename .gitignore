@@ -2,10 +2,3 @@
 # 踩过：只写 `/target`（锚定根）会漏掉 `crates/rustls/target/` —— 那是 2 GB 的产物，
 # 而 `git add -A` 会照单全收（这个坑在第一次推送前才发现）。
 target/
-
-# 闸门/采集器的 Python 缓存（机制目录里不该出现产物）
-__pycache__/
-*.pyc
-
-# 机器块由 zreflect/facts.py 生成，**但要提交** —— 它是数字的唯一产地，
-# 不进版本库的话「文档里的块与台账一致」就无从对账。故此处不忽略 FACTS.json / STATE.md。

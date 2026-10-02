@@ -80,7 +80,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 
 ## 为什么必须 fork
 
-「用上游 rustls 加一个扩展列表就能实现」—— **已翻案**，这句话是错的（见 `retractions.json` R-001）。
+「用上游 rustls 加一个扩展列表就能实现」—— **已翻案**，这句话是错的。
 两个硬约束：
 
 1. rustls **没有**任何公开的 ClientHello 定制 API。`ClientConfig` 的字段里没有扩展表、
@@ -94,7 +94,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 
 ## 既有方案与它们的缺口
 
-「Rust 生态里没有任何 uTLS 的替代方案」—— **已翻案**，这句话也是错的（见 `retractions.json` R-002）。
+「Rust 生态里没有任何 uTLS 的替代方案」—— **已翻案**，这句话也是错的。
 实际已有的路线：
 
 | 方案 | 状态 | 缺口 |
@@ -150,31 +150,8 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
   转发给真站，拿到与直连**逐字节相同**的证书链。
 
 协议形状、六个实测发现与已知边界（ML-DSA-65 未实现；HRR 不处理 —— 参照同样不做）写在
-[`questions/11-reality-rust-port.md`](questions/11-reality-rust-port.md)。
+协议形状、实测发现与已知边界写在源码注释里（`crates/reality/src/server.rs`、`mirror_tls.rs`）。
 
-## 事实系统
-
-本仓接了一套反幻觉的事实机制（`zreflect/`，从 [`ArchivalEra/Einfacht`](https://github.com/ArchivalEra/Einfacht)
-接入，只留机制、剥掉项目数据）。它的形状正好对上本项目的核心交付物：**每个预设的指纹就是一个
-「测出来的值」**，所以文档里的指纹只能来自一次可复跑的测量，不能手抄。
-
-```bash
-python3 zreflect/facts.py                       # 量一遍，写台账（掉条/改口会拒绝写盘）
-python3 zreflect/facts.py --render-doc STATE.md # 把机器块渲染进活状态文档
-sh gates-selftest.sh                            # 每个闸门先证明自己会红（发现式名录）
-sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
-```
-
-| 部件 | 挡住什么 |
-|---|---|
-| `zreflect/check_facts.py` | 文档块与台账不一致、正文裸数字、引用不存在的键 |
-| `zreflect/check_cmds.py` | 台账里 `cmd` 字段写的那条复跑命令**跑不出记录的值**（含 shell 方言这类只会在别的 shell 下暴露的错） |
-| `zreflect/check_retractions.py` | 已被推翻的断言重新出现当现状 |
-| `zreflect/check_stale.py` | 活状态里没有出处的哈希断言、退役组件名回来 |
-| `zreflect/check_questions.py` | 未结案的问题只活在散文里、没有能跑的结算件 |
-
-现在的状态、已知缺口、以及为什么本仓一个配置旋钮都没改，都写在 [`STATE.md`](STATE.md)。
-在本仓工作的规矩见 [`AGENTS.md`](AGENTS.md)。
 
 ## 现在到哪了
 
@@ -218,12 +195,11 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
 
 ## 判据与 CI
 
-CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑七组判据，每一组都能单独变红：
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑六组判据，每一组都能单独变红：
 
 | job | 判什么 |
 |---|---|
 | `rust` | `cargo fmt --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace --all-features` |
-| `gates` | 五道闸门 + `gates-selftest.sh`（每个闸门先证明自己会红）+ 文档机器块与台账一致 |
 | `patch-repro` | 把 `patch.diff` 打到**原始** rustls 0.23.45 上，得到的树要与 `crates/rustls` **逐文件相同**（`crates/rustls-fork/verify-patch.sh`） |
 | `ech-offline` | 内层与 uTLS 的产出逐字节相同；我们的客户端能过 uTLS 自己的 ECH 服务端 |
 | `upstream` | 原版 `refraction-networking/utls` 自己的测试套件（不联网那两条 `-skip`） |
@@ -246,7 +222,6 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑七组判据，
   与对端无关，换域名不动任何断言 —— 但它是**另一条**判据，不是未改动那条的替代。
   本地跑一条命令：`sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh <参照树>`
   ⇒ 顶层 **222 PASS / 0 FAIL / 1 SKIP**（唯一的 skip 是上游自己 `t.Skip` 的那条）。
-  有代理时跑**未改动**那条全量的配方在 `questions/09-full-suite-oracle.md`。
 
 ## 跑一遍
 
@@ -268,8 +243,6 @@ cargo test -p utls-engine --test ech_utls_server -- --ignored
 # 原版全套**不 -skip 也不走代理**（同样要那份源码树）⇒ 222 PASS / 0 FAIL / 1 SKIP
 sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master
 
-# 事实系统：五道闸门 + 自证
-for g in zreflect/check_*.py; do python3 "$g"; done && sh gates-selftest.sh
 ```
 
 ## 明确的非目标

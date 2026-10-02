@@ -42,9 +42,9 @@
 | `TestUTLSHelloRetryRequest`（`u_conn_test.go:176`） | 已判 | `tests/hello_retry.rs`、`tests/hello_retry_e2e.rs`、`tests/hello_retry.rs::*` 的第二飞逐字节 + `fixtures/utls-testdata` 里上游录的第二飞 |
 | 多 key share 的完成 | 已判 | `tests/multi_key_share.rs`（服务端选**第二个**组也谈成）、`tests/p256_handshake.rs`、`tests/mixed_group_handshake.rs`、`tests/pq_key_share.rs` |
 | `TestResumption` / `TestLRUClientSessionCache` / `TestCrossVersionResume`（引擎的 ticket 机制） | 部分已判 | **PSK 接线**已判：`tests/resumption.rs`（服务端第二条连接说 `Resumed`、HRR 后仍复用）。**ticket 加解密本身**是引擎领地（rustls） |
-| `TestRealResumption`（真外网 `yahoo.com`） | 已判（换域名） | `run-upstream-suite.sh`：目标域名换成直连可达、判据等价者，全量 222 PASS / 0 FAIL / 1 SKIP。**代理跑未改动树那条已退役**（`questions/09` 留历史） |
+| `TestRealResumption`（真外网 `yahoo.com`） | 已判（换域名） | `run-upstream-suite.sh`：目标域名换成直连可达、判据等价者，全量 222 PASS / 0 FAIL / 1 SKIP。**代理跑未改动树那条已退役** |
 | `TestVerifyHostname`（真外网 `www.google.com`） | 已判（换域名） | 同上 |
-| `TestECH` / `TestTLS13ECHRejectionCallbacks` / `TestUTLSECH` | 已判 | `tests/ech.rs`、`tests/ech_offer.rs`、`tests/ech_inner_utls.rs`（内层与 uTLS 逐字节）、`tests/ech_e2e.rs`（三族真服务器 `Accepted`）、`tests/ech_utls_server.rs`（过 uTLS 自己的服务端）；证据链在 `questions/10` |
+| `TestECH` / `TestTLS13ECHRejectionCallbacks` / `TestUTLSECH` | 已判 | `tests/ech.rs`、`tests/ech_offer.rs`、`tests/ech_inner_utls.rs`（内层与 uTLS 逐字节）、`tests/ech_e2e.rs`（三族真服务器 `Accepted`）、`tests/ech_utls_server.rs`（过 uTLS 自己的服务端） |
 | `TestQUICEarlyData`（早数据 + declined）等 | **本轮已判（TCP）** | `tests/early_data.rs`：指纹化恢复握手 + 0-RTT —— 服务端 `Resumed` 且早数据逐字节读出；对照（原生 rustls）与二分（带扩展不写数据）各一条。rustls 的 TCP 0-RTT 只支持有状态恢复（防重放），服务端配置因此在判据里关掉 ticketer |
 
 ## 三、**未做 / 已写明的语义差异**
@@ -117,7 +117,7 @@
 - **完整性**：两个 upstream job 原先**只断言「没有意外的跳过」** —— 于是一条都没跑也是绿的；
   现在都断言「顶层 PASS 非零」+「跳过集恰如预期」。死判据 `tests/ech_control.rs`
   （无引用、无理由地 `#[ignore]`、不断言）已删。
-- **代理路径退役**：`socks5fwd.py` 已删，`questions/09` 的配方降为历史记录。
+- **代理路径退役**：`socks5fwd.py` 已删，该配方已退役。
   **代价写明**：失去了「完全未改动的上游树」那条路的可复跑性。
 - **过时文档**：`utls-engine/src/lib.rs` 的能力清单、`utls/src/hello/preset.rs` 的
   `_PSK_` 段、`rustls-fork/README.md` 的 §三/§六/`rustls_pin` 段、

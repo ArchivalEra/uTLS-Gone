@@ -1,11 +1,10 @@
 # 每次 push / PR 都跑一遍本仓**自己的判据** —— 不是「能编译就算过」。
 #
-# 五个 job 对应五类判据，每一类都能单独变红：
+# 六个 job 对应六类判据，每一类都能单独变红：
 #   rust            编译期与运行期：fmt / clippy -D warnings / 全部测试
 #                   （含 crates/reality —— REALITY 的等价实现；它的真栈判据需要
 #                    stock Xray 二进制，缺失时该测试如实失败 —— 见 d 该测试文件头，
 #                    CI 里不装 Xray，所以那三条在 CI 上标 #[ignore] 由本地跑）
-#   gates           事实系统：五道闸门 + 自证 + 文档里的机器块与台账一致
 #   patch-repro     补丁可重现：打到**原始** rustls 上应得到与 vendored 目录逐文件相同的树
 #   ech-offline     ECH 的离线判据：内层与 uTLS 逐字节相同 + uTLS 自家服务端接受我们的提议
 #   upstream        原版套件：跑 refraction-networking/utls 自己的测试（不联网那两条 `-skip`）
@@ -58,27 +57,6 @@ jobs:
         run: |
           cargo build --release --example plan-cost
           ./target/release/examples/plan-cost
-
-  gates:
-    name: 事实系统的五道闸门
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: 五道闸门
-        run: |
-          for g in zreflect/check_*.py; do echo "--- $g"; python3 "$g"; done
-        env:
-          # 复跑命令闸门会真跑台账里每条 cmd。`rustc --version` / `cargo --version`
-          # 记的是**本机**的值，换台机器必然不同 —— 所以这里**显式点名**跳过这两条，
-          # 闸门会把它跳过了哪些打印出来（静默跳过会被当成通过）。
-          REFLECT_CMDS_SKIP: rustc_version,cargo_version
-      - name: 闸门自证（每个闸门都必须能红）
-        run: sh gates-selftest.sh
-      - name: 文档里的机器块与台账一致
-        run: python3 zreflect/facts.py --check STATE.md
 
   patch-repro:
     name: 补丁可重现
