@@ -24,9 +24,9 @@
 //!
 //! # 支持面（不支持就由调用方回落透传）
 //!
-//! * 组：**只有 X25519(29) 与 X25519MLKEM768(4588)** —— 依据是 uTLS 客户端的能力
-//!   （`KeySharePrivateKeys` 没有 P-256 私钥位，见 [`MIRRORABLE_GROUPS`] 的说明）；
-//!   真站选了别的组就回落透传。
+//! * 组：X25519(29)、X25519MLKEM768(4588) 与三个 NIST 组 secp256r1(23) /
+//!   secp384r1(24) / secp521r1(25)（见 [`MIRRORABLE_GROUPS`]；NIST 组还受调用方
+//!   提供者的实现面限制）；真站选了别的组就回落透传。
 //! * 套件：`TLS_AES_128_GCM_SHA256` / `TLS_AES_256_GCM_SHA384` /
 //!   `TLS_CHACHA20_POLY1305_SHA256`；
 //! * 不做：HelloRetryRequest（已知边界，参照同样不做）、0-RTT、KeyUpdate 的
@@ -157,14 +157,28 @@ fn derive_secret(hs: Hs, secret: &[u8], label: &str, messages_hash: &[u8]) -> Ve
 
 // ── 记录层 AEAD ─────────────────────────────────────────────────────────
 
-/// 我们**能镜像**的组：X25519 与 X25519MLKEM768。
+/// 我们**能镜像**的组：X25519(29)、X25519MLKEM768(4588) 与三个 NIST 组
+/// secp256r1(23) / secp384r1(24) / secp521r1(25)。
 ///
-/// 依据是 uTLS 客户端的实际能力，不是我们的偏好：uTLS 的 `KeySharePrivateKeys`
-/// （`u_public.go:926-931`）只有 `Ecdhe`(X25519) / `Mlkem` / `MlkemEcdhe` 三个字段
-/// —— **没有 P-256 的私钥位**，所以 uTLS 客户端（Xray 用的就是它）在任何情况下都
-/// 完不成「服务端选 P-256」的握手。XTLS `tls.go:222-239` 只挑这两个组正是为此。
-/// 真站选了别的组 ⇒ [`run`] 返回 [`MirrorError::UnsupportedGroup`] ⇒ 调用方透传。
-pub const MIRRORABLE_GROUPS: [u16; 2] = [4588, 29];
+/// 镜像的力学是**组无关**的：对选中组生成临时密钥 → 与客户端 share 做 ECDH →
+/// 把公钥覆写进 serverShare（同组同长，未压缩点 65/97/133 字节对得上）。真正的
+/// 门槛有两道，各管各的：
+///
+/// * 这份**白名单**（策略面）——与 Go 侧对齐：metacubex 引擎的补丁放宽镜像校验
+///   接受的正是这五个组；
+/// * 调用方提供者的 `kx_groups`（实现面，[`run`] 里逐组查找）——本仓自带的
+///   aws-lc 提供者**没有 secp521r1** ⇒ 真站选 P-521 时在查找处报
+///   [`MirrorError::UnsupportedGroup`] ⇒ 照旧回落透传（响亮、不猜）。
+///
+/// 为什么 P-256 值得镜像：客户端把 P-256 放进 key_share 是**有意的** —— 真站对
+/// 只带 `[MLKEM768, X25519]` 的 hello 会回 HRR（本镜像不做 HRR），P-256 share 的
+/// 作用正是让只认 P-256 的启点**第一飞就选中它、避开 HRR**（XTLS 的 P-256 模式
+/// 就是干这个）。旧版只放两个组的依据 —— uTLS 的 `KeySharePrivateKeys`
+/// （`u_public.go:926-931`）没有 P-256 私钥位 ⇒ 客户端完不成 —— 对**本仓的
+/// 客户端半边**不成立：那是注入式的（调用方自带密钥，见 `crates/utls-engine`
+/// 的 `ExternalKeyExchange`），「服务端选 P-256」对这样的客户端**可完成**。
+/// uTLS 客户端（Xray）依旧完不成 P-256 —— 那是它自己的边界，不是镜像拒绝的理由。
+pub const MIRRORABLE_GROUPS: [u16; 5] = [4588, 29, 23, 24, 25];
 
 /// 每连接的记录层 AEAD（三种套件各一个实现）。
 ///
@@ -724,15 +738,9 @@ pub fn run(
     };
     // ① 我们的临时密钥（借 rustls 的组实现 —— 混合组语义与 Go 一致，已由真栈判据证明）。
     //
-    // ⚠️ **只镜像 X25519(0x001d) 与 X25519MLKEM768(4588) 两个组** —— 依据是
-    // **uTLS 自己的客户端状态**，不是我们的偏好：uTLS 的 `KeySharePrivateKeys`
-    // （`u_public.go:926-931`）只有三个字段 `Ecdhe`(X25519) / `Mlkem` / `MlkemEcdhe`
-    // —— **没有 P-256 的私钥位**。所以 uTLS 客户端（Xray 用的就是它）在任何情况下
-    // 都无法完成「服务端选 P-256」的握手，而 XTLS `tls.go:222-239` 只挑那两个组
-    // 正是这个原因。本实现跟同一条约束：不一致就回落透传（`MirrorError` ⇒ 透传）。
-    // （实测：本地 rustls 真站会选 P-256，Xray 客户端当场回 `unexpected message`；
-    // 那不是我们镜像的错，是 uTLS 支持面的边界。）
-    const MIRRORABLE_GROUPS: [u16; 2] = [4588, 29];
+    // 两道闸：先过白名单（[`MIRRORABLE_GROUPS`]，策略面），再查调用方提供者有没有
+    // 该组的实现（实现面）。本仓自带的 aws-lc 提供者没有 secp521r1 —— 真站选
+    // P-521 时在这里 `UnsupportedGroup` ⇒ 回落透传，与「选了完全陌生的组」同一条路。
     if !MIRRORABLE_GROUPS.contains(&template.group) {
         return Err(MirrorError::UnsupportedGroup(template.group));
     }

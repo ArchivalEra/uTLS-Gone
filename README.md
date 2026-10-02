@@ -156,8 +156,8 @@ inside a thin adapter is what reduces the cost of following upstream from "rewri
 
 This repo's first issue asked for a Rust equivalent of REALITY with
 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) as the **authoritative reference** (no
-second-hand ports). It lives in `crates/reality/`, with **all 35 criteria green** (ledger key
-`reality_tests`), including a true stack:
+second-hand ports). It lives in `crates/reality/`, with **all 36 criteria green** (including
+two stock-Xray true-stack tests), covering:
 
 - **Auth & KDF**: AuthKey = X25519(server static priv, client ephemeral pub) → HKDF-SHA256;
   `sessionId` sealing = AES-256-GCM with the AAD being **the entire ClientHello with the
@@ -167,20 +167,26 @@ second-hand ports). It lives in `crates/reality/`, with **all 35 criteria green*
   whole — 10 criteria.
 - **Mirror handshake**: a half TLS 1.3 server handshake run by us — the real site's ServerHello
   is the template and only the key bytes change; EE / Certificate / CertificateVerify /
-  Finished are all produced here. The mirrorable groups are only `X25519(29)` and
-  `X25519MLKEM768(4588)` — the ceiling is the uTLS client's own key-share capability
-  (`u_public.go` has private-key slots for exactly these two), not something we skipped.
-- **Client half**: can initiate a REALITY connection on top of the rustls fork.
+  Finished are all produced here. Mirrorable groups: `X25519(29)`, `X25519MLKEM768(4588)`, and
+  the three NIST groups `P-256` / `P-384` / `P-521` (issue #3; P-521 additionally needs a
+  provider that implements it — the bundled aws-lc backend doesn't, so those connections fall
+  back to passthrough). P-256 matters because putting it in the `key_share` is how a client
+  avoids an HRR from origins that only accept P-256. The old two-group ceiling was uTLS's own
+  key-share capability; this repo's client half is injective (caller-held keys), so a P-256
+  selection is completable here — and a true-stack criterion proves it end to end.
+- **Client half**: can initiate a REALITY connection on top of the rustls fork — fingerprint
+  hello, caller-held X25519 for the auth key, provider-held exchanges for the rest, and the
+  mirror certificate recognized by its HMAC tail. Proven end-to-end against our own server with
+  a P-256-only origin (bidirectional roundtrip).
 - **Config parity**: all 21 fields of Xray's `config.proto`, reconciled field by field,
   bidirectional, and provably red.
 - **True stack (stock Xray-core 26.3.27)**: an authenticated client succeeds and carries
   traffic; an unauthenticated hello is forwarded to the real site and receives the byte-for-byte
   identical certificate chain of a direct connection.
 
-The protocol shape, six measured findings, and the known boundaries (ML-DSA-65 not implemented;
-HRR not handled — the reference doesn't either) are in
-
-
+The protocol shape, the measured findings, and the known boundaries (ML-DSA-65 not implemented;
+HRR not handled — the reference doesn't either) are documented where the code lives
+(`crates/reality/src/server.rs`, `crates/reality/src/mirror_tls.rs`).
 ## Where it stands
 
 - **Fingerprint layer**: preset table, GREASE, padding, extension shuffling, randomized family,
@@ -191,7 +197,7 @@ HRR not handled — the reference doesn't either) are in
   unconditionally-appended SCSV, external key exchange, external second flight, session
   resumption, real ECH proposals) — the provenance of each and why upstream refuses to do them
   are in `crates/rustls-fork/README.md`.
-- **REALITY**: previous section — 35 criteria green, including the stock-Xray true stack.
+- **REALITY**: previous section — 36 criteria green, including the stock-Xray true stack.
 - **The accepting half of real ECH works**: Cloudflare, defo.ie, and test.defo.ie all accept;
   plus an **offline** criterion (our client ↔ uTLS's own ECH server).
 - **40 of the 41 presets go through the engine path** (`cargo run --release --example plan-cost`
@@ -271,7 +277,7 @@ able to go red on its own:
 ## Run it
 
 ```bash
-cargo test --workspace --all-features    # every offline criterion (REALITY's 31 among them)
+cargo test --workspace --all-features    # every offline criterion (REALITY's 36 among them)
 cargo clippy --workspace --all-targets --all-features
 
 # REALITY true stack (needs stock Xray; see xray_bin() in tests/real_stack.rs, REALITY_XRAY overrides)

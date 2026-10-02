@@ -133,25 +133,28 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 ## REALITY（issue #1，已随 v0.1.0-reality.1 发布）
 
 本仓的第一个 issue 要求：以 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) 为**权威参照**
-（不引二手移植），给出 REALITY 的 Rust 等价实现。交付在 `crates/reality/`，**35 条判据全绿**
-（台账键 `reality_tests`），含真栈：
+（不引二手移植），给出 REALITY 的 Rust 等价实现。交付在 `crates/reality/`，**36 条判据全绿**
+（含两条 stock Xray 真栈），覆盖：
 
 - **鉴权与 KDF**：AuthKey = X25519(服务端静态私钥, 客户端临时公钥) → HKDF-SHA256；
   `sessionId` 的密封 = AES-256-GCM，AAD 是 **sessionId 置零后的整条 ClientHello**。
   KDF 与密封对 Go 参照实现产出的向量做**双向逐字节对拍**。
 - **fallback 判定**：上游 `tls.go:213-275` 那段服务端决策逻辑整段移植，10 条判据。
 - **镜像握手**：自己跑半段 TLS 1.3 服务端握手 —— 把真站 ServerHello 当模板、只换密钥字节；
-  EE / Certificate / CertificateVerify / Finished 全部由本仓产出。镜像支持的组只有
-  `X25519(29)` 与 `X25519MLKEM768(4588)` —— 上限是 uTLS 客户端自己的 key share 能力
-  （`u_public.go` 只有这两类私钥位），不是我们少做了。
-- **客户端半边**：能在 rustls fork 之上发起 REALITY 连接。
+  EE / Certificate / CertificateVerify / Finished 全部由本仓产出。镜像支持的组：`X25519(29)`、
+  `X25519MLKEM768(4588)` 与三个 NIST 组 `P-256` / `P-384` / `P-521`（issue #3；P-521 还需要
+  提供者有实现 —— 本仓自带的 aws-lc 后端没有，选到它照旧回落透传）。P-256 有意义的原因：
+  客户端往 key_share 里放 P-256 正是「避开只认 P-256 的启点回 HRR」的手段。旧版两个组的
+  上限是 uTLS 自己的 key share 能力；本仓的客户端半边是注入式的（调用方自带密钥），
+  服务端选 P-256 对它可完成 —— 且有真栈判据端到端证明。
+- **客户端半边**：能在 rustls fork 之上发起 REALITY 连接 —— 指纹 hello、调用方持有的
+  X25519 鉴权钥、其余组由提供者持有，镜像证书凭 HMAC 尾签认出；对 P-256-only 真站
+  端到端跑通（双向往返）。
 - **参数面 parity**：Xray 的 `config.proto` 21 个字段逐条对账，双向核对、可红验证。
 - **真栈（stock Xray-core 26.3.27）**：正常客户端鉴权成功并承载流量；未鉴权的 hello 被
   转发给真站，拿到与直连**逐字节相同**的证书链。
 
-协议形状、六个实测发现与已知边界（ML-DSA-65 未实现；HRR 不处理 —— 参照同样不做）写在
 协议形状、实测发现与已知边界写在源码注释里（`crates/reality/src/server.rs`、`mirror_tls.rs`）。
-
 
 ## 现在到哪了
 
@@ -160,7 +163,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 - **引擎层**：vendored rustls + **八处插桩**（外供 ClientHello、压制乱序、广播自协商不了的套件、
   去掉无条件追加的 SCSV、外供密钥交换、外供第二飞、会话复用、真 ECH 提议）——
   逐处出处与上游为什么拒绝写在 `crates/rustls-fork/README.md`。
-- **REALITY**：见上节 —— 35 条判据全绿，含 stock Xray 真栈。
+- **REALITY**：见上节 —— 36 条判据全绿，含 stock Xray 真栈。
 - **真实 ECH 的接受那一半已通**：Cloudflare、defo.ie、test.defo.ie 三族服务器都接受；
   另有一条**离线**判据（我们的客户端 ↔ uTLS 自己的 ECH 服务端）。
 - **41 档里 40 档都能过引擎那条路**（`cargo run --release --example plan-cost` 会打出名单）。
@@ -226,7 +229,7 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑六组判据，
 ## 跑一遍
 
 ```bash
-cargo test --workspace --all-features    # 全部离线判据（REALITY 的 35 条也在其中）
+cargo test --workspace --all-features    # 全部离线判据（REALITY 的 36 条也在其中）
 cargo clippy --workspace --all-targets --all-features
 
 # REALITY 真栈（要 stock Xray，取法见 tests/real_stack.rs 的 xray_bin()，REALITY_XRAY 可覆盖路径）

@@ -153,14 +153,15 @@ pub fn plan(
             )),
         };
     }
-    // 选中的组：REALITY 用 MLKEM768 优先（serverShare 的形状要求，
-    // `handshake_server_tls13.go:104-120`）—— 这里把客户端报的组里
-    // 「能让服务端生成新密钥」的那个挑出来（判据里用 X25519 与 MLKEM768 都跑）。
-    let peer_group = hello
-        .key_shares
+    // 选中的组预告：按 [`crate::mirror_tls::MIRRORABLE_GROUPS`] 的优先序，挑客户端
+    // 报了的第一个可镜像组（`handshake_server_tls13.go:104-120` 的 serverShare
+    // 形状要求）。真站**真正**选中的组以它的 ServerHello 为准 —— 那一步在
+    // [`crate::mirror_tls::run`] 里做；这里的值是「客户端 share 里我们最能用上的
+    // 那把」，判据用它对账（issue #3 起含 NIST 组，口径只有白名单一份）。
+    let peer_group = crate::mirror_tls::MIRRORABLE_GROUPS
         .iter()
-        .map(|(g, _)| *g)
-        .find(|g| *g == 4588)
+        .copied()
+        .find(|g| hello.key_shares.iter().any(|(cg, _)| cg == g))
         .unwrap_or(29);
     MirrorPlan::Authenticated {
         peer_group,

@@ -21,11 +21,20 @@
 //!
 //! # 判据
 //!
-//! 1. **鉴权路径**：Xray 客户端（配置了正确的 publicKey/shortId）连上后，
+//! 1. **鉴权路径（Xray）**：Xray 客户端（配置了正确的 publicKey/shortId）连上后，
 //!    服务端的 `authenticated` 计数 +1、`fallback` 为 0；测试数据经
 //!    握手后的明文流往返（Xray 收到回显）。
 //! 2. **未鉴权路径**：普通 TLS 客户端（不带 REALITY sessionId）连上服务端，
 //!    看到的证书链与**直连真站**逐字节相同（服务端把连接原样透传）。
+//! 3. **双向 splice（Xray）**：明文流拆两半，后端主动推的数据在客户端先写之前
+//!    到达（issue #2）。
+//! 4. **P-256-only dest 的未鉴权面**：没鉴权 ⇒ 照旧透传（issue #3 支持面放宽
+//!    不动这条边界）。
+//! 5. **真站选 P-256 ⇒ 镜像端到端**（issue #3 的核心）：本仓注入式客户端半边
+//!    （X25519 鉴权钥调用方持有 + 提供者持有的 P-256 交换）对着 P-256-only 真站，
+//!    鉴权 → 镜像 → 双向往返；P-384 同型一条。
+//!
+//! 其中 1、3 需要 stock Xray；2、4、5（P-256 与 P-384 两条）不需要，随 workspace 跑。
 //!
 //! # 需要外部二进制 —— 测试自己管
 //!
@@ -42,7 +51,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reality::ch::RealityConfig;
-use reality::client::{ClientConfig as ClientCfg, seal_hello};
 use reality::server::{AuthInfo, Handler, PlaintextStream, Server, ServerConfig};
 
 const SERVER_PRIV: [u8; 32] = [0x31; 32];
@@ -304,8 +312,8 @@ fn spawn_xray(server: SocketAddr) -> (Child, u16) {
 ///
 /// ⚠️ `#[ignore]`：这条**需要 stock Xray 二进制**（真栈判据的核心一格）。默认不跑，
 /// 是为了让 `cargo test --workspace` 在没装 Xray 的机器上仍然全绿；CI 的
-/// `reality-stack` job 与本地都显式跑它（`--include-ignored`）。其余两条
-/// （未鉴权透传 / P-256-only）不需要 Xray，照常随 workspace 跑。
+/// `reality-stack` job 与本地都显式跑它（`--include-ignored`）。其余四条
+/// （未鉴权透传 ×2 / P-256 镜像 / P-384 镜像）不需要 Xray，照常随 workspace 跑。
 #[test]
 #[ignore = "需要 stock Xray-core 客户端（取法见 xray_bin()）"]
 fn the_stock_xray_client_authenticates_and_moves_traffic() {
@@ -417,25 +425,20 @@ fn an_unauthenticated_client_sees_the_dest_certificate_byte_for_byte() {
     );
 }
 
-/// **判据 4（P-256-only dest）**：真站只认 P-256 时的**既定行为**。
+/// **判据 4（P-256-only dest 的未鉴权面）**：不带 REALITY 封装的客户端照旧透传 ——
+/// 拿到与直连真站**逐字节相同**的证书链。
 ///
-/// # 为什么这里期望的是**透传**而不是镜像
+/// # 为什么还有这条（issue #3 之后的口径）
 ///
-/// issue 原文写「P-256-only dest 完成握手并承载数据」。查权威参照后这条要修正 ——
-/// **不是我们做不到，是 uTLS 客户端做不到**：
+/// 镜像支持面放宽到 NIST 组（issue #3）改变的是**鉴权路径**；「没鉴权 ⇒ 原样透传」
+/// 是另一条边界，不该跟着动。真栈上的形状：P-256-only 真站 + 普通 TLS 客户端
+/// （两边直谈，REALITY 服务端只搬字节），服务端记 1 条 fallback、0 条鉴权、
+/// 0 条镜像。
 ///
-/// * uTLS 的 `KeySharePrivateKeys`（`u_public.go:926-931`）只有
-///   `Ecdhe`(X25519) / `Mlkem` / `MlkemEcdhe` 三个字段 —— **没有 P-256 私钥位**；
-/// * 于是 XTLS `tls.go:222-239` 的服务端**只**从客户端 hello 里挑
-///   `X25519MLKEM768` 与 `X25519`，别的组一律 `break`（⇒ 透传）：它知道
-///   自己那边的客户端完不成 P-256。
-///
-/// 所以「P-256-only dest 完成握手」这件事在**真栈**上是靠**透传**达成的：
-/// 客户端与真站直接谈（真站选 P-256，两端都支持），REALITY 服务端只搬字节。
-/// 本判据钉的就是这条：镜像路径**明确拒绝**（`UnsupportedGroup`）⇒ 回落透传，
-/// 且**客户端仍能与真站完成握手**（用我们的 rustls 客户端验证，它支持 P-256）。
+/// 鉴权过 + 真站选 P-256 的**镜像**路径由判据 6 端到端钉住
+/// （[`a_p256_selected_dest_mirrors_and_carries_traffic`]）。
 #[test]
-fn a_p256_only_dest_still_completes_by_falling_back_to_passthrough() {
+fn an_unauthenticated_client_on_a_p256_only_dest_gets_passthrough() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
     let dest_port = listener.local_addr().expect("端口").port();
     let cfg = common::dest_server_config_with_groups(Some(vec![rustls::NamedGroup::secp256r1]));
@@ -457,91 +460,284 @@ fn a_p256_only_dest_still_completes_by_falling_back_to_passthrough() {
         }
     });
 
-    // ① 一个**未鉴权**的 rustls 客户端经 REALITY 服务端：应当被透传到 P-256-only 真站，
-    //    并完成握手（它支持 P-256）。
+    // ① 直连 P-256-only 真站：取它给的证书 DER（默认提供者带 P-256 ⇒ 谈得成）。
+    let direct = common::tls_client_handshake_and_peer_cert(("127.0.0.1", dest_port))
+        .expect("直连 P-256-only 真站该完成握手");
+
+    // ② 经 REALITY 服务端（未鉴权 —— 客户端不会 REALITY 封装）：应当被原样透传。
     let (server_addr, stats) = spawn_reality_server(dest_port);
-    let cert = common::tls_client_handshake_and_peer_cert(server_addr)
-        .expect("P-256-only 真站下，透传路径该让客户端完成握手");
-    assert!(!cert.is_empty(), "客户端该拿到真站的证书");
+    let via_reality = common::tls_client_handshake_and_peer_cert(server_addr)
+        .expect("透传路径该完成握手（客户端拿到的是真站的握手）");
+
+    assert_eq!(
+        direct, via_reality,
+        "未鉴权客户端看到的证书链必须与直连真站**逐字节相同**"
+    );
     assert_eq!(
         stats.fallback.load(std::sync::atomic::Ordering::SeqCst),
         1,
         "这条走的是 fallback（透传）"
     );
-
-    // ② 镜像路径本身对 P-256 明说**不支持**（而不是假装镜像、把客户端弄死）——
-    //    这正是 uTLS 客户端的边界（见本函数文档）。
-    let (server_addr2, stats2) = spawn_reality_server(dest_port);
-    let mut sock = TcpStream::connect(server_addr2).expect("连服务端");
-    sock.write_all(&seal_firefox_hello()).expect("写 hello");
-    sock.flush().expect("flush");
-    std::thread::sleep(Duration::from_millis(400));
     assert_eq!(
-        stats2
+        stats
             .authenticated
             .load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "带 P-256 share 的指纹客户端**通过了鉴权**（鉴权只看 sessionId/短 ID/时刻）"
+        0,
+        "不该有鉴权连接"
     );
     assert_eq!(
-        stats2
-            .mirror_failed
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "镜像对 P-256 明确拒绝（uTLS 客户端没有 P-256 私钥位）⇒ 记一次镜像失败"
-    );
-    assert_eq!(
-        stats2.fallback.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "拒绝之后回落透传 —— 客户端拿到的仍是真站的握手（不是我们的）"
+        stats.mirrored.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "不该有镜像"
     );
 }
 
-/// Firefox 148 的 hello（带真 P-256 share）+ REALITY 封装（模拟 Xray 客户端动作）。
-fn seal_firefox_hello() -> Vec<u8> {
-    use utls::hello::{ClientHelloId, ClientHelloSpec, HandshakeInputs, SessionId};
-    use utls::values as v;
-    let mut spec = ClientHelloSpec::from_preset(ClientHelloId::Firefox(148)).unwrap();
-    spec.session_id = SessionId::Fixed(vec![0u8; 32]);
-    let mut inputs = HandshakeInputs::deterministic([0x99; 32]);
-    inputs.sni = Some(SERVER_NAME.into());
-    let client_pub = x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from(CLIENT_PRIV));
-    // P-256 的 share 必须是真公钥（真站要拿它做 ECDH）。
-    let secret = p256::SecretKey::from_slice(&[0x5Au8; 32]).expect("固定私钥");
-    let p256_share = {
-        use p256::elliptic_curve::sec1::ToEncodedPoint;
-        secret
-            .public_key()
-            .to_encoded_point(false)
-            .as_bytes()
-            .to_vec()
-    };
-    inputs.key_exchange = vec![
-        (v::X25519, client_pub.as_bytes().to_vec()),
-        (v::X25519_MLKEM768, vec![0xBB; 1184 + 32]),
-        (v::CURVE_P256, p256_share),
-    ];
-    let raw = spec.marshal(&inputs).expect("指纹层该能产出").into_bytes();
-    let server_pub =
+/// **判据 6（issue #3 的核心）**：真站选 P-256 ⇒ **镜像路径端到端可用**。
+///
+/// # 客户端是谁
+///
+/// 本仓的注入式客户端半边（tests/common 的
+/// [`common::connect_reality_client`]）：Firefox-148 指纹，X25519 私钥由调用方
+/// 持有（REALITY 鉴权钥匙），P-256 / MLKEM768 的交换由提供者持有。uTLS 没有
+/// P-256 私钥位（`u_public.go:926-931`），Xray 到不了这一步 —— 这正是 issue #3
+/// 之前「真站选 P-256 必落透传」的根源；注入式客户端是那个反命题：**服务端选
+/// P-256 对它可完成**。
+///
+/// # 判什么
+///
+/// 1. 镜像握手完成（镜像 flight 被客户端 rustls 收下，Finished 双向过）；
+/// 2. 客户端的证书校验器认出 **REALITY 服务端**（尾签 `HMAC(AuthKey, pub)` 对上
+///    —— 不是透传回来的真站证书）；
+/// 3. TLS 交换用的是 **P-256**（客户端侧探针：0x0017 的交换被消费，X25519 没有
+///    —— REALITY 鉴权用的 X25519 不参与 TLS 交换）；
+/// 4. **双向往返**：后端 → 客户端的 banner 先到（不等客户端说话），
+///    客户端 → 后端的回显随后到；
+/// 5. 服务端取证：authenticated=1、mirrored=1、mirror_failed=0、fallback=0。
+#[test]
+fn a_p256_selected_dest_mirrors_and_carries_traffic() {
+    let (server_addr, stats, _guards) =
+        spawn_nist_dest_and_server(vec![rustls::NamedGroup::secp256r1], banner_echo_handler());
+
+    // ① 客户端：注入式 REALITY 客户端（Firefox-148，key_share [MLKEM768, X25519, P-256]）。
+    let spec = utls::hello::ClientHelloSpec::from_preset(utls::hello::ClientHelloId::Firefox(148))
+        .expect("预设存在");
+    let server_static_pub =
         *x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from(SERVER_PRIV)).as_bytes();
-    let cfg = ClientCfg {
-        public_key: server_pub,
-        short_id: SHORT_ID,
-        client_ver: [1, 8, 13, 0],
-        fallback_to_webpki: true,
+    let (mut tls, client) = common::connect_reality_client(
+        server_addr,
+        spec,
+        SERVER_NAME,
+        CLIENT_PRIV,
+        server_static_pub,
+        SHORT_ID,
+        now_secs(),
+    )
+    .expect("真站选 P-256 时镜像握手该端到端谈成");
+
+    // ② **双向往返**：banner 先到（后端 → 客户端方向不等客户端说话），
+    //    随后客户端写的回显回来（客户端 → 后端 → 客户端）。
+    let mut buf = [0u8; 4096];
+    let n = tls.read(&mut buf).expect("读 banner");
+    assert_eq!(
+        &buf[..n],
+        b"REALITY-MIRROR-BANNER\n",
+        "先到的该是 handler 主动推的 banner（数据经镜像明文流到达）"
+    );
+    let payload = format!("P256-PING-{}", std::process::id());
+    tls.write_all(payload.as_bytes()).expect("写");
+    tls.flush().expect("flush");
+    let n = tls.read(&mut buf).expect("读回显");
+    assert_eq!(
+        &buf[..n],
+        payload.as_bytes(),
+        "回显该逐字节回来（另一条方向也通了）"
+    );
+
+    // ③ 客户端侧证据：TLS 交换用的是 P-256（0x0017），X25519 没被 TLS 消费。
+    assert!(
+        client.exchange_consumed(utls::values::CURVE_P256),
+        "真站选 P-256 ⇒ 镜像的 serverShare 是 P-256 ⇒ 客户端的 P-256 交换该被消费"
+    );
+    assert!(
+        !client.exchange_consumed(utls::values::X25519),
+        "X25519 只用于 REALITY 鉴权（AuthKey），不该被 TLS 交换消费 —— \
+         消费了说明服务端选错了组"
+    );
+    assert_eq!(
+        client.auth_key().len(),
+        32,
+        "AuthKey 已由 plan() 算出（证书校验器用它验出了 REALITY 服务端）"
+    );
+
+    // ④ 服务端取证：这条连接走的是**镜像**路径，一次成。
+    let load = |c: &std::sync::atomic::AtomicUsize| c.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(load(&stats.connections), 1, "恰一条连接");
+    assert_eq!(load(&stats.authenticated), 1, "鉴权该过");
+    assert_eq!(load(&stats.mirrored), 1, "镜像该成 —— issue #3 的正面");
+    assert_eq!(
+        load(&stats.mirror_failed),
+        0,
+        "不该有镜像失败（P-256 已在支持面内）"
+    );
+    assert_eq!(load(&stats.fallback), 0, "不该回落透传");
+}
+
+/// **判据 7（issue #3 的第二只脚）**：P-384 同型 —— 放开的是一族（P-256/P-384/
+/// P-521），不只 P-256 一族。形状与判据 6 相同：key_share `[MLKEM768, X25519,
+/// P-384]`，真站 P-384-only，镜像握手 + 双向往返 + 服务端统计。
+///
+/// （P-521 没有对应判据：本仓自带的 aws-lc 提供者没有 secp521r1，真站选 P-521
+/// 时在组查找处 `UnsupportedGroup` ⇒ 照旧透传 —— 这是实现面的已知边界，
+/// [`reality::mirror_tls::MIRRORABLE_GROUPS`] 的文档记了。）
+#[test]
+fn a_p384_selected_dest_mirrors_and_carries_traffic() {
+    let (server_addr, stats, _guards) =
+        spawn_nist_dest_and_server(vec![rustls::NamedGroup::secp384r1], banner_echo_handler());
+
+    // Firefox-148 指纹，key_share 换成 [MLKEM768, X25519, P-384]。MLKEM768 必须保留：
+    // REALITY 的鉴权形状检查（`reality_peer_pub`，tls.go:239-241）要求它在最前，
+    // 哪怕真站最后选的是 P-384。
+    let spec = firefox_spec_with_key_shares(&[
+        utls::values::X25519_MLKEM768,
+        utls::values::X25519,
+        utls::values::CURVE_P384,
+    ]);
+    let server_static_pub =
+        *x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from(SERVER_PRIV)).as_bytes();
+    let (mut tls, client) = common::connect_reality_client(
+        server_addr,
+        spec,
+        SERVER_NAME,
+        CLIENT_PRIV,
+        server_static_pub,
+        SHORT_ID,
+        now_secs(),
+    )
+    .expect("真站选 P-384 时镜像握手该端到端谈成");
+
+    let mut buf = [0u8; 4096];
+    let n = tls.read(&mut buf).expect("读 banner");
+    assert_eq!(&buf[..n], b"REALITY-MIRROR-BANNER\n");
+    let payload = format!("P384-PING-{}", std::process::id());
+    tls.write_all(payload.as_bytes()).expect("写");
+    tls.flush().expect("flush");
+    let n = tls.read(&mut buf).expect("读回显");
+    assert_eq!(&buf[..n], payload.as_bytes(), "双向往返该通");
+
+    assert!(
+        client.exchange_consumed(utls::values::CURVE_P384),
+        "真站选 P-384 ⇒ 客户端的 P-384 交换该被消费"
+    );
+    assert!(
+        !client.exchange_consumed(utls::values::X25519),
+        "X25519 不该被 TLS 消费"
+    );
+
+    let load = |c: &std::sync::atomic::AtomicUsize| c.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(load(&stats.connections), 1);
+    assert_eq!(load(&stats.authenticated), 1);
+    assert_eq!(load(&stats.mirrored), 1, "P-384 也在镜像支持面内");
+    assert_eq!(load(&stats.mirror_failed), 0);
+    assert_eq!(load(&stats.fallback), 0);
+}
+
+/// 判据 6/7 共用的装置：**只认给定组**的本地 rustls 真站 + 带给定 handler 的
+/// REALITY 服务端。返回 (服务端地址, 统计, 真站 accept 循环的句柄)。
+fn spawn_nist_dest_and_server(
+    dest_groups: Vec<rustls::NamedGroup>,
+    handler: Handler,
+) -> (
+    SocketAddr,
+    Arc<reality::server::Stats>,
+    std::thread::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
+    let dest_port = listener.local_addr().expect("端口").port();
+    let cfg = common::dest_server_config_with_groups(Some(dest_groups));
+    let dest_thread = std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut sock) = stream else { continue };
+            let cfg = Arc::clone(&cfg);
+            std::thread::spawn(move || {
+                let Ok(mut conn) = rustls::ServerConnection::new(cfg) else {
+                    return;
+                };
+                let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+                while conn.is_handshaking() {
+                    if conn.complete_io(&mut sock).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+
+    let cfg = ServerConfig {
+        reality: reality_config(),
+        dest: format!("127.0.0.1:{dest_port}").parse().expect("dest 地址"),
+        cert_template: CERT_TEMPLATE.to_vec(),
+        signing_key: SIGNING_KEY.to_vec(),
     };
-    let now = SystemTime::now()
+    let server = Arc::new(Server::new(cfg, handler));
+    let stats = server.stats();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
+    let addr = listener.local_addr().expect("端口");
+    std::thread::spawn(move || {
+        let _ = server.serve_on(listener);
+    });
+    (addr, stats, dest_thread)
+}
+
+/// banner-echo handler：先**主动**推 banner（不等客户端说话 —— 服务端 → 客户端
+/// 方向先行），再逐字节回显。判据 6/7 用它证「双向往返」。
+fn banner_echo_handler() -> Handler {
+    Arc::new(
+        |mut r: Box<dyn reality::server::PlaintextRead>,
+         mut w: Box<dyn reality::server::PlaintextWrite>,
+         _info: AuthInfo| {
+            let _ = w.write_all(b"REALITY-MIRROR-BANNER\n");
+            let _ = w.flush();
+            let mut buf = [0u8; 4096];
+            loop {
+                match r.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if w.write_all(&buf[..n]).is_err() {
+                            break;
+                        }
+                        let _ = w.flush();
+                    }
+                }
+            }
+        },
+    )
+}
+
+/// Firefox-148 指纹，`key_share` 换成给定的组（线序即传入顺序）。
+/// X25519 必须保留 —— 它是 REALITY 的鉴权钥匙位（服务端拿它派生 AuthKey）。
+fn firefox_spec_with_key_shares(groups: &[u16]) -> utls::hello::ClientHelloSpec {
+    use utls::hello::{ClientHelloId, ClientHelloSpec, CodePoint, Extension, KeyShare};
+    let mut spec = ClientHelloSpec::from_preset(ClientHelloId::Firefox(148)).expect("预设存在");
+    let at = spec
+        .extensions
+        .iter()
+        .position(|e| matches!(e, Extension::KeyShare(_)))
+        .expect("Firefox 148 有 key_share");
+    spec.extensions[at] = Extension::KeyShare(KeyShare::groups(
+        groups
+            .iter()
+            .copied()
+            .map(CodePoint::Fixed)
+            .collect::<Vec<_>>(),
+    ));
+    spec
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("时钟")
-        .as_secs();
-    // 需要带记录头（服务端按记录读）。
-    let sealed = seal_hello(&raw, &CLIENT_PRIV, &cfg, now)
-        .expect("封包")
-        .hello;
-    let mut record = vec![0x16, 0x03, 0x01];
-    record.extend_from_slice(&(sealed.len() as u16).to_be_bytes());
-    record.extend_from_slice(&sealed);
-    record
+        .as_secs()
 }
 
 /// **判据 5（issue #2 的症结）**：鉴权路径的明文流拆两半后，handler 能做**双向并发
