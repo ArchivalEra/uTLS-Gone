@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="470" viewBox="0 0 880 470" role="img" aria-label="每条 hello 的边际 CPU：uTLS-Gone 13.3 微秒，uTLS（Go）102 微秒，7.7 倍">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#10161d"/>
+    </linearGradient>
+    <linearGradient id="gGo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#57606a"/>
+      <stop offset="1" stop-color="#8b949e"/>
+    </linearGradient>
+    <linearGradient id="gRs" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f6f37"/>
+      <stop offset="1" stop-color="#3fb950"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-60%" width="180%" height="240%">
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#3fb950" flood-opacity="0.65"/>
+    </filter>
+  </defs>
+
+  <rect x="1" y="1" width="878" height="468" rx="16" fill="url(#bg)" stroke="#30363d" stroke-width="1"/>
+
+  <text x="24" y="46" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#e6edf3">每条 hello 的边际 CPU</text>
+  <text x="24" y="70" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="12" fill="#8b949e">同层对比 · 同 39 档预设 · 双方默认构建</text>
+
+  <text x="840" y="66" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="56" font-weight="700" fill="#56d364" filter="url(#glow)">7.7×</text>
+  <text x="840" y="88" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="12" fill="#8b949e">对原版 uTLS</text>
+
+  <text x="24" y="122" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">39 档交集 · 每条 hello</text>
+
+  <text x="188" y="158" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" fill="#c9d1d9">uTLS (Go 1.27)</text>
+  <rect x="200" y="140" width="560" height="26" rx="5" fill="url(#gGo)"/>
+  <text x="768" y="158" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">102 µs</text>
+
+  <text x="188" y="198" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" fill="#c9d1d9">uTLS-Gone</text>
+  <rect x="200" y="180" width="73" height="26" rx="5" fill="url(#gRs)"/>
+  <text x="281" y="198" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">13.3 µs</text>
+  <text x="356" y="198" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#56d364">7.7×</text>
+
+  <text x="24" y="248" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">单档 Chrome(70)</text>
+
+  <text x="188" y="284" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" fill="#c9d1d9">uTLS (Go 1.27)</text>
+  <rect x="200" y="266" width="412" height="26" rx="5" fill="url(#gGo)"/>
+  <text x="620" y="284" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">75 µs</text>
+
+  <text x="188" y="324" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" fill="#c9d1d9">uTLS-Gone</text>
+  <rect x="200" y="306" width="65" height="26" rx="5" fill="url(#gRs)"/>
+  <text x="273" y="324" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">11.8 µs</text>
+  <text x="348" y="324" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#56d364">6.4×</text>
+
+  <rect x="24" y="344" width="832" height="52" rx="10" fill="#12261a" stroke="#2ea043" stroke-opacity="0.55"/>
+  <text x="440" y="377" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">warm_up() 预付后，首条 hello：33 ms → 81 µs（≈400×）</text>
+
+  <text x="24" y="432" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">实测 2026-10-01/02 · AMD Ryzen 9 3900X · plan ↔ UClient+BuildHandshakeState 同层 · n 与 10n 各三次取中位</text>
+  <text x="24" y="450" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">冷进程一次性初始化（aws-lc 首次 RAND 的 jitter-entropy，≈33 ms）可用 warm_up() 预付 · TLS 1.2 档不碰 RNG，单条 ~50 µs · 复跑见 plan-cost</text>
+</svg>

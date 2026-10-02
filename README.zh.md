@@ -31,6 +31,8 @@ ClientHello，并让这个一致性**可以被一条命令复跑证明**。在�
 
 ## 速度与 CPU 消耗（实测，可复跑）
 
+![每条 hello 的边际 CPU：uTLS-Gone 13.3 µs，uTLS（Go 1.27）102 µs，7.7×](docs/bench-zh.svg)
+
 **对比必须在同一层做才有意义**：本仓走引擎那道缝（`FingerprintClient::plan`：起真密钥交换 +
 编码 + 记账），对应的 uTLS 动作是 `tls.UClient(...) + BuildHandshakeState()`
 （`gen-reference/bench/main.go`）。拿指纹层的 `marshal` 去比会得到虚高的倍数

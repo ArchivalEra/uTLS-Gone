@@ -36,6 +36,8 @@ The repo is called `uTLS-Gone`, and `Gone` is a pun:
 
 ## Speed & CPU cost (measured, reproducible)
 
+![Marginal CPU per hello: uTLS-Gone 13.3 µs vs uTLS (Go 1.27) 102 µs, 7.7×](docs/bench-en.svg)
+
 **A comparison is only meaningful on the same layer**: ours goes through the engine seam
 (`FingerprintClient::plan`: starts real key exchanges + encodes + accounts), and the matching
 uTLS action is `tls.UClient(...) + BuildHandshakeState()` (`gen-reference/bench/main.go`).
