@@ -723,8 +723,8 @@ ServerHello 由 rustls 生成（不与真站同形 —— 参照拿真站的当�
 | `fp_safari_26_ja3_text` | **771,4866-4867-4865-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27,4588-29-23-24-25,0** | `cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_text='` |
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
-| `md_files` | **25** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **3449** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_files` | **24** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `md_lines` | **3399** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
 | `py_lines` | **1977** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |

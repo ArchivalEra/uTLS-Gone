@@ -17,7 +17,7 @@ ClientHello，并让这个一致性**可以被一条命令复跑证明**。在�
 最大的生产消费者 —— **XTLS/REALITY 的 Rust 等价实现**（issue #1，随
 [`v0.1.0-reality.1`](https://github.com/ArchivalEra/uTLS-Gone/releases/tag/v0.1.0-reality.1) 发布）。
 
-> English version: [README.en.md](README.en.md)
+> English: [README.md](README.md)
 
 ## 名字
 
@@ -48,20 +48,20 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 | **每条 hello 的边际 CPU**（39 档均值） | **102 µs** | **13.3 µs**（**7.7×**） | 13.2 µs —— 与默认在噪声内 |
 | 单档 `Chrome(70)` 的边际 | 75 µs | 11.8 µs | 9.3 µs |
 | 批量均值（39 档 × 48 条，一次性成本摊薄在内） | 104.6 µs | 31.6 µs | 30.8 µs |
-| 首条 hello 前的一次性初始化（冷进程；`warm_up()` 可预付） | ≈4 ms（几乎不可见） | ≈33 ms | ≈33 ms |
+| 首条 hello（未预热的冷进程） | ~77 µs | ≈33 ms | ≈33 ms |
+| 首条 hello（`warm_up()` 预热后） | ~77 µs（无一次性成本） | **~81 µs** | ~81 µs |
 
 如实写全，包括对我们不利的那几行：
 
-- **一次性初始化我们比 Go 贵（~33 ms vs ~4 ms）—— 根因已定位、修法已给**：那笔钱是
-  aws-lc **进程内首次 `RAND_bytes` 的 jitter-entropy 收集** —— 纯用户态（`strace -c`：
-  全进程系统调用总共 0.4 ms），第二次 fill 只要 **~330 ns**，先 keygen 同样要付
-  （keygen 内部走 RAND）。上游已知问题
-  （[aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140)，开放中），且
-  `aws_lc_rs::init()` 是空操作 —— 要预付只能真做一次密码学操作。引擎因此提供
-  **`utls_engine::warm_up(&provider)`**（一次 32 字节 RNG fill）：服务启动时调一次，
-  首条 hello 从 ~33 ms 回到 **~81 µs**；基准加 `PLANCOST_WARM=1` 量预热后的数字
-  （默认仍测**冷进程** —— 那是真实 CLI 的体验，这个维度 Go 占优，如实写）。
-  TLS 1.2 时代的档全程不碰 provider RNG，本来就不受影响：实测单条 **~50 µs**。
+- **首条 hello 的 ~33 ms：根因已定位，修法已给且实测生效**。那笔钱是 aws-lc 进程内首次
+  `RAND_bytes` 的 jitter-entropy 收集 —— 纯用户态（`strace -c`：全进程系统调用总共
+  0.4 ms），第二次 fill 只要 **~330 ns**，先 keygen 同样要付（keygen 内部走 RAND）；上游
+  [aws-lc-rs#1140](https://github.com/aws/aws-lc-rs/issues/1140) 开放中，`aws_lc_rs::init()`
+  是空操作。引擎给出显式预热 **`utls_engine::warm_up(&provider)`**（一次 32 字节 RNG
+  fill）：启动时调一行，首条 hello **≈33 ms → ~81 µs**，与 Go 的冷首条（~77 µs）同量级。
+  表里仍保留未预热的 ≈33 ms，因为**不调 `warm_up()` 的冷进程确实还要付这笔** —— 基准
+  默认测冷进程，预热后的数字用 `PLANCOST_WARM=1` 量。TLS 1.2 时代的档全程不碰
+  provider RNG，单条 ~50 µs，从来不受影响。
 - **LTO 测了，不变**（fat LTO + codegen-units=1：边际 13.3 → 13.2 µs，噪声内）：热点在
   crypto 原语（aws-lc-rs 的汇编，带运行时指令分派）与运行时初始化，**不在内联机会**。
   PGO 没测 —— 按同一形状推断空间有限，不声称。
