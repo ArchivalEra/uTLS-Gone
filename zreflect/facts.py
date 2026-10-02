@@ -331,18 +331,24 @@ def measure_facts():
     if os.path.isdir(r_tests):
         # 判据条数：数 `#[test]`，**包含被 `#[ignore]` 的那条**（它也是判据，
         # 只是需要外部二进制；不数进来会让「一共几条」这件事对不上测试输出）。
+        # ⚠️ 口径：`tests/` 与 `src/` 都要数 —— 有的判据是模块内嵌的（`#[cfg(test)]`，
+        # 例如 `mirror_tls::split_tests` 要访问私有 `RecordKeys`）。只数 `tests/`
+        # 会让台账**低估**自己（本仓最恨的那种漂移）。
         n = 0
-        for p in _iter_files_of(r_tests):
-            if not p.endswith(".rs"):
+        for root in (r_src, r_tests):
+            if not os.path.isdir(root):
                 continue
-            try:
-                n += open(p, encoding="utf-8", errors="replace").read().count("#[test]")
-            except OSError:
-                pass
+            for p in _iter_files_of(root):
+                if not p.endswith(".rs"):
+                    continue
+                try:
+                    n += open(p, encoding="utf-8", errors="replace").read().count("#[test]")
+                except OSError:
+                    pass
         facts["reality_tests"] = fact(
-            n, "grep -rc '#\\[test\\]' crates/reality/tests --include='*.rs' "
+            n, "grep -rc '#\\[test\\]' crates/reality/tests crates/reality/src --include='*.rs' "
             "| awk -F: '{s+=$2} END {print s}'", "crates/reality/",
-            "判据条数（含 1 条需要 stock Xray 的 #[ignore]）")
+            "判据条数（含需要 stock Xray 的 #[ignore]；tests/ 与 src/ 内嵌判据一起数）")
 
     # ── 闸门与台账的健康度（**发现式**计数，与 gates-selftest.sh 同一口径）──
     gates = _count_named("zreflect", "check_", ".py")

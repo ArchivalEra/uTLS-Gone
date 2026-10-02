@@ -491,58 +491,142 @@ pub struct MirrorStream {
     buf: Vec<u8>,
 }
 
+impl MirrorStream {
+    /// 拆成**读半边**与**写半边**，各自可交给一条线程 —— handler 里做双向 splice 就靠它。
+    ///
+    /// # 为什么这个拆分在密码学上是安全的
+    ///
+    /// 读/写两个方向各有一套 [`RecordKeys`]（`read` / `write`），**各自独占、序号不共享**
+    /// —— TLS 1.3 的记录层序号按方向独立（RFC 8446 §5.3），两条线程各推进自己那一套
+    /// 不会串号、不会重放。socket 用 `try_clone()` 给两半各一条 fd（`dup` 后共享同一
+    /// TCP 连接）—— 这是纯所有权问题，不碰任何密码学状态。
+    ///
+    /// 拆之前 `MirrorStream` 只有 `&mut self` 一条路：两个方向要并发时借不到两次
+    /// `&mut`；套 `Arc<Mutex<…>>` 又会让读线程阻塞在 `read()` 时**持锁**、写方向饿死
+    /// （「客户端等响应、我们等客户端」就是死锁）。见 issue #2。
+    pub fn into_split(self) -> std::io::Result<(MirrorReadHalf, MirrorWriteHalf)> {
+        let write_sock = self.sock.try_clone()?;
+        Ok((
+            MirrorReadHalf {
+                sock: self.sock,
+                keys: self.read,
+                buf: self.buf,
+            },
+            MirrorWriteHalf {
+                sock: write_sock,
+                keys: self.write,
+            },
+        ))
+    }
+}
+
 impl Read for MirrorStream {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if !self.buf.is_empty() {
-            let n = out.len().min(self.buf.len());
-            out[..n].copy_from_slice(&self.buf[..n]);
-            self.buf.drain(..n);
-            return Ok(n);
-        }
-        loop {
-            let (ty, data) = read_record(&mut self.sock, &mut self.read)?;
-            match ty {
-                0x17 => {
-                    if data.is_empty() {
-                        continue;
-                    }
-                    self.buf = data;
-                    let n = out.len().min(self.buf.len());
-                    out[..n].copy_from_slice(&self.buf[..n]);
-                    self.buf.drain(..n);
-                    return Ok(n);
-                }
-                0x18 => {
-                    // KeyUpdate：只接受 "update_not_requested"（1 字节 0x00）并忽略
-                    // 密钥更新（Go 客户端极少发；发了也不会损坏转录）。收到
-                    // "update_requested" 就报错 —— 我们要回一条，而本实现不派生新密钥。
-                    if data.first() == Some(&0x00) {
-                        continue;
-                    }
-                    return Err(std::io::Error::other(
-                        "REALITY 镜像：收到 KeyUpdate(requested)，本实现不派生新密钥",
-                    ));
-                }
-                0x15 => return Ok(0), // alert ⇒ 对端关闭
-                other => {
-                    return Err(std::io::Error::other(format!(
-                        "REALITY 镜像：应用阶段收到意外内容类型 0x{other:02x}"
-                    )));
-                }
-            }
-        }
+        read_plain(&mut self.sock, &mut self.read, &mut self.buf, out)
     }
 }
 
 impl Write for MirrorStream {
     fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-        let rec = self.write.seal(0x17, data);
-        self.sock.write_all(&rec)?;
-        Ok(data.len())
+        write_plain(&mut self.sock, &mut self.write, data)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.sock.flush()
     }
+}
+
+/// 明文流的**读半边**：`Read`，可独立交给一条线程（[`MirrorStream::into_split`]）。
+pub struct MirrorReadHalf {
+    sock: TcpStream,
+    keys: RecordKeys,
+    buf: Vec<u8>,
+}
+
+impl Read for MirrorReadHalf {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        read_plain(&mut self.sock, &mut self.keys, &mut self.buf, out)
+    }
+}
+
+/// 明文流的**写半边**：`Write` + 显式的半关 [`shutdown_write`](Self::shutdown_write)。
+///
+/// 半关是双向 splice 的必要动作：上游（后端）读到 EOF 时，要能告诉客户端「本方向不再
+/// 发数据了」（发 FIN），否则客户端会一直等 —— 这正是 `TcpStream::shutdown(Write)`。
+/// 放在写半边上而不是 `Drop` 上，因为「连接结束」与「本方向结束」是两回事。
+pub struct MirrorWriteHalf {
+    sock: TcpStream,
+    keys: RecordKeys,
+}
+
+impl MirrorWriteHalf {
+    /// 半关：告诉对端「本方向不再发数据」（发 FIN）。语义同 `TcpStream::shutdown(Write)`。
+    pub fn shutdown_write(&mut self) -> std::io::Result<()> {
+        self.sock.shutdown(std::net::Shutdown::Write)
+    }
+}
+
+impl Write for MirrorWriteHalf {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        write_plain(&mut self.sock, &mut self.keys, data)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.sock.flush()
+    }
+}
+
+/// 读一条应用数据（跨记录、处理缓冲与 KeyUpdate/alert）—— [`MirrorStream`] 与
+/// [`MirrorReadHalf`] 共用，保证两条路行为逐字节一致。
+fn read_plain(
+    sock: &mut TcpStream,
+    keys: &mut RecordKeys,
+    buf: &mut Vec<u8>,
+    out: &mut [u8],
+) -> std::io::Result<usize> {
+    if !buf.is_empty() {
+        let n = out.len().min(buf.len());
+        out[..n].copy_from_slice(&buf[..n]);
+        buf.drain(..n);
+        return Ok(n);
+    }
+    loop {
+        let (ty, data) = read_record(sock, keys)?;
+        match ty {
+            0x17 => {
+                if data.is_empty() {
+                    continue;
+                }
+                *buf = data;
+                let n = out.len().min(buf.len());
+                out[..n].copy_from_slice(&buf[..n]);
+                buf.drain(..n);
+                return Ok(n);
+            }
+            0x18 => {
+                // KeyUpdate：只接受 "update_not_requested"（1 字节 0x00）并忽略
+                // 密钥更新（Go 客户端极少发；发了也不会损坏转录）。收到
+                // "update_requested" 就报错 —— 我们要回一条，而本实现不派生新密钥。
+                if data.first() == Some(&0x00) {
+                    continue;
+                }
+                return Err(std::io::Error::other(
+                    "REALITY 镜像：收到 KeyUpdate(requested)，本实现不派生新密钥",
+                ));
+            }
+            0x15 => return Ok(0), // alert ⇒ 对端关闭
+            other => {
+                return Err(std::io::Error::other(format!(
+                    "REALITY 镜像：应用阶段收到意外内容类型 0x{other:02x}"
+                )));
+            }
+        }
+    }
+}
+
+/// 加一条应用数据记录并写出 —— [`MirrorStream`] 与 [`MirrorWriteHalf`] 共用。
+fn write_plain(sock: &mut TcpStream, keys: &mut RecordKeys, data: &[u8]) -> std::io::Result<usize> {
+    let rec = keys.seal(0x17, data);
+    sock.write_all(&rec)?;
+    Ok(data.len())
 }
 
 fn read_record(sock: &mut TcpStream, keys: &mut RecordKeys) -> std::io::Result<(u8, Vec<u8>)> {
@@ -770,4 +854,162 @@ pub fn run(
         write: RecordKeys::from_secret(template.suite, hs, &s_ap).expect("套件已检验"),
         buf: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod split_tests {
+    //! **`into_split` 的离线判据**（issue #2 的核心形状）。
+    //!
+    //! 不依赖任何外部二进制：构造一对回环 `MirrorStream`（两端的读/写密钥镜像对称），
+    //! 直接钉住「拆出来的两半可以各自独立推进」—— 也就是旧形态做不到、
+    //! `Arc<Mutex<…>>` 又会死锁的那个形状。
+
+    use super::*;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// 一条回环连接的两端，各自配一对镜像对称的读/写 `RecordKeys`。
+    ///
+    /// 密钥对称：两端都用同一 secret 派生 read/write ⇒ A 的 write 就是 B 的 read
+    /// （同一套件、同一 secret ⇒ 同一把 key/iv，seq 各自从 0 起，方向独立）。
+    fn mirrored_pair() -> (MirrorStream, MirrorStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
+        let addr = listener.local_addr().expect("端口");
+        let accept = std::thread::spawn(move || listener.accept().expect("accept").0);
+        let a_sock = TcpStream::connect(addr).expect("连回环");
+        let b_sock = accept.join().expect("accept 线程");
+        a_sock
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("读超时");
+        b_sock
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("读超时");
+        let secret = [0x42u8; 32];
+        let mk = |sock: TcpStream| MirrorStream {
+            sock,
+            read: RecordKeys::from_secret(0x1301, Hs::S256, &secret).expect("读键"),
+            write: RecordKeys::from_secret(0x1301, Hs::S256, &secret).expect("写键"),
+            buf: Vec::new(),
+        };
+        (mk(a_sock), mk(b_sock))
+    }
+
+    /// 拆出的两半各拿一条 fd：写半边的 `Write` 推进，不会碰到读半边的记录序号。
+    #[test]
+    fn into_split_yields_two_independent_halves() {
+        let (a, _b) = mirrored_pair();
+        let (r, mut w) = a.into_split().expect("分半");
+        // 写若干条，读半边此时**没读**任何东西 —— 两半互不影响。
+        for i in 0..8u8 {
+            w.write_all(&[i, i, i]).expect("写");
+        }
+        w.flush().expect("flush");
+        // 写半边能半关（发 FIN）而不需要读半边配合。
+        w.shutdown_write().expect("半关");
+        // 读半边仍然可用（这里对端还没写 ⇒ 读会阻塞，设超时证明它“能进去读”）。
+        // 只验证类型可用，不做阻塞读（那由下一条判据专门测）。
+        let _ = r; // 读半边在手 = 拆分成功
+    }
+
+    /// **判据（issue #2 的症结）**：读半边阻塞在 `read()` 时，写半边**照样能写出去**。
+    ///
+    /// 旧形态（一个 `&mut`）根本借不出两半；`Arc<Mutex<…>>` 形态下读线程持锁阻塞、
+    /// 写方向饿死。拆成两半后，两条线程各推进自己那一套 `RecordKeys`——
+    /// 这条判据就钉住「读阻塞不挡写」。
+    #[test]
+    fn a_blocked_read_half_does_not_stall_the_write_half() {
+        let (a, b) = mirrored_pair();
+        let (mut ar, mut aw) = a.into_split().expect("A 分半");
+        let (mut br, mut bw) = b.into_split().expect("B 分半");
+
+        // 线程 1：A 的读半边去读 —— 此刻 B 还没写，它会阻塞。
+        let (tx, rx) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let mut buf = [0u8; 64];
+            let n = ar.read(&mut buf).expect("A 读到 B 写的数据");
+            tx.send(buf[..n].to_vec()).expect("回传");
+        });
+        // 给读线程一点时间进入阻塞。
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(
+            rx.try_recv().is_err(),
+            "A 的读此刻应当还阻塞着（B 尚未写）—— 这是本判据的前提"
+        );
+
+        // 关键：A 的**读半边**阻塞期间，A 的**写半边**照常把数据写到 B。
+        aw.write_all(b"from-A").expect("A 写");
+        aw.flush().expect("flush");
+        bw.write_all(b"from-B").expect("B 写");
+        bw.flush().expect("flush");
+
+        // B 的读半边收到 A 写的。
+        let mut buf = [0u8; 64];
+        let n = br.read(&mut buf).expect("B 读到 A 写的数据");
+        assert_eq!(&buf[..n], b"from-A", "B 侧读到的应当是 A 写的方向内容");
+
+        // A 的读半边随后也拿到 B 写的 —— 读线程从阻塞里出来了。
+        let got = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("A 的读应当在 B 写之后返回");
+        assert_eq!(got, b"from-B");
+        reader.join().expect("读线程");
+    }
+
+    /// **双向并发各 N 轮**：两端同时各写 N 轮、各读 N 轮，每轮都必须到达。
+    /// 这是 issue 里「反代部署」的最小形状（两个方向都在推进）。
+    #[test]
+    fn both_directions_run_concurrently_for_n_rounds() {
+        let (a, b) = mirrored_pair();
+        let (ar, aw) = a.into_split().expect("A 分半");
+        let (br, bw) = b.into_split().expect("B 分半");
+
+        const N: u8 = 64;
+        // A→B 方向与 B→A 方向各一条写线程；两条读在主线程顺序做。
+        let w_ab = std::thread::spawn(move || {
+            let mut aw = aw;
+            for i in 0..N {
+                aw.write_all(&[0xA0, i]).expect("A→B 写");
+                aw.flush().expect("flush");
+            }
+        });
+        let w_ba = std::thread::spawn(move || {
+            let mut bw = bw;
+            for i in 0..N {
+                bw.write_all(&[0xB0, i]).expect("B→A 写");
+                bw.flush().expect("flush");
+            }
+        });
+
+        // 主线程读两个方向：**同时**在读意味着两个方向真的在并发推进。
+        let mut ar = ar;
+        let mut br = br;
+        for i in 0..N {
+            let a = read_two(&mut br).expect("B 读到 A→B");
+            assert_eq!(a, [0xA0, i], "A→B 第 {i} 轮");
+            let b = read_two(&mut ar).expect("A 读到 B→A");
+            assert_eq!(b, [0xB0, i], "B→A 第 {i} 轮");
+        }
+        w_ab.join().expect("A→B 写线程");
+        w_ba.join().expect("B→A 写线程");
+    }
+
+    /// 从读半边读回**恰好 2 字节**（小工具）。缓冲区**必须**是 2 字节 ——
+    /// 第一版传了 8 字节缓冲：`read_plain` 会把它填满 8 字节（吞掉 4 条记录）
+    /// 却只返回前 2 个 ⇒ 序列跳号（这是本判据自己抓出来的 bug，留着当教训）。
+    fn read_two(r: &mut MirrorReadHalf) -> std::io::Result<[u8; 2]> {
+        let mut out = [0u8; 2];
+        let mut got = 0;
+        while got < out.len() {
+            let n = r.read(&mut out[got..])?;
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "读半边过早结束",
+                ));
+            }
+            got += n;
+        }
+        Ok(out)
+    }
 }

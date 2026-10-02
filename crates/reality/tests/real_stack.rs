@@ -140,53 +140,23 @@ fn spawn_local_dest() -> u16 {
 /// port(2) || addr_type(1) || addr`），它在等我们回应；不解析就只能干等。
 /// 这里按最小字段读掉请求头，好让测到的数据是「上层协议真的承载了」。
 fn echo_handler() -> Handler {
-    Arc::new(|mut s: Box<dyn PlaintextStream>, info: AuthInfo| {
-        // ① 读 VLESS 请求头：version(1) + uuid(16) + addon_len(1) + addon + cmd(1) + port(2) + atyp(1) + addr。
-        let mut head = [0u8; 1];
-        if s.read_exact(&mut head).is_err() {
-            return;
-        }
-        let version = head[0];
-        let mut rest = [0u8; 16 + 1];
-        if s.read_exact(&mut rest).is_err() {
-            return;
-        }
-        let addon_len = rest[16] as usize;
-        if addon_len > 0 {
-            let mut addon = vec![0u8; addon_len];
-            if s.read_exact(&mut addon).is_err() {
-                return;
-            }
-        }
-        let mut cmd = [0u8; 1 + 2 + 1];
-        if s.read_exact(&mut cmd).is_err() {
-            return;
-        }
-        let addr_len = match cmd[3] {
-            0x01 => 4,
-            0x02 => 1 + 1, // 域名：长度字节 + 名字
-            0x03 => 16,
-            _ => return,
+    // 回显是**严格串行**的（读头 → 回显 → 读应用数据回写），不需要分半 ⇒ 用
+    // `handler_from_stream` 把「收合体流」的旧写法桥到新的两半形态。
+    // ⚠️ 双向**并发**的 handler 不能走这里（JoinedStream 两方向共用一把锁、会串行化，
+    // 正是 issue #2 要躲的形状）—— 见下述 `splice_handler`。
+    reality::server::handler_from_stream(|mut s: Box<dyn PlaintextStream>, info: AuthInfo| {
+        let version = match read_vless_request_header(&mut *s) {
+            Some(v) => v,
+            None => return,
         };
-        let mut skip = vec![0u8; addr_len];
-        if s.read_exact(&mut skip).is_err() {
-            return;
-        }
-        if cmd[3] == 0x02 {
-            let n = skip[0] as usize;
-            let mut name = vec![0u8; n];
-            if s.read_exact(&mut name).is_err() {
-                return;
-            }
-        }
         eprintln!(
             "（回显替身）收到 VLESS 请求：version={version} short_id={:02x?} server_name={:?}",
             info.short_id, info.server_name
         );
-        // ② VLESS 响应头：version(1) + addon_len(1)。
+        // VLESS 响应头：version(1) + addon_len(1)。
         let _ = s.write_all(&[0x00, 0x00]);
         let _ = s.flush();
-        // ③ 回显应用数据。
+        // 回显应用数据。
         let mut buf = [0u8; 4096];
         loop {
             match s.read(&mut buf) {
@@ -200,6 +170,41 @@ fn echo_handler() -> Handler {
             }
         }
     })
+}
+
+/// 读掉 Xray 的 VLESS 请求头：`version(1) || uuid(16) || addon_len(1) || addon ||
+/// command(1) || port(2) || addr_type(1) || addr`。返回 `version`。
+///
+/// 为什么要读：Xray 的 outbound 在裸流上报 VLESS 请求，它在等我们回应 —— 不读掉
+/// 请求头就只能干等（判据 1 的注释记了这条实测）。回显 handler 与 splice handler
+/// 都要先读它，抽出来避免两处走散。
+fn read_vless_request_header(s: &mut dyn Read) -> Option<u8> {
+    let mut head = [0u8; 1];
+    s.read_exact(&mut head).ok()?;
+    let version = head[0];
+    let mut rest = [0u8; 16 + 1];
+    s.read_exact(&mut rest).ok()?;
+    let addon_len = rest[16] as usize;
+    if addon_len > 0 {
+        let mut addon = vec![0u8; addon_len];
+        s.read_exact(&mut addon).ok()?;
+    }
+    let mut cmd = [0u8; 1 + 2 + 1];
+    s.read_exact(&mut cmd).ok()?;
+    let addr_len = match cmd[3] {
+        0x01 => 4,
+        0x02 => 1 + 1, // 域名：长度字节 + 名字
+        0x03 => 16,
+        _ => return None,
+    };
+    let mut skip = vec![0u8; addr_len];
+    s.read_exact(&mut skip).ok()?;
+    if cmd[3] == 0x02 {
+        let n = skip[0] as usize;
+        let mut name = vec![0u8; n];
+        s.read_exact(&mut name).ok()?;
+    }
+    Some(version)
 }
 
 /// 起一台本仓 REALITY 服务端，返回 (地址, 统计)。
@@ -537,4 +542,172 @@ fn seal_firefox_hello() -> Vec<u8> {
     record.extend_from_slice(&(sealed.len() as u16).to_be_bytes());
     record.extend_from_slice(&sealed);
     record
+}
+
+/// **判据 5（issue #2 的症结）**：鉴权路径的明文流拆两半后，handler 能做**双向并发
+/// splice** —— 后端主动推送（不等客户端先说话）能到达客户端，且客户端数据能到达后端。
+///
+/// # 这条补的是什么
+///
+/// 判据 1 的 echo 是**严格串行**的（读头 → 回显 → 读应用数据回写），单个 `&mut`
+/// 就够用 —— 它**掩盖**了「明文流没法分半」这个缺口（issue #2 原话）。这条换成
+/// 反代部署的真实形状：handler 把明文流拆两半，一个方向 `copy` 到后端 socket、
+/// 另一个方向并发 `copy` 回来。
+///
+/// # 为什么「后端主动推 banner」是关键
+///
+/// 后端连上后**立刻**推一段 banner（不等客户端先发）。客户端做的是「连入站、**先读**」——
+/// banner 一到就说明「后端 → 客户端」方向在鉴权路径上**独立**推进了；串行 echo 做不到
+/// 这件事（串行版只在收到客户端数据之后才回）。随后客户端写一段、读回显，
+/// 覆盖另一个方向。两个方向都走通 = issuer 要的「两个方向并发推进」。
+///
+/// 需要 stock Xray（与判据 1 同依赖）⇒ `#[ignore]`，CI 的 `reality-stack` job 跑它。
+#[test]
+#[ignore = "需要 stock Xray-core 客户端（取法见 xray_bin()）"]
+fn the_handler_can_splice_both_directions_over_a_real_xray_client() {
+    // ① 本地后端：连上先推 banner，然后回显。
+    let backend = TcpListener::bind("127.0.0.1:0").expect("占后端端口");
+    let backend_port = backend.local_addr().expect("端口").port();
+    std::thread::spawn(move || {
+        for stream in backend.incoming() {
+            let Ok(mut sock) = stream else { continue };
+            std::thread::spawn(move || {
+                let _ = sock.write_all(b"BACKEND-BANNER\n");
+                let _ = sock.flush();
+                let mut buf = [0u8; 4096];
+                loop {
+                    match sock.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if sock.write_all(&buf[..n]).is_err() {
+                                break;
+                            }
+                            let _ = sock.flush();
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // ② 服务端 + **splice handler**（issue #2 要的可写形状）：拆两半、双向 copy。
+    let dest_port = spawn_local_dest();
+    let cfg = ServerConfig {
+        reality: reality_config(),
+        dest: format!("127.0.0.1:{dest_port}").parse().expect("dest"),
+        cert_template: CERT_TEMPLATE.to_vec(),
+        signing_key: SIGNING_KEY.to_vec(),
+    };
+    let handler: Handler = Arc::new(
+        move |mut client_r: Box<dyn reality::server::PlaintextRead>,
+              mut client_w: Box<dyn reality::server::PlaintextWrite>,
+              info: AuthInfo| {
+            // 读掉 VLESS 请求头（Xray 在裸流上报它，不读就只能干等）。
+            if read_vless_request_header(&mut client_r).is_none() {
+                return;
+            }
+            // **VLESS 响应头**：version(1) + addon_len(1)。必须先回 —— Xray 客户端
+            // 在读到响应头之前不会把后端数据交给本地 socket（第一版漏了这句，
+            // 后端推的 banner 全被 Xray 挡在缓冲里，客户端收到 0 字节）。
+            let _ = client_w.write_all(&[0x00, 0x00]);
+            let _ = client_w.flush();
+            let mut back = TcpStream::connect(("127.0.0.1", backend_port)).expect("连后端");
+            let mut back_r = back.try_clone().expect("后端读半边");
+            // 方向一：客户端 → 后端（独立线程）—— 读半边在手，读时不会挡住写半边。
+            let up = std::thread::spawn(move || {
+                let mut r: Box<dyn reality::server::PlaintextRead> = client_r;
+                let _ = std::io::copy(&mut r, &mut back);
+                let _ = back.shutdown(std::net::Shutdown::Write);
+            });
+            // 方向二：后端 → 客户端（主线程），结束后**半关**客户端写方向。
+            let _ = std::io::copy(&mut back_r, &mut client_w);
+            let _ = client_w.shutdown_write();
+            let _ = up.join();
+            eprintln!(
+                "（splice handler）双向走完：short_id={:02x?} server_name={:?}",
+                info.short_id, info.server_name
+            );
+        },
+    );
+    let server = Arc::new(Server::new(cfg, handler));
+    let stats = server.stats();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("占端口");
+    let addr = listener.local_addr().expect("端口");
+    std::thread::spawn(move || {
+        let _ = server.serve_on(listener);
+    });
+
+    // ③ Xray 客户端指向本仓服务端。
+    let (xray, inbound) = spawn_xray(addr);
+    struct Kill(Child);
+    impl Drop for Kill {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let _kill = Kill(xray);
+
+    let mut sock = TcpStream::connect(("127.0.0.1", inbound)).expect("连 xray 入站");
+    sock.set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("读超时");
+
+    // ④ **先发一个 kick 触发建连**：Xray 的 dokodemo-door 是惰性的 —— 客户端不先发
+    //    数据，它就不会往 REALITY 服务端建 outbound，handler 根本不跑（第一版就在这里
+    //    收到 0 字节）。kick 一到，Xray 建连 ⇒ 后端连上 ⇒ 后端主动推 banner。
+    let kick = format!("KICK-{}", std::process::id());
+    sock.write_all(kick.as_bytes()).expect("写 kick");
+    sock.flush().expect("flush");
+
+    // ⑤ 读：后端主动推的 banner **必须**到达。这就是「后端 → 客户端」方向在鉴权路径上
+    //    **独立**推进的证据 —— handler 里客户端→后端那条 `copy` 线程此刻正阻塞在
+    //    `client_r.read()`（客户端没再发），却挡不住后端→客户端这条线；
+    //    换成旧形态（单个 `&mut`）或 `Arc<Mutex<…>>`，这里就会死锁到超时。
+    let mut got = Vec::new();
+    let mut buf = [0u8; 4096];
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && !got.windows(15).any(|w| w == b"BACKEND-BANNER\n") {
+        match sock.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+            Err(_) => break,
+        }
+    }
+    assert!(
+        got.windows(15).any(|w| w == b"BACKEND-BANNER\n"),
+        "后端主动推的 banner 没到客户端 ⇒ 「后端→客户端」方向没在鉴权路径上独立推进\
+         （客户端→后端那条线阻塞时，写方向被挡死了 —— 正是 issue #2 的死锁形状）。\
+         收到 {} 字节：{:?}\n服务端统计：mirrored={} mirror_failed={} fallback={}",
+        got.len(),
+        String::from_utf8_lossy(&got),
+        stats.mirrored.load(std::sync::atomic::Ordering::SeqCst),
+        stats
+            .mirror_failed
+            .load(std::sync::atomic::Ordering::SeqCst),
+        stats.fallback.load(std::sync::atomic::Ordering::SeqCst),
+    );
+
+    // ⑥ 另一个方向：kick 的回显（后端收到 kick 后连 banner 带回显）也要到。
+    //    banner 与 kick 的回显都到达 ⇒ 两个方向都推进了（双向并发）。
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && !got.windows(kick.len()).any(|w| w == kick.as_bytes()) {
+        match sock.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+            Err(_) => break,
+        }
+    }
+    assert!(
+        got.windows(kick.len()).any(|w| w == kick.as_bytes()),
+        "kick 的回显没回来 ⇒ 「客户端→后端」方向没通。收到 {} 字节：{:?}",
+        got.len(),
+        String::from_utf8_lossy(&got)
+    );
+    assert!(
+        stats
+            .authenticated
+            .load(std::sync::atomic::Ordering::SeqCst)
+            >= 1,
+        "该走鉴权路径"
+    );
 }

@@ -330,14 +330,17 @@ Xray-core 的薄壳，不引二手移植**）。规模与判据条数见台账
   流量（VLESS 请求到达上层、short_id 解出、回显往返）；未鉴权客户端拿到与直连
   真站**逐字节相同**的证书链。
 - **P-256-only dest**：鉴权与镜像计划成立。
+- **明文流分半**（issue #2）：鉴权路径交给 handler 的明文流可拆成读/写两个半边
+  （`into_split`），双向 splice 能并发推进（读阻塞不挡写）；三条离线判据 + 一条
+  真栈判据（splice handler 双向接到本地后端）。结案记录 `questions/12`。
 
 三条实测发现（都进了代码注释与工单）：rustls 严格协商签名算法而浏览器指纹不报
 Ed25519（REALITY 证书必须是 ed25519）⇒ fork 新增 `(j)` 开关；HMAC 的输入是
 **裸 32 字节** ed25519 公钥而非 SPKI；`split_dest_flight` 的坏形状要逐条查。
 
-**已知边界**：HRR 不处理（Go 参照同样如此）、ML-DSA-65 扩展签名未实现、
-ServerHello 由 rustls 生成（不与真站同形 —— 参照拿真站的当模板，那需要给 fork
-加服务端侧的 ClientHello 缝）。
+**已知边界**：HRR 不处理（Go 参照同样如此）、ML-DSA-65 扩展签名未实现。
+（ServerHello 是**真站那份当模板**、只换密钥字节 —— 不是 rustls 生成的，见
+`mirror_tls.rs`；此前这里写反过。）
 
 ## 已知缺口（写明的，不是忘掉的）
 
@@ -723,18 +726,18 @@ ServerHello 由 rustls 生成（不与真站同形 —— 参照拿真站的当�
 | `fp_safari_26_ja3_text` | **771,4866-4867-4865-49196-49195-52393-49200-49199-52392-49162-49161-49172-49171-157-156-53-47-49160-49170-10,0-23-65281-10-11-16-5-13-18-51-45-43-27,4588-29-23-24-25,0** | `cargo run --quiet --example reflect-facts | grep '^safari_26_ja3_text='` |
 | `fp_safari_26_len_stable` | **yes** | `cargo run --quiet --example reflect-facts | grep '^safari_26_len_stable='` |
 | `gate_count` | **5** | `ls zreflect/check_*.py | wc -l` |
-| `md_files` | **24** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `md_lines` | **3415** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
+| `md_files` | **25** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
+| `md_lines` | **3490** | `find . -name '*.md' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec awk 'FNR==1{b=0} /<!-- AUTO:FACTS -->/{b=1} !b' {} + | wc -l` |
 | `open_questions` | **0** | `python3 -c "import sys;sys.path.insert(0,'zreflect');from check_questions import collect,field;print(sum(1 for t in collect('questions').values() if (field(t,'Status') or '')!='resolved'))"` |
 | `py_files` | **15** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `py_lines` | **1977** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
-| `question_count` | **11** | `ls questions/*.md | wc -l` |
+| `py_lines` | **1983** | `find . -name '*.py' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `question_count` | **12** | `ls questions/*.md | wc -l` |
 | `reality_files` | **7** | `find crates/reality/src -name '*.rs' | wc -l` |
-| `reality_lines` | **1961** | `find crates/reality/src -name '*.rs' -exec cat {} + | wc -l` |
-| `reality_tests` | **31** | `grep -rc '#\[test\]' crates/reality/tests --include='*.rs' | awk -F: '{s+=$2} END {print s}'` |
+| `reality_lines` | **2311** | `find crates/reality/src -name '*.rs' -exec cat {} + | wc -l` |
+| `reality_tests` | **35** | `grep -rc '#\[test\]' crates/reality/tests crates/reality/src --include='*.rs' | awk -F: '{s+=$2} END {print s}'` |
 | `retraction_count` | **5** | `python3 -c "import json;print(len(json.load(open('retractions.json'))['retractions']))"` |
 | `rs_files` | **66** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' | wc -l` |
-| `rs_lines` | **25110** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
+| `rs_lines` | **25633** | `find . -name '*.rs' -not -path './.git/*' -not -path './target/*' -not -path '*/__pycache__/*' -not -path './crates/rustls/*' -exec cat {} + | wc -l` |
 | `rustc_version` | **rustc 1.98.1 (48a229cea 2026-09-01)** | `rustc --version` |
 | `rustls_pin` | **0.23.45** | `grep -rh '^rustls *= *{ *version' --include='Cargo.toml' . | head -1` |
 

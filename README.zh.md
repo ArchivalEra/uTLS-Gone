@@ -133,7 +133,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 ## REALITY（issue #1，已随 v0.1.0-reality.1 发布）
 
 本仓的第一个 issue 要求：以 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) 为**权威参照**
-（不引二手移植），给出 REALITY 的 Rust 等价实现。交付在 `crates/reality/`，**31 条判据全绿**
+（不引二手移植），给出 REALITY 的 Rust 等价实现。交付在 `crates/reality/`，**35 条判据全绿**
 （台账键 `reality_tests`），含真栈：
 
 - **鉴权与 KDF**：AuthKey = X25519(服务端静态私钥, 客户端临时公钥) → HKDF-SHA256；
@@ -183,7 +183,7 @@ sh reflect-hooks/install.sh                     # 挂 pre-commit / pre-push
 - **引擎层**：vendored rustls + **八处插桩**（外供 ClientHello、压制乱序、广播自协商不了的套件、
   去掉无条件追加的 SCSV、外供密钥交换、外供第二飞、会话复用、真 ECH 提议）——
   逐处出处与上游为什么拒绝写在 `crates/rustls-fork/README.md`。
-- **REALITY**：见上节 —— 31 条判据全绿，含 stock Xray 真栈。
+- **REALITY**：见上节 —— 35 条判据全绿，含 stock Xray 真栈。
 - **真实 ECH 的接受那一半已通**：Cloudflare、defo.ie、test.defo.ie 三族服务器都接受；
   另有一条**离线**判据（我们的客户端 ↔ uTLS 自己的 ECH 服务端）。
 - **41 档里 40 档都能过引擎那条路**（`cargo run --release --example plan-cost` 会打出名单）。
@@ -251,7 +251,7 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑七组判据，
 ## 跑一遍
 
 ```bash
-cargo test --workspace --all-features    # 全部离线判据（REALITY 的 31 条也在其中）
+cargo test --workspace --all-features    # 全部离线判据（REALITY 的 35 条也在其中）
 cargo clippy --workspace --all-targets --all-features
 
 # REALITY 真栈（要 stock Xray，取法见 tests/real_stack.rs 的 xray_bin()，REALITY_XRAY 可覆盖路径）

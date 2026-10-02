@@ -18,12 +18,12 @@
   （已退役，`questions/09` 留历史）。
 - 原版 `testdata/` 夹具 39 条逐字节一致；原版参照产出（预设指纹、随机化族）逐字段对账。
 - **REALITY 等价物**（issue #1，`crates/reality`）：鉴权 / KDF 对拍 / 镜像握手 /
-  fallback 透传 / 客户端半边 / 参数面 parity —— **30 条判据全绿**，含
+  fallback 透传 / 客户端半边 / 参数面 parity / 明文流分半 —— **35 条判据全绿**，含
   **stock Xray-core 26.3.27 真栈**（鉴权成功 + 承载流量；未鉴权拿到与直连真站
   逐字节相同的证书链）。
-- `cargo test --workspace --all-features`：201 条判据全过；
+- `cargo test --workspace --all-features`：205 条判据全过；
   `cargo clippy --workspace --all-targets --all-features` 0 警告；
-  五道闸门 + 自证全绿；`questions/` **11 条全部结案**。
+  五道闸门 + 自证全绿；`questions/` **12 条全部结案**。
 - **release/tag**：`v0.1.0-reality.1`（已推送远端，release 页面已建）。
 
 ## 先读这三份，别重复推导

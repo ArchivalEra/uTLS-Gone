@@ -156,7 +156,7 @@ inside a thin adapter is what reduces the cost of following upstream from "rewri
 
 This repo's first issue asked for a Rust equivalent of REALITY with
 [`XTLS/REALITY`](https://github.com/XTLS/REALITY) as the **authoritative reference** (no
-second-hand ports). It lives in `crates/reality/`, with **all 31 criteria green** (ledger key
+second-hand ports). It lives in `crates/reality/`, with **all 35 criteria green** (ledger key
 `reality_tests`), including a true stack:
 
 - **Auth & KDF**: AuthKey = X25519(server static priv, client ephemeral pub) → HKDF-SHA256;
@@ -217,7 +217,7 @@ Current state, known gaps, and why this repo changed not a single configuration 
   unconditionally-appended SCSV, external key exchange, external second flight, session
   resumption, real ECH proposals) — the provenance of each and why upstream refuses to do them
   are in `crates/rustls-fork/README.md`.
-- **REALITY**: previous section — 31 criteria green, including the stock-Xray true stack.
+- **REALITY**: previous section — 35 criteria green, including the stock-Xray true stack.
 - **The accepting half of real ECH works**: Cloudflare, defo.ie, and test.defo.ie all accept;
   plus an **offline** criterion (our client ↔ uTLS's own ECH server).
 - **40 of the 41 presets go through the engine path** (`cargo run --release --example plan-cost`

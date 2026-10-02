@@ -32,16 +32,38 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ch::{ClientHello as ParsedHello, RealityConfig, decide};
 use crate::{Decision, FallbackReason};
 
 /// 明文流的形状（鉴权成功后的上层协议）。
+///
+/// 这是**合体**形态：`Read + Write` 都在一个值上。**双向并发（splice 到后端）不要用它** ——
+/// 一个 `&mut` 借不出两半（见 issue #2）。那种场景用 [`Handler`] 收到的两个半边，
+/// 或用 [`handler_from_stream`] 把「接受合体流」的处理器桥过去。
 pub trait PlaintextStream: Read + Write + Send {}
 impl<T: Read + Write + Send> PlaintextStream for T {}
+
+/// 明文流的**读半边**（可跨线程）。
+pub trait PlaintextRead: Read + Send + 'static {}
+impl<T: Read + Send + 'static> PlaintextRead for T {}
+
+/// 明文流的**写半边**（可跨线程，带半关）。
+///
+/// `shutdown_write` 是双向 splice 的必要动作：后端读到 EOF 时，调用它告诉客户端
+/// 「本方向不再发数据」（发 TCP FIN），否则客户端会一直等。默认实现是空操作 ——
+/// 对流式/合体适配器（[`handler_from_stream`]）来说，对端 `Drop` 时 socket 关闭即等效；
+/// 真正的 REALITY 写半边（`MirrorWriteHalf`）会覆写它成真实的 `shutdown(Write)`。
+pub trait PlaintextWrite: Write + Send + 'static {
+    /// 半关写方向（发 FIN）。默认空操作，见 trait 文档。
+    fn shutdown_write(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+impl<T: Write + Send + 'static> PlaintextWrite for T {}
 
 /// 鉴权成功的连接信息（交给 [`Handler`]）。
 #[derive(Debug, Clone)]
@@ -54,7 +76,69 @@ pub struct AuthInfo {
 }
 
 /// 上层协议处理器（Xray 里那是 VLESS 服务端；本 crate 只做传输，交给调用方）。
-pub type Handler = Arc<dyn Fn(Box<dyn PlaintextStream>, AuthInfo) + Send + Sync>;
+///
+/// 收**读半边 + 写半边**两个值 —— 这样处理器能把它们各交给一条线程做双向 splice。
+/// 只想「串行读→写」的处理器可以忽略读/写的“半边”性，照 `Read`/`Write` 用即可
+/// （旧形态的「收一个合体流」由 [`handler_from_stream`] 桥接）。
+pub type Handler =
+    Arc<dyn Fn(Box<dyn PlaintextRead>, Box<dyn PlaintextWrite>, AuthInfo) + Send + Sync>;
+
+/// 把一个**收合体流**的处理器桥成新的 [`Handler`]（两半形态）。
+///
+/// 用途：调用方的逻辑是「顺序读点东西、写点东西」（例如有的测试替身、或只做单方向的
+/// 处理器），不想管分半时用这个包一层。桥接里两半会被塞进一个 `Mutex` 形式的
+/// 合体流交给旧处理器 —— **这会把两个方向串行化**（读时持锁），所以需要并发
+/// `splice` 的处理器**不要**走这条路，直接用两个半边。
+pub fn handler_from_stream<F>(inner: F) -> Handler
+where
+    F: Fn(Box<dyn PlaintextStream>, AuthInfo) + Send + Sync + 'static,
+{
+    Arc::new(
+        move |r: Box<dyn PlaintextRead>, w: Box<dyn PlaintextWrite>, info: AuthInfo| {
+            inner(Box::new(JoinedStream::new(r, w)), info);
+        },
+    )
+}
+
+/// 把两个半边拼回一个 `Read + Write`（**两个方向共用一个锁**，所以是串行的）。
+/// 只给 [`handler_from_stream`] 的桥接用；要并发请直接用两个半边。
+struct JoinedStream {
+    read: Mutex<Box<dyn PlaintextRead>>,
+    write: Mutex<Box<dyn PlaintextWrite>>,
+}
+
+impl JoinedStream {
+    fn new(read: Box<dyn PlaintextRead>, write: Box<dyn PlaintextWrite>) -> Self {
+        Self {
+            read: Mutex::new(read),
+            write: Mutex::new(write),
+        }
+    }
+}
+
+impl Read for JoinedStream {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        self.read
+            .lock()
+            .map_err(|_| std::io::Error::other("REALITY：合体流的读锁中毒"))?
+            .read(out)
+    }
+}
+
+impl Write for JoinedStream {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        self.write
+            .lock()
+            .map_err(|_| std::io::Error::other("REALITY：合体流的写锁中毒"))?
+            .write(data)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.write
+            .lock()
+            .map_err(|_| std::io::Error::other("REALITY：合体流的写锁中毒"))?
+            .flush()
+    }
+}
 
 /// 服务端配置。
 #[derive(Debug, Clone)]
@@ -209,8 +293,32 @@ impl Server {
                             client_ver,
                             client_time,
                         };
-                        (self.handler)(Box::new(stream), info);
-                        Ok(())
+                        // 把明文流拆成两个半边交给处理器 —— 处理器因此能做双向并发
+                        // splice（issue #2）。拆分失败（`try_clone` 拿不到第二条 fd）
+                        // ⇒ 回落透传：镜像握手可能已经写过字节（这里不会，写字节在
+                        // `into_split` 之前没有），所以安全。
+                        match stream.into_split() {
+                            Ok((r, w)) => {
+                                (self.handler)(Box::new(r), Box::new(w), info);
+                                Ok(())
+                            }
+                            Err(e) => {
+                                self.stats.mirror_failed.fetch_add(1, Ordering::SeqCst);
+                                self.stats.fallback.fetch_add(1, Ordering::SeqCst);
+                                if std::env::var_os("REALITY_DBG").is_some() {
+                                    eprintln!("[srv] 明文流分半失败（回落透传）：{e}");
+                                }
+                                self.raw_proxy(
+                                    client,
+                                    Vec::new(),
+                                    Some((
+                                        dest,
+                                        hello_record.len(),
+                                        FallbackReason::KeyShareShape(format!("分半失败：{e}")),
+                                    )),
+                                )
+                            }
+                        }
                     }
                     Err(e) => {
                         // 镜像失败 ⇒ **回落透传**（参照的行为：认证过了但真站 flow
