@@ -115,8 +115,8 @@ impl ClientHello {
     /// 这条 ClientHello 的 JA3。
     ///
     /// 放在这里而不是只放测试里：它是本项目**唯一**能让「预设对不对」变成一条
-    /// 可复跑断言的东西（见 `AGENTS.md` 第二条：指纹的正确性只能在真实环境验，
-    /// 而 JA3 是与外部工具对数的那把尺子）。
+    /// 可复跑断言的东西（指纹的正确性只能在真实环境验，而 JA3 是与外部工具对数的
+    /// 那把尺子）。
     pub fn ja3(&self) -> crate::Ja3 {
         crate::ja3::ja3_of_client_hello(&self.bytes)
     }

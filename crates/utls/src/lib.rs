@@ -9,7 +9,7 @@
 //!
 //! 为什么这样切：rustls 在两年内两次重构内部扩展表示，若把它的类型写进本文档的公开接口，
 //! 每次上游发版都会击穿所有调用方。所以引擎那侧被压成一个薄适配层，delta 只剩插桩点。
-//! 详见 `README.md` 与 `STATE.md`。
+//! 详见 `README.md`。
 //!
 //! [`refraction-networking/utls`]: https://github.com/refraction-networking/utls
 

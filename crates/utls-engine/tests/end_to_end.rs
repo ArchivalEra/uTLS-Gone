@@ -13,9 +13,9 @@
 //! 其实引擎自己另建了一条」这种错，字节对账**看不见** —— 只有让服务器看一眼才会暴露。
 //! 所以这里断言的是：**服务器观察到的 JA3 == 我们从自己记录的发出去的字节算出的 JA3**。
 //!
-//! 再加一条更强的：对 `Stable` 预设，那两者还必须等于**台账里的黄金事实**
-//! （`fp_<预设>_ja3_md5`，由 `examples/reflect-facts.rs` 离线产出）。
-//! 于是三方一致：离线黄金值 = 我们发出去的字节 = 外部观察者看到的。
+//! 再加一条更强的：对 `Stable` 预设，那两者还必须等于**内联的黄金值**
+//! （`fp_<预设>_ja3_md5`，判据文件里自持）。
+//! 于是三方一致：内联黄金值 = 我们发出去的字节 = 外部观察者看到的。
 
 use utls::hello::{ClientHelloId, ClientHelloSpec};
 
@@ -28,7 +28,7 @@ fn preset(name: &str) -> ClientHelloSpec {
     ClientHelloSpec::from_preset(id).unwrap()
 }
 
-/// 黄金 JA3 MD5（原先从 FACTS.json 台账读取；台账退役后内联 —— 判据自己当权威）。
+/// 黄金 JA3 MD5（判据文件内联自持 —— 判据自己当权威）。
 fn golden_ja3(preset_name: &str) -> Option<String> {
     let md5 = match preset_name {
         "360_11" => "2b3a40903395f08c297cd63b9734cb75",

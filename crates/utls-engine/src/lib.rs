@@ -166,7 +166,7 @@ pub struct FingerprintClient {
     /// 内层 hello 的**密封形态**（可压缩扩展已收进 `0xfd00`，含末尾补零）。
     ///
     /// 与 `record` 同一个理由，只是对象换成「服务器解开密文之后看到的那串字节」：
-    /// ECH 的接受那一半（`questions/10`）要拿它与 **uTLS 自己的解码器**
+    /// ECH 的接受那一半要拿它与 **uTLS 自己的解码器**
     /// （`decodeInnerClientHello`）对账 —— 而那个解码器只吃这串字节。
     ech_inner_record: Option<Arc<Mutex<Vec<Vec<u8>>>>>,
     /// 钉死的客户端随机数（uTLS 的 `SetClientRandom`）。`None` ⇒ 走 OS 熵。
@@ -238,7 +238,7 @@ impl FingerprintClient {
     /// ⚠️ 引擎**不生成**这两样，它只转交：密封需要 HPKE 上下文，而 AAD 是外层 hello
     /// 自己的字节（`tls ech\0 || 配置` 当 info、外层编码当 aad —— 见 `ech.rs` 的模块头）。
     /// 生成那条外层的接线（内层的形状有五条规范细节：去掉 EMS/session_ticket/ec_point_formats、
-    /// 内层带自己的 ECH 形态、按压缩规则整理……）是下一步，见 STATE.md 的已知缺口。
+    /// 内层带自己的 ECH 形态、按压缩规则整理……）是下一步，已知缺口。
     pub fn with_ech_offer(mut self, config_list: Vec<u8>, inner_client_hello: Vec<u8>) -> Self {
         self.ech_offer = Some((config_list, inner_client_hello));
         self
@@ -432,7 +432,7 @@ impl FingerprintClient {
 
     /// 把 spec 的 `key_share` 里的 **GREASE 项**去掉（只在 ECH 路径上做）。
     ///
-    /// # 为什么（这是逐变量实测出来的，见 `questions/10` 的二分记录）
+    /// # 为什么（逐变量实测的结论）
     ///
     /// Chrome-70 那一代的指纹在 `key_share` 里**第一个**放 `{GREASE, [0]}`（真组的
     /// keyshare 跟在后面）。ECH 的服务器会**重建内层**：被压缩进 `0xfd00` 的扩展

@@ -1,7 +1,7 @@
 //! 浏览器预设表。
 //!
 //! **这一层是数据，不是代码。** 新增一个浏览器版本 = 往预设表加一条 + 过一遍黄金值，
-//! **不新增任何接口**（`AGENTS.md` 第四条）。
+//! **不新增任何接口**。
 //!
 //! # 两个文件的分工
 //!
@@ -13,8 +13,8 @@
 //! # 数值来源
 //!
 //! Go uTLS `master` 的 `u_parrots.go`（函数 `utlsIdToSpec`）与 `u_common.go`，逐条抄录。
-//! 改动这里的任何一个数字都会改变指纹，而「改了就会变」这件事由台账里的 `fp_*` 事实
-//! 负责显形 —— 那些事实由 `examples/reflect-facts.rs` 跑出来，不是手抄的。
+//! 改动这里的任何一个数字都会改变指纹 —— 判据（`utls_conformance` 与 engine 的
+//! 对账测试）会把与参照字节的任何偏差显出来。
 //!
 //! # 已实现 / 未实现
 //!
@@ -746,7 +746,7 @@ mod tests {
     // 为什么这一大堆断言是本文件最值钱的测试：抄错一个数字**不会编译失败**，
     // 只会让产出的 ClientHello 与目标浏览器差一点点 —— 那是最难查的那种错。
     // 而扩展类型序列是本地能证伪的那一半（另一半是与 Go 的逐字节对照，
-    // 只能在真实环境里做，见 AGENTS.md 第二条）。
+    // 只能在真实环境里做）。
 
     use crate::hello::Padding;
     use crate::hello::preset_data as pd;
@@ -1397,7 +1397,7 @@ mod tests {
 
     // ── 跨预设的**行为**断言（不是数据抄录）────────────────────────────────
 
-    /// 规范测量输入：与 `examples/reflect-facts.rs` 同口径（seed 0、SNI `example.com`）。
+    /// 规范测量输入（seed 0、SNI `example.com`）。
     ///
     /// 公钥长度是**真实的**（它们进指纹：决定 ClientHello 总长），内容是哑的。
     fn canonical_inputs(spec: &ClientHelloSpec) -> crate::hello::HandshakeInputs {
@@ -1411,7 +1411,7 @@ mod tests {
         inputs
     }
 
-    /// 各命名组的公钥长度（与 `examples/reflect-facts.rs` 同表）。
+    /// 各命名组的公钥长度。
     fn key_len(group: u16) -> usize {
         match group {
             v::CURVE_P256 => 65,

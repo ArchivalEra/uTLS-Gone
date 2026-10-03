@@ -1359,7 +1359,7 @@ fn extension_types_in_wire_order(bytes: &[u8]) -> Vec<u16> {
 ///
 /// 我们的编码器产的是同一个线格式（`[ECH_OUTER_CLIENT_HELLO] || kdf || aead ||
 /// config_id || enc_len || enc || payload_len || payload`），且**不**做真 HPKE 封装
-/// （用等长随机字节代替，取舍登记在 `STATE.md` 的已知缺口里）。所以能判的是
+/// （用等长随机字节代替，是已知的边界）。所以能判的是
 /// **结构 + 长度**，而这恰好就是上游那条判据的全部内容：
 ///
 /// 1. 向量自身自洽（类型、长度字段、各结构字段）—— 免得一个抄错的常量当权威；

@@ -33,7 +33,7 @@ print('newest overall:', s[-1])
 ```
 
 不目标 0.24：上游 0.24 目前只有 `0.24.0-dev.*` 预发布，且已经再次拆分了 `client/` 的内部结构
-（见 `STATE.md` 里那条「两年内两次重构内部扩展表示」）。跟一个正在动的版等于把 rebase
+（上游两年内两次重构内部扩展表示）。跟一个正在动的版等于把 rebase
 成本从「对行」变回「重写」。
 
 **取值来源与复现命令**（实测可用，HTTP 200）：
@@ -51,10 +51,8 @@ grep -m1 '^version' /tmp/rs/rustls-0.23.45/Cargo.toml       # => version = "0.23
 
 ### 补丁应当成为一条台账事实 —— **已落地**
 
-`rustls_pin` **已在台账里**（值 `0.23.45`，复跑 `grep '^rustls' …`；
-本段原文写的是「目前不在台账里 …… 应当把钉住的版本登记为事实」，那条待办**已完成**）。
-按 `AGENTS.md` 第三条，升级 rustls 是一次**改口**，所以有了这条事实之后，
-「换了 rustls 版本」会在闸门里显形 —— 否则下次升版会是一次静默的指纹改动。
+钉住的版本是 `0.23.45`，升级 rustls 是一次**改口**：换了版本就是换了指纹字节的对账对象，
+必须当作一次显式的、有判据跟进去的变更，不是一次普通的依赖升级。
 
 ---
 
@@ -454,7 +452,7 @@ rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.45" }
 包括我们没直接声明的传递依赖（`tokio-rustls`、`hyper-rustls` 之类 —— 只要它们接受
 0.23.45）。B 只影响我们**自己**声明它的那几个 crate，一旦有传递依赖引入 rustls，
 图上就会出现**两份 rustls**，而我们的 ClientHello 定制只对其中一份生效 ——
-那种错误在指纹上看得见、在依赖表里看不见，正是 `STATE.md` 里点名的那一类。
+那种错误在指纹上看得见、在依赖表里看不见。
 
 代价，三条都要认：
 
@@ -493,9 +491,8 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 `(b)` 依赖 `ClientExtensions` 的「附加字段块」和那两个排序函数；扩展表示两年内被重构两次，
 而 `(b)` 又必须知道「乱序发生在哪一段」，不能只在外面改 config。
 
-**降低这两个风险的既有机制**：`AGENTS.md` 第三条已经把「delta 越小越好、每处必带标记注释、
-我方那层不引用 rustls 类型」定成纪律，本补丁是照它写的 —— 38 处 `FORK(utls-rs)` 标记
-就是 rebase 时的锚点。
+**降低这两个风险的纪律**：delta 越小越好、每处必带标记注释、我方那层不引用 rustls 类型
+—— 本补丁是照它写的，38 处 `FORK(utls-rs)` 标记就是 rebase 时的锚点。
 
 ---
 
@@ -534,7 +531,7 @@ rebase 的动作：取回新版 pristine → `git apply --check` 看补丁 → �
 
 | 4 | `PeerMisbehaved(IllegalHelloRetryRequestWithWrongSessionId)`，来自把一条真实的 HRR 喂进第二飞路径时 | 引擎自己为每条连接生成一个 `legacy_session_id`（RFC 8446 §4.1.2 的兼容措施），并在收到 HRR 时**要求服务器回显它**。但外供 hello 的 session id 是**调用方写进字节里的**（uTLS 的预设也是自己生成的），引擎那个值从来没上过线 —— 于是每一次重试都判「回显不对」 | 外供路径里从**将要发出的字节**里读 `legacy_session_id`，覆盖引擎自己那个值（与它已经在做的「从字节里学 offered cipher suites / ALPN」同一件事） |
 
-| 5 | 真实 ECH 里判成 `Rejected` + `cannot decrypt peer's message`（服务器明明接受了） | `EchState::from_supplied` 重建内层转录时，session id 用的是**引擎自己**生成的那个，而服务器重建内层时插的是**外层线上**那个 —— 两边哈希的内层差 32 字节 | 外供路径里先把要发出的消息解析出来，把 `outer_session_id` 从字节里取出来交给 `from_supplied`（细节见 `questions/10`） |
+| 5 | 真实 ECH 里判成 `Rejected` + `cannot decrypt peer's message`（服务器明明接受了） | `EchState::from_supplied` 重建内层转录时，session id 用的是**引擎自己**生成的那个，而服务器重建内层时插的是**外层线上**那个 —— 两边哈希的内层差 32 字节 | 外供路径里先把要发出的消息解析出来，把 `outer_session_id` 从字节里取出来交给 `from_supplied` |
 | 6 | **TLS 1.2** 握手：服务端回 `BadRecordMac`（TLS 1.3 全绿，所以一直没暴露） | `ConnectionRandoms::new(self.input.random, …)` 是 TLS 1.2 主密钥 PRF 的输入，而 `input.random` 是**引擎自己**生成的值，不是调用方写进字节里的那个 ⇒ 客户端与服务端算出两个主密钥 | 外供路径里把 `input.random` 也从字节里读入（与第 4 条同一件事：**线上的是事实**） |
 | 7 | TLS 1.2 时代的指纹（没有 `key_share`）里，引擎**背着调用方造了一把**共享密钥 | `supplied.is_empty()` 原来一律回落到 `OfferedKeyShares::single(tls13::initial_key_share(...))` —— 那条回落是给「引擎自建 hello」写的 | 只有调用方的字节里**确实有** `key_share` 扩展时才回落（判据取自 `ClientHelloPlan::sent_extensions`，也就是调用方自己那份扩展清单） |
 | 8 | 一条同时报 `X25519MLKEM768(4588)` 与 `X25519(29)` 且**两者材料独立**的 hello（Chrome 131/133 就是），服务端选中 `29` 时握手死在 `cannot decrypt peer's message` | `OfferedKeyShares::take_for` 在**一次** `position()` 里同时接受「组相等**或**它是我某个混合组的经典分量」。这份 hello 的列表是 `[混合, X25519]`，于是选中 `29` 先命中了**排在前面的混合条目**（按分量），随后按分量完成 —— 算出的是混合组内部那把 X25519 的秘密，而不是**线上那条 29 公钥**对应的秘密（上游不会遇到：它自建 hello 时这种情形只可能是「同一条交换写两个条目」） | `take_for` 改成**两趟**：先找**组相等**的条目，找不到再退回「按经典分量匹配」。（顺带把 `any_group_matches` 也按分量匹配，两处口径一致 —— 它管 HRR 里「服务器要的组我们是不是已经发过」，口径不一致会漏判 RFC 8446 §4.1.4 的违规） |

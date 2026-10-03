@@ -2,3 +2,13 @@
 # 踩过：只写 `/target`（锚定根）会漏掉 `crates/rustls/target/` —— 那是 2 GB 的产物，
 # 而 `git add -A` 会照单全收（这个坑在第一次推送前才发现）。
 target/
+
+# Einfacht(zreflect) 事实系统：已退役，禁止回流。
+zreflect/
+FACTS.json
+STATE.md
+questions/
+retractions.json
+reflect-hooks/
+__pycache__/
+*.pyc

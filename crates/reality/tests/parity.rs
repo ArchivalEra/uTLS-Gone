@@ -112,7 +112,7 @@ const PROTO_FIELDS: &[Field] = &[
         proto_type: "bytes",
         ours: None,
         note: "**未实现**（与 `mldsa65_verify` 成对）：ML-DSA-65 证书扩展签名 ——
-               参照的可选增强，`questions/11` 已记为已知边界。
+               参照的可选增强，已知边界。
                ⚠️ 这条是本表里唯一允许的「未实现」，见下方断言",
     },
     Field {

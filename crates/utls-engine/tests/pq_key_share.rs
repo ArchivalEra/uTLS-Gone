@@ -50,7 +50,7 @@ fn engine_groups(p: &Arc<rustls::crypto::CryptoProvider>) -> Vec<u16> {
         .collect()
 }
 
-/// 黄金值（原先从 FACTS.json 台账读取；台账退役后内联 —— 判据自己当权威）。
+/// 黄金值（判据文件内联自持 —— 判据自己当权威）。
 /// 来源：`u_parrots.go` 的逐字节 marshal 实测，与上游 testdata 对账。
 fn golden(name: &str) -> (u64, bool) {
     match name {

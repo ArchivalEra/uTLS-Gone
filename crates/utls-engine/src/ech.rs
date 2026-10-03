@@ -44,7 +44,7 @@
 //! 验收走过三层：内层与 uTLS 的产出**逐字节**相同（`tests/ech_inner_utls.rs`）、
 //! uTLS 自家 ECH 服务端上完整握手被接受（`tests/ech_utls_server.rs`）、
 //! 真实端点（Cloudflare / DEfO）`EchStatus::Accepted`（`tests/ech_e2e.rs`）。
-//! 排查链与逐变量二分：`questions/10-ech-acceptance-falsified.md`（resolved）。
+//! 接受语义的排查结论以本文件与判据为准。
 
 use std::sync::Arc;
 

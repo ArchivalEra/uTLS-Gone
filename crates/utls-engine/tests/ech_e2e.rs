@@ -28,8 +28,7 @@
 //!
 //! 本机实测：`crypto.cloudflare.com`、`defo.ie` 与 `test.defo.ie`（DEfO/OpenSSL 系）都报
 //! `EchStatus::Accepted`；对照组（rustls 自带的 ECH 客户端）在同样两个端点上同样被接受。
-//! 排查链、被修掉的三处真 bug（AAD、内层转录的 session id、GREASE keyshare）与
-//! 「逐变量二分」的记录见 `questions/10-ech-acceptance-falsified.md`（已 resolved）。
+//! 排查过程中被修掉三处真 bug：AAD、内层转录的 session id、GREASE keyshare。
 //!
 //! 判据**没有**放宽：`ech_status == Accepted` 仍是真服务器给出的非此即彼的事实；
 //! 想看它红，把 `scrub_grease_key_share` 摘掉再打 DEfO 的端点即可（二分测试就是这么复现的）。
@@ -306,7 +305,7 @@ fn cloudflare_accepts_our_ech_offer() {
 /// - rustls 自带路径：内层 = 外层那个 ClientHello 去过滤 + 压缩（`encode_inner_hello`）；
 /// - 本仓路径：内层 = 指纹层按 uTLS 的模型产出的那份（`build_inner_client_hello_body`）。
 ///
-/// 两条都失败 ⇒ Cloudflare 与参照实现不同（记进 `questions/10`）；
+/// 两条都失败 ⇒ Cloudflare 与参照实现不同；
 /// 只有本仓那条失败 ⇒ 我们的内层构造有问题（而这就给出了定位它的方法）。
 #[test]
 #[ignore = "要真网络：DNS type-65 + 到一个 ECH 端点的 443。cargo test -- --ignored"]

@@ -2,9 +2,8 @@
 //!
 //! # 为什么要有这一条
 //!
-//! ECH 的接受那一半曾是全仓唯一红着的判据（`questions/10-ech-acceptance-falsified.md`，
-//! 已 resolved）：`crypto.cloudflare.com` 判 `Rejected` 而我们这边密钥分叉，`defo.ie`
-//! 直接 `IllegalParameter`。排查时建立的第一条判据就是「内层的形状对不对」不该由我复述
+//! ECH 的接受那一半曾是全仓唯一红着的判据：`crypto.cloudflare.com` 判 `Rejected` 而我们
+//! 这边密钥分叉，`defo.ie` 直接 `IllegalParameter`。排查时建立的第一条判据就是「内层的形状对不对」不该由我复述
 //! —— 该由 **uTLS 自己的字节**判。这条测试留了下来，守着「我们的内层 == uTLS 的内层」
 //! 这条保真性质（那条线的真正修复：内层按 uTLS 的诚实模型造 + fork 把**外层**的
 //! session id 喂给转录 + ECH 路径去掉 GREASE keyshare）。

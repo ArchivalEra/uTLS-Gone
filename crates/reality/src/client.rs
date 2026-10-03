@@ -23,8 +23,8 @@
 
 use crate::auth;
 
-/// 客户端配置（对应 Xray `Config` 的客户端面；`config.proto` 字段名对齐见
-/// `questions/11` 的参数面 parity 一节）。
+/// 客户端配置（对应 Xray `Config` 的客户端面；字段名与 `config.proto` 逐条
+/// 对齐，判据在 `tests/parity.rs`）。
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     /// 服务端静态 X25519 公钥（Xray `Config.PublicKey`）。

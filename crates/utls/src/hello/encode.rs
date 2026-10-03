@@ -871,7 +871,7 @@ fn key_share_body(entries: &[(u16, Vec<u8>)]) -> Result<Vec<u8>, SpecError> {
 /// **与 uTLS 的唯一差别**：uTLS 会真的做一次 HPKE 封装（用一个哑 X25519 公钥），
 /// 这里写的是等长的随机字节。对指纹而言有意义的是**结构与长度分布**，
 /// 而 GREASE 的语义正是「服务端必须忽略它」—— 服务端不会去解封装。
-/// 这个取舍在 `STATE.md` 的已知缺口里登记。
+/// 这个取舍是已知的边界（等长随机字节 vs 真实 HPKE 封装）。
 fn grease_ech_body(stream: &mut Stream, opts: &GreaseEchOptions) -> Vec<u8> {
     // **按线序抽取**：先抽套件（它写在体最前），再 config_id、封装密钥，最后抽载荷长度、
     // 再填载荷。这不是随意的：抽取顺序就是「确定性输出」的一部分，而线序是唯一一个

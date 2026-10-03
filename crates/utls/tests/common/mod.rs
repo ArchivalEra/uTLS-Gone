@@ -11,7 +11,7 @@
 use utls::hello::{ClientHelloId, ClientHelloSpec, HandshakeInputs};
 use utls::values as v;
 
-/// 与 `examples/reflect-facts.rs` 相同的规范输入：SNI 由调用方给、不给 ALPN
+/// 规范输入：SNI 由调用方给、不给 ALPN
 /// （用预设自带的）、按 `key_share` 的每个组给**长度正确**的哑公钥。
 ///
 /// 长度必须真：它决定总长，进而决定 `BoringPaddingStyle` 要不要填充。

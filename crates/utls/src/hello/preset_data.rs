@@ -40,10 +40,9 @@
 //!
 //! 1. `preset.rs` 的 `tests` 里**每条预置一个**扩展类型序列断言，外加密码套件去重、
 //!    乱序集合、iOS 的重复 `PSSWithSHA384`、以及上面第 2 条那个填充biconditional；
-//! 2. `cargo run --quiet --example reflect-facts` 产出每条预置的 JA3 ——
-//!    密码套件与命名组的**数值**都在 JA3 里，可以直接与 Go 侧同预置的产出对数；
-//! 3. 与 Go 逐字节对照只能在真实环境做（`AGENTS.md` 第二条）：本仓没有 Go 工具链，
-//!    所以第 1、2 层是本地能证伪的全部，不要把它们的全绿当成「指纹对」。
+//! 2. 与 Go 逐字节对照在真实环境做（参照树见 `gen-reference/`）：密码套件与命名组的
+//!    **数值**都在 JA3 里，逐预置对数。前两层是本地能证伪的全部，不要把它们的全绿
+//!    当成「指纹对」。
 
 use super::spec::{
     ApplicationSettingsAlps, ClientHelloSpec, CodePoint, CompressCertificate, DelegatedCredentials,
@@ -848,7 +847,7 @@ pub(crate) fn chrome_115_pq() -> ClientHelloSpec {
 /// ⚠️ 填充：Go 在末尾列了 `BoringPaddingStyle`（:744）。GREASE ECH 的体在 186–282 字节之间
 /// 每连接变一次，未填充长因此在 0x200 上下来回 ⇒ Go 是否发 padding **随 seed 变**。
 /// 本仓的模型表达不了「同一个 spec 有时发有时不发」，取的是**规范测量输入
-/// （`examples/reflect-facts.rs`，seed 0）下 Go 的那一种**：见本函数末尾的实测注释。
+/// （seed 0）下 Go 的那一种**：见本函数末尾的实测注释。
 pub(crate) fn chrome_120() -> ClientHelloSpec {
     ClientHelloSpec {
         legacy_version: v::LEGACY_VERSION,

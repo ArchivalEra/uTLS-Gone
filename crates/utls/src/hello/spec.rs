@@ -600,8 +600,8 @@ impl ClientHelloSpec {
     /// `key_share` 里要报的组：按线序、**去掉 GREASE**、去重。
     ///
     /// 这是「引擎要为哪些组准备密钥交换」的唯一口径。做成方法而不是让各处各写一遍，
-    /// 是因为它曾经在 4 个地方各写了一遍（`reflect-facts` / `utls_randomized` /
-    /// 测试的 `common` / 预设自测）—— 而 `key_share` 的模型一改，那 4 份就会**静默地**
+    /// 是因为它曾经在几个地方各写了一遍（`utls_randomized` / 测试的 `common` /
+    /// 预设自测）—— 而 `key_share` 的模型一改，那些份就会**静默地**
     /// 各错各的（`KeyShare::reuse` 那次就是这样被编译器抓出来的）。
     pub fn key_share_groups(&self) -> Vec<u16> {
         let mut out: Vec<u16> = Vec::new();
