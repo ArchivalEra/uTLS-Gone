@@ -35,6 +35,8 @@
 //! ```bash
 //! cargo build --release --example plan-cost        # 构建
 //! ./target/release/examples/plan-cost 'Chrome(70)' 'Chrome(120)'   # 限定预设（可选）
+//! PLANCOST_BREAKDOWN=1 ./target/release/examples/plan-cost 'Chrome(70)'  # 首条分步归因（stderr）
+//! PLANCOST_EACH=1 ./target/release/examples/plan-cost 'Chrome(70)'      # 逐条计时（stderr）
 //! PLANCOST_WARM=1 ./target/release/examples/plan-cost 'Chrome(70)' # 先 warm_up 再计时（现已有无不影响）
 //! ```
 //!
@@ -49,14 +51,20 @@
 //! | | 首条 hello（冷进程） | **每条 hello 的边际 CPU** |
 //! |---|---|---|
 //! | uTLS（Go 1.27，默认构建） | ~77 µs | **102 µs** |
-//! | 本仓（Rust，默认 release） | **~110 µs** | **13.3 µs**（7.7×） |
-//! | 本仓（+ fat LTO，CGU=1） | ~110 µs | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
+//! | 本仓（Rust，默认 release） | **~69 µs** | **13.3 µs**（7.7×） |
+//! | 本仓（+ fat LTO，CGU=1） | ~69 µs | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
 //!
-//! 曾经有一次型 ~33 ms（aws-lc 进程内首次 `RAND_bytes` 的 CPU-jitter 熵收集 ——
-//! 纯用户态、`strace -c` 全进程系统调用共 0.4 ms、第二次 fill 只要 ~330 ns）。
-//! **已从源头消除**：项目根的 `.cargo/config.toml` 设 `AWS_LC_SYS_NO_JITTER_ENTROPY=1`，
-//! 把熵源换成「OS CSPRNG + RDRAND」，首条 hello **32.4 ms → ~0.11 ms**（消 99.6%），
-//! 边际成本不变。`PLANCOST_WARM=1` 仍能跑 `utls_engine::warm_up`，但已无钱可预付。
+//! 一次性成本分两段清掉（`PLANCOST_BREAKDOWN=1` 是归因工具）：
+//!
+//! 1. **~33 ms**：aws-lc 进程内首次 `RAND_bytes` 的 CPU-jitter 熵收集 —— 项目根
+//!    `.cargo/config.toml` 的 `AWS_LC_SYS_NO_JITTER_ENTROPY=1` 换掉熵源（32.4 ms →
+//!    ~0.11 ms，消 99.6%）；
+//! 2. **~110 → ~69 µs**：剩余的 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~35-46 µs
+//!    （`EphemeralPrivateKey::generate(alg, _rng)` 忽略 rng 参数）——
+//!    `crates/x25519-os` 把 X25519 的 keygen 熵源换成内核 CSPRNG（算术仍是 aws-lc）；
+//!    指纹层的两次取熵合成一次 syscall。
+//!
+//! `PLANCOST_WARM=1` 仍能跑 `utls_engine::warm_up`，但已无钱可预付。
 //! TLS 1.2 时代的档（Chrome 58/62 等）全程不碰 provider RNG，单条 ~50 µs。
 //!
 //! # 内存（2026-10-02 加的口径）
@@ -73,7 +81,7 @@
 //! 只跑 48 条就报「µs/条」会把一次性初始化摊不干净（31.6 vs 13.3 µs），是本轮踩过的坑。
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use rustls::client::{PlanRequest, SuppliesClientHello};
 use rustls::crypto::aws_lc_rs::default_provider;
@@ -123,9 +131,93 @@ fn runs() -> usize {
         .unwrap_or(48)
 }
 
+/// `PLANCOST_BREAKDOWN=1`：把**首条** hello 拆到步（provider 构建 / 预设构建 / 规划器
+/// 构建 / 纯首 RAND / 首把 keygen / 预付后的 plan / 稳态 plan），stderr 打表。
+///
+/// 用途：一次性成本归因。例：首条 hello ~120 µs 而边际 ~12 µs ⇒ 差的 ~108 µs 花在哪一步，
+/// 这张表直接给答案。量完即走，不改变默认计时的形状。
+fn breakdown(provider: &Arc<rustls::crypto::CryptoProvider>) {
+    use rustls::client::{PlanRequest, SuppliesClientHello};
+    use utls::hello::{ClientHelloId, ClientHelloSpec};
+    use utls::values as v;
+
+    let step = |name: &str, t: Instant| eprintln!("{name:<28} {:?}", t.elapsed());
+
+    let t = Instant::now();
+    let spec = ClientHelloSpec::from_preset(ClientHelloId::Chrome(70)).expect("预设存在");
+    step("from_preset(Chrome70)", t);
+
+    let t = Instant::now();
+    let client = FingerprintClient::new(spec.clone(), Arc::clone(provider)).with_sni("example.com");
+    step("FingerprintClient::new", t);
+
+    // 纯首 RAND（32 字节 fill）—— DRBG 实例化 + OS/RDRAND 取熵都在这里面。
+    let t = Instant::now();
+    utls_engine::warm_up(provider).expect("warm_up");
+    step("first RAND (warm_up, 32B)", t);
+    let t = Instant::now();
+    utls_engine::warm_up(provider).expect("warm_up");
+    step("second RAND (warm)", t);
+
+    // 指纹层的熵输入（utls 自己的 getrandom 路径，与 aws-lc 的 RAND 独立）：
+    // 首次调用含 getrandom crate 的懒初始化 + 系统调用。
+    let t = Instant::now();
+    let _ = utls::hello::HandshakeInputs::os();
+    step("HandshakeInputs::os() #1", t);
+    let t = Instant::now();
+    let _ = utls::hello::HandshakeInputs::os();
+    step("HandshakeInputs::os() #2", t);
+
+    // 首把 keygen（X25519）—— RAND 已付过，这里是 keygen 本身 + 组的首次触达。
+    let t = Instant::now();
+    let x25519 = provider
+        .kx_groups
+        .iter()
+        .find(|g| u16::from(g.name()) == v::X25519)
+        .expect("提供者有 X25519");
+    let _kx = x25519.start().expect("keygen");
+    step("first keygen (X25519.start)", t);
+    let t = Instant::now();
+    let _kx = x25519.start().expect("keygen");
+    step("second keygen (warm)", t);
+
+    // 预付后的 plan：一次性成本里除 RAND/keygen 之外的部分（转录、GREASE、乱序、 marshal）。
+    let t = Instant::now();
+    let plan = client
+        .plan(&PlanRequest {
+            groups: vec![v::X25519],
+            resumption: None,
+        })
+        .expect("plan");
+    step("plan (rand+keygen pre-paid)", t);
+    assert!(!plan.client_hello.expect("字节").is_empty());
+
+    // 稳态：同一条规划器再来一条。
+    let t = Instant::now();
+    let _ = client
+        .plan(&PlanRequest {
+            groups: vec![v::X25519],
+            resumption: None,
+        })
+        .expect("plan");
+    step("plan #2 (steady state)", t);
+
+    // 全新规划器的 plan（对齐「每连接一个 UClient」）。
+    let t = Instant::now();
+    let fresh = FingerprintClient::new(spec, Arc::clone(provider)).with_sni("example.com");
+    let _ = fresh
+        .plan(&PlanRequest {
+            groups: vec![v::X25519],
+            resumption: None,
+        })
+        .expect("plan");
+    step("fresh client + plan", t);
+}
+
 fn main() {
     let want: Vec<String> = std::env::args().skip(1).collect();
-    let provider = Arc::new(default_provider());
+    // 与 UClient::new() 同一条 provider 构成：X25519 keygen 用内核 CSPRNG。
+    let provider = Arc::new(x25519_os::with_os_random_x25519(default_provider()));
     // 引擎能完成的组：与 `ClientConfig::fork_key_exchange_groups()` 同一口径。
     let groups: Vec<u16> = provider
         .kx_groups
@@ -133,6 +225,11 @@ fn main() {
         .filter(|g| g.usable_for_version(rustls::ProtocolVersion::TLSv1_3))
         .map(|g| u16::from(g.name()))
         .collect();
+
+    // PLANCOST_BREAKDOWN=1：首条 hello 的分步归因（stderr），然后照常跑主循环。
+    if std::env::var("PLANCOST_BREAKDOWN").as_deref() == Ok("1") {
+        breakdown(&provider);
+    }
 
     // PLANCOST_WARM=1：t0 之前先 `warm_up()`（预付 aws-lc 首次 RAND 的 ~33 ms
     // jitter-entropy，见 `utls_engine::warm_up` 的文档），用来把「预热后的首条 hello」
@@ -146,6 +243,10 @@ fn main() {
     // PLANCOST_FRESH=1：每条 hello 都新起一个 FingerprintClient —— 对齐 uTLS「每连接一个
     // UClient」的真实形状，把「复用规划器」与「每连接新建」两种口径的分配都量得出来。
     let fresh = std::env::var("PLANCOST_FRESH").as_deref() == Ok("1");
+    // PLANCOST_EACH=1：逐条计时（stderr 打前 12 条的单独耗时）—— 看一次性成本
+    // 衰减到边际成本要几条。
+    let each = std::env::var("PLANCOST_EACH").as_deref() == Ok("1");
+    let mut each_times: Vec<Duration> = Vec::new();
 
     let mut checksum: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a 起步值
     let (mut units, mut presets) = (0usize, 0usize);
@@ -171,6 +272,7 @@ fn main() {
             let per_conn = fresh.then(|| {
                 FingerprintClient::new(spec.clone(), provider.clone()).with_sni("example.com")
             });
+            let t_each = each.then(Instant::now);
             let plan = match per_conn.as_ref().unwrap_or(&client).plan(&PlanRequest {
                 groups: groups.clone(),
                 resumption: None,
@@ -184,6 +286,9 @@ fn main() {
                     break;
                 }
             };
+            if let Some(t) = t_each {
+                each_times.push(t.elapsed());
+            }
             let bytes = plan.client_hello.expect("外供路径一定给字节");
             for b in &bytes {
                 checksum = (checksum ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3);
@@ -195,6 +300,15 @@ fn main() {
         } else {
             refused.push(format!("{name} ← {refused_reason}"));
         }
+    }
+    if each {
+        let head: Vec<String> = each_times
+            .iter()
+            .take(12)
+            .enumerate()
+            .map(|(i, t)| format!("#{i}={t:?}"))
+            .collect();
+        eprintln!("each: {}", head.join(" "));
     }
     println!("presets={presets} runs_each={} units={units}", runs());
     println!("built={}", built.join(","));

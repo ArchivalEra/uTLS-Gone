@@ -1,0 +1,23 @@
+[package]
+name = "x25519-os"
+description = "X25519 的 keygen 熵源 = 内核 CSPRNG，算术 = aws-lc 的 C 实现（rustls 的 SupportedKxGroup）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# X25519 的 C 原语（X25519 / X25519_public_from_private）。版本与 aws-lc-rs 自身的
+# 依赖（0.45.0）对齐，避免同一份 C 库编两次。
+aws-lc-sys = "0.45"
+# keygen 的熵源：getrandom(2)，内核 CSPRNG —— 与 ring 后端的 SystemRandom 同一信任基。
+getrandom = "0.3"
+# SupportedKxGroup / ActiveKeyExchange / SharedSecret。经 workspace 的
+# [patch.crates-io] 解析到本仓的 fork —— 与其余 crate 同一份 vendored rustls。
+rustls = { version = "0.23", default-features = false, features = ["std", "aws_lc_rs", "logging"] }
+# 私钥标量 drop 时清零（上游 EVP 路径由 aws-lc 管理，这里责任在本侧）。
+zeroize = "1.8"
+
+[dev-dependencies]
+# 判据用：与 dalek 对拍公钥与共享密钥（权威曲线语义的独立实现）。
+x25519-dalek = { workspace = true, features = ["static_secrets"] }

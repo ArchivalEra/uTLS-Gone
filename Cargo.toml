@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/utls", "crates/utls-engine", "crates/reality"]
+members = ["crates/utls", "crates/utls-engine", "crates/reality", "crates/x25519-os"]
 # 引擎 fork 是**被 patch 的依赖**，不是本 workspace 的成员 —— 否则 `cargo test --workspace`
 # 会去跑 rustls 自己那套庞大的测试。它由下面的 `[patch.crates-io]` 引入。
 exclude = ["crates/rustls"]

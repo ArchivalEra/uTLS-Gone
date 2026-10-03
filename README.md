@@ -57,7 +57,7 @@ master (tarball sha256 `ae5e90b0…`; fetch command in
 | **Marginal CPU per hello** (39-preset mean) | **102 µs** | **13.3 µs** (**7.7×**) | 13.2 µs — within noise of default |
 | Single-preset `Chrome(70)` marginal | 75 µs | 11.8 µs | 9.3 µs |
 | Batch mean (39 presets × 48) | 104.6 µs | 13.3 µs | ~13.2 µs |
-| First hello (cold process) | ~77 µs | **~110 µs** | ~110 µs |
+| First hello (cold process) | ~77 µs | **~69 µs** | ~69 µs |
 | **Allocated bytes per hello** (39-preset mean, cumulative heap allocs in the loop) | **20.8 KB** | **9.7 KB** (reused planner) / 10.8 KB (per-connection) | same (LTO does not change allocation behavior) |
 | Peak RSS (empty run = 18,720 hellos) | ~16 MB, flat | ~16 MB, flat | ~16 MB, flat |
 
@@ -76,8 +76,20 @@ Written in full, including the rows that favor the other side:
   trust base becomes the OS CSPRNG — the same one ring and BoringSSL use; the only thing given up
   is CPU-timing-jitter as an entropy source (the config file carries the full note).
   `utls_engine::warm_up()` is kept as an API but is now optional — there is no expensive one-time
-  init left to prepay. TLS 1.2-era presets never touched the provider RNG anyway, and the
-  benchmark measures a cold process by default — which is now ~110 µs.
+  init left to prepay. TLS 1.2-era presets never touched the provider RNG anyway.
+- **The remaining one-time cost (~110 µs → ~69 µs, now under Go's ~77 µs)**: after the jitter
+  fix the first hello still paid aws-lc's DRBG instantiation inside its first keygen
+  (measured ~35-46 µs; `EphemeralPrivateKey::generate(alg, _rng)` **ignores** the rng parameter,
+  so it cannot be injected around). [`crates/x25519-os`](crates/x25519-os) replaces X25519's
+  keygen entropy source with the **kernel CSPRNG** (`getrandom(2)`) while keeping aws-lc's C
+  arithmetic for the public key and the shared secret — the same trust base as the ring backend.
+  The unsafe glue lives outside rustls because the fork is `#![forbid(unsafe_code)]`. Wired in
+  one line on both stacks (`UClient::new()` and the REALITY server); a true-stack criterion
+  (dest selects X25519 → mirrored with the OS-keygen serverShare) runs in CI. The criteria
+  cross-check every public key and shared secret against x25519-dalek, and reject low-order
+  peers (all-zero shared secret) explicitly — the check the EVP path does inside aws-lc.
+  The fingerprint layer also merges its two per-hello entropy fills into one syscall. The
+  benchmark measures a cold process by default — which is now **~69 µs**.
 - **Memory**: peak RSS is a tie — **~16 MB on both sides**, and the empty run equals the
   18,720-hello run exactly (allocator/GC reuse everything; neither grows with the count).
   The difference is **allocation volume per hello**: Go **20.8 KB** vs ours **9.7 KB** (reused
@@ -201,7 +213,7 @@ HRR not handled — the reference doesn't either) are documented where the code 
   unconditionally-appended SCSV, external key exchange, external second flight, session
   resumption, real ECH proposals) — the provenance of each and why upstream refuses to do them
   are in `crates/rustls-fork/README.md`.
-- **REALITY**: previous section — 36 criteria green, including the stock-Xray true stack.
+- **REALITY**: previous section — 37 criteria green, including the stock-Xray true stack.
 - **The accepting half of real ECH works**: Cloudflare, defo.ie, and test.defo.ie all accept;
   plus an **offline** criterion (our client ↔ uTLS's own ECH server).
 - **40 of the 41 presets go through the engine path** (`cargo run --release --example plan-cost`
@@ -281,7 +293,7 @@ able to go red on its own:
 ## Run it
 
 ```bash
-cargo test --workspace --all-features    # every offline criterion (REALITY's 36 among them)
+cargo test --workspace --all-features    # every offline criterion (REALITY's 37 among them)
 cargo clippy --workspace --all-targets --all-features
 
 # REALITY true stack (needs stock Xray; see xray_bin() in tests/real_stack.rs, REALITY_XRAY overrides)

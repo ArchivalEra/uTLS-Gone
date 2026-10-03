@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 utls = { path = "../utls" }
+x25519-os = { path = "../x25519-os" }
 # 被 `[patch.crates-io]` 指到 vendor 的 fork（见根 Cargo.toml）。
 rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12", "aws_lc_rs", "logging"] }
 # 信任锚：纯数据，不依赖系统证书库。

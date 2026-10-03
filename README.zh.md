@@ -49,7 +49,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 | **每条 hello 的边际 CPU**（39 档均值） | **102 µs** | **13.3 µs**（**7.7×**） | 13.2 µs —— 与默认在噪声内 |
 | 单档 `Chrome(70)` 的边际 | 75 µs | 11.8 µs | 9.3 µs |
 | 批量均值（39 档 × 48 条） | 104.6 µs | 13.3 µs | ~13.2 µs |
-| 首条 hello（冷进程） | ~77 µs | **~110 µs** | ~110 µs |
+| 首条 hello（冷进程） | ~77 µs | **~69 µs** | ~69 µs |
 | **每条 hello 的分配字节**（39 档均值，循环内累计堆分配） | **20.8 KB** | **9.7 KB**（复用规划器）/ 10.8 KB（每连接新建） | 同左（LTO 不改分配行为） |
 | 峰值 RSS（空跑 = 18720 条） | ~16 MB 持平 | ~16 MB 持平 | ~16 MB 持平 |
 
@@ -65,7 +65,18 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
   **32.4 ms → ~0.11 ms**（消 99.6%），边际成本不变。信任基变成 OS CSPRNG —— 与 ring /
   BoringSSL 同一基；放弃的只是「CPU 计时抖动」这一路熵（config 文件里写了完整说明）。
   `utls_engine::warm_up()` 作为 API 保留，但已是可选 —— 没有昂贵的一次性初始化可预付了。
-  TLS 1.2 时代的档本就不碰 provider RNG；基准默认测冷进程，如今是 ~110 µs。
+  TLS 1.2 时代的档本就不碰 provider RNG。
+- **剩余的一次性成本（~110 µs → ~69 µs，已低于 Go 的 ~77 µs）**：jitter 关掉后，首条
+  hello 的首个 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~35-46 µs（
+  `EphemeralPrivateKey::generate(alg, _rng)` **忽略** rng 参数，从外面注入不了熵源）。
+  [`crates/x25519-os`](crates/x25519-os) 把 X25519 的 keygen 熵源换成**内核 CSPRNG**
+  （`getrandom(2)`），公钥与共享密钥的算术仍是 aws-lc 的 C 实现 —— 与 ring 后端同一
+  信任基。unsafe 胶水在 rustls 之外（fork 整个 crate `#![forbid(unsafe_code)]`）。
+  两条栈各一行接线（`UClient::new()` 与 REALITY 服务端）；有一条真栈判据
+  （dest 选 X25519 ⇒ serverShare 由内核熵源 keygen 生成）进 CI。判据与 x25519-dalek
+  逐字节对拍全部公钥与共享密钥，并显式拒绝低阶对端（全零共享）—— 那是 EVP 路径在
+  aws-lc 内部做的检查，绕开它就必须自己带。指纹层的两次取熵也合成了一次 syscall。
+  基准默认测冷进程 —— 现在是 **~69 µs**。
 - **内存**：峰值 RSS 两边打平 —— **~16 MB**，而且空跑与 18720 条完全一样（分配器/GC
   全程复用，谁都不随条数涨）。有差别的是**每条 hello 的分配量**：Go **20.8 KB** vs 本仓
   **9.7 KB**（复用规划器）/ 10.8 KB（`PLANCOST_FRESH=1`，每连接新建 —— 对齐 uTLS
@@ -165,7 +176,7 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 - **引擎层**：vendored rustls + **八处插桩**（外供 ClientHello、压制乱序、广播自协商不了的套件、
   去掉无条件追加的 SCSV、外供密钥交换、外供第二飞、会话复用、真 ECH 提议）——
   逐处出处与上游为什么拒绝写在 `crates/rustls-fork/README.md`。
-- **REALITY**：见上节 —— 36 条判据全绿，含 stock Xray 真栈。
+- **REALITY**：见上节 —— 37 条判据全绿，含 stock Xray 真栈。
 - **真实 ECH 的接受那一半已通**：Cloudflare、defo.ie、test.defo.ie 三族服务器都接受；
   另有一条**离线**判据（我们的客户端 ↔ uTLS 自己的 ECH 服务端）。
 - **41 档里 40 档都能过引擎那条路**（`cargo run --release --example plan-cost` 会打出名单）。
@@ -231,7 +242,7 @@ CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）跑六组判据，
 ## 跑一遍
 
 ```bash
-cargo test --workspace --all-features    # 全部离线判据（REALITY 的 36 条也在其中）
+cargo test --workspace --all-features    # 全部离线判据（REALITY 的 37 条也在其中）
 cargo clippy --workspace --all-targets --all-features
 
 # REALITY 真栈（要 stock Xray，取法见 tests/real_stack.rs 的 xray_bin()，REALITY_XRAY 可覆盖路径）

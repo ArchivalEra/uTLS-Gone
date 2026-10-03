@@ -270,7 +270,12 @@ impl Server {
                         return Err(std::io::Error::other(e));
                     }
                 };
-                let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+                // 镜像握手的密钥交换借 rustls 的组实现；X25519 换成内核 CSPRNG keygen
+                // （x25519-os）—— 否则服务端进程的**第一条**连接要替 aws-lc 的 DRBG
+                // 初始化付 ~35-46 µs（一次性；见 crates/x25519-os 的模块头）。
+                let provider = Arc::new(x25519_os::with_os_random_x25519(
+                    rustls::crypto::aws_lc_rs::default_provider(),
+                ));
                 let client_sid = hello.session_id.to_vec();
                 match crate::mirror_tls::run(
                     client.try_clone()?,

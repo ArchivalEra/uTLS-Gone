@@ -33,8 +33,11 @@
 //! 5. **真站选 P-256 ⇒ 镜像端到端**（issue #3 的核心）：本仓注入式客户端半边
 //!    （X25519 鉴权钥调用方持有 + 提供者持有的 P-256 交换）对着 P-256-only 真站，
 //!    鉴权 → 镜像 → 双向往返；P-384 同型一条。
+//! 6. **真站选 X25519 ⇒ 镜像端到端**（crates/x25519-os 的端到端面）：serverShare
+//!    由内核熵源 keygen 生成，握手语义不变；key_share `[MLKEM768, X25519]`。
 //!
-//! 其中 1、3 需要 stock Xray；2、4、5（P-256 与 P-384 两条）不需要，随 workspace 跑。
+//! 其中 1、3 需要 stock Xray；2、4、5、6（P-256/P-384/X25519 三条镜像）不需要，
+//! 随 workspace 跑。
 //!
 //! # 需要外部二进制 —— 测试自己管
 //!
@@ -580,6 +583,62 @@ fn a_p256_selected_dest_mirrors_and_carries_traffic() {
         "不该有镜像失败（P-256 已在支持面内）"
     );
     assert_eq!(load(&stats.fallback), 0, "不该回落透传");
+}
+
+/// **判据 7′（x25519-os 的端到端面）**：真站选 **X25519** ⇒ 镜像的 serverShare 由
+/// crates/x25519-os 的内核熵源 keygen 生成，客户端（调用方持有的
+/// X25519，即 REALITY 鉴权钥匙）照常完成 —— 服务端换 keygen 实现，握手语义一个
+/// 字节都不变。形状与判据 6/7 相同：key_share `[MLKEM768, X25519]`，dest X25519-only。
+#[test]
+fn an_x25519_selected_dest_mirrors_with_the_os_keygen_and_carries_traffic() {
+    let (server_addr, stats, _guards) =
+        spawn_nist_dest_and_server(vec![rustls::NamedGroup::X25519], banner_echo_handler());
+
+    // MLKEM768 必须保留（REALITY 鉴权形状检查要求它在最前）；真站将选中 X25519。
+    let spec = firefox_spec_with_key_shares(&[utls::values::X25519_MLKEM768, utls::values::X25519]);
+    let server_static_pub =
+        *x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from(SERVER_PRIV)).as_bytes();
+    let (mut tls, client) = common::connect_reality_client(
+        server_addr,
+        spec,
+        SERVER_NAME,
+        CLIENT_PRIV,
+        server_static_pub,
+        SHORT_ID,
+        now_secs(),
+    )
+    .expect("真站选 X25519 时镜像握手该端到端谈成");
+
+    let mut buf = [0u8; 4096];
+    let n = tls.read(&mut buf).expect("读 banner");
+    assert_eq!(&buf[..n], b"REALITY-MIRROR-BANNER\n");
+    let payload = format!("X25519-PING-{}", std::process::id());
+    tls.write_all(payload.as_bytes()).expect("写");
+    tls.flush().expect("flush");
+    let n = tls.read(&mut buf).expect("读回显");
+    assert_eq!(&buf[..n], payload.as_bytes(), "双向往返该通");
+
+    // 客户端侧证据：这次被消费的正是**持有**的 X25519 交换（真站选了它），
+    // MLKEM768 没被消费。
+    assert!(
+        client.exchange_consumed(utls::values::X25519),
+        "真站选 X25519 ⇒ 客户端持有的 X25519 交换该被消费"
+    );
+    assert!(
+        !client.exchange_consumed(utls::values::X25519_MLKEM768),
+        "MLKEM768 不该被消费"
+    );
+
+    let load = |c: &std::sync::atomic::AtomicUsize| c.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(load(&stats.connections), 1);
+    assert_eq!(load(&stats.authenticated), 1);
+    assert_eq!(
+        load(&stats.mirrored),
+        1,
+        "镜像该成（serverShare 由 os keygen 生成）"
+    );
+    assert_eq!(load(&stats.mirror_failed), 0);
+    assert_eq!(load(&stats.fallback), 0);
 }
 
 /// **判据 7（issue #3 的第二只脚）**：P-384 同型 —— 放开的是一族（P-256/P-384/

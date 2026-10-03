@@ -204,10 +204,14 @@ impl HandshakeInputs {
     /// 那等于把「每连接不同」悄悄变成常量 —— 而那种故障在指纹上是看得见的
     /// （JA3 会稳定下来），却在本地毫无征兆。宁可响。
     pub fn os() -> Self {
+        // 一次 fill 取 64 字节（client_random 32 + seed 32）—— 原来是两次 fill、
+        // 两次 syscall，每条 hello 都要付；合成一次后每条省一个系统调用。
+        let mut buf = [0u8; 64];
+        getrandom::fill(&mut buf).expect("OS 熵源不可用，无法产生客户端随机数");
         let mut client_random = [0u8; 32];
         let mut seed = [0u8; 32];
-        getrandom::fill(&mut client_random).expect("OS 熵源不可用，无法产生客户端随机数");
-        getrandom::fill(&mut seed).expect("OS 熵源不可用，无法产生每连接变化");
+        client_random.copy_from_slice(&buf[..32]);
+        seed.copy_from_slice(&buf[32..]);
         HandshakeInputs {
             sni: None,
             alpn: Vec::new(),

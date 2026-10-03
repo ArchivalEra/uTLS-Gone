@@ -594,6 +594,7 @@ dependencies = [
  "sha2",
  "utls",
  "x25519-dalek",
+ "x25519-os",
 ]
 
 [[package]]
@@ -848,6 +849,7 @@ dependencies = [
  "rustls-pki-types",
  "utls",
  "webpki-roots",
+ "x25519-os",
 ]
 
 [[package]]
@@ -968,6 +970,17 @@ dependencies = [
  "curve25519-dalek",
  "rand_core",
  "serde",
+ "zeroize",
+]
+
+[[package]]
+name = "x25519-os"
+version = "1.0.0"
+dependencies = [
+ "aws-lc-sys",
+ "getrandom 0.3.4",
+ "rustls",
+ "x25519-dalek",
  "zeroize",
 ]
 

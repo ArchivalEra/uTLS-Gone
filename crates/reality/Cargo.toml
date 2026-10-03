@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 x25519-dalek.workspace = true
+x25519-os = { path = "../x25519-os" }
 aes-gcm.workspace = true
 sha2.workspace = true
 # 记录层 AEAD 的第三种套件（ChaCha20-Poly1305）
