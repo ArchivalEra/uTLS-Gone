@@ -62,9 +62,16 @@ else runs offline.
 
 ## Boundaries
 
-- No HelloRetryRequest — the Go reference doesn't do it either.
-- ML-DSA-65 (post-quantum certificate signatures) not implemented.
-- PQ-first first-hello floor is the ML-KEM-768 keygen itself (~25 µs of real math).
+- **REALITY mirror: no HelloRetryRequest.** The mirror copies the real site's ServerHello and
+  re-keys it. If the real site answers the forwarded ClientHello with an HRR instead, there is
+  nothing to re-key and the connection falls back to passthrough — same behavior as the Go
+  reference. The TLS client in `utls-engine` does handle HRR
+  (`tests/hello_retry_e2e.rs`).
+- **REALITY: no ML-DSA-65 certificate signature.** Newer Xray can embed an ML-DSA-65
+  (post-quantum) signature in the server's self-signed certificate — the `mldsa65_seed` /
+  `mldsa65_verify` fields in its `config.proto`. We issue ed25519-based REALITY certificates;
+  that field pair is the single "not implemented" row in `crates/reality/tests/parity.rs`.
+- **PQ-first first-hello floor** is the ML-KEM-768 keygen itself (~25 µs of real math).
 
 ## License
 

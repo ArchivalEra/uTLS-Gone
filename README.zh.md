@@ -59,9 +59,15 @@ REALITY 真栈判据需要原版 Xray-core（`REALITY_XRAY=/path/to/xray`）；�
 
 ## 边界
 
-- 不做 HelloRetryRequest —— Go 参照同样不做。
-- ML-DSA-65（后量子证书签名）未实现。
-- PQ-first 首条 hello 的地板是 ML-KEM-768 keygen 本身（~25 µs 真数学）。
+- **REALITY 镜像：不做 HelloRetryRequest。** 镜像的做法是复制真站的 ServerHello 再换密钥；
+  如果真站对转发过去的 ClientHello 回的是 HRR，那就没有东西可换，连接回落透传 —— 与 Go
+  参照行为一致。`utls-engine` 里的 TLS 客户端**支持** HRR（判据在
+  `tests/hello_retry_e2e.rs`）。
+- **REALITY：不做 ML-DSA-65 证书签名。** 新版 Xray 可以在服务端自签证书里内嵌 ML-DSA-65
+  （后量子）签名 —— 即它 `config.proto` 里的 `mldsa65_seed` / `mldsa65_verify` 字段。我们
+  签发的是 ed25519 版 REALITY 证书；这对字段是 `crates/reality/tests/parity.rs` 里唯一的
+  「未实现」行。
+- **PQ-first 首条 hello 的地板**是 ML-KEM-768 keygen 本身（~25 µs 真数学）。
 
 ## License
 
