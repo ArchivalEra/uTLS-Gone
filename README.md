@@ -56,8 +56,10 @@ master (tarball sha256 `ae5e90b0…`; fetch command in
 |---|---|---|---|
 | **Marginal CPU per hello** (39-preset mean) | **102 µs** | **13.3 µs** (**7.7×**) | 13.2 µs — within noise of default |
 | Single-preset `Chrome(70)` marginal | 75 µs | 11.8 µs | 9.3 µs |
+| Single-preset `Chrome(133)` marginal (PQ-first) | **311.5 µs** | **~50 µs** (**6.2×**) | — |
 | Batch mean (39 presets × 48) | 104.6 µs | 13.3 µs | ~13.2 µs |
-| First hello (cold process) | ~77 µs | **~69 µs** | ~69 µs |
+| First hello, cold (`Chrome(70)`) | ~200-280 µs | **~70-85 µs** | ~70-85 µs |
+| First hello, cold (`Chrome(133)`, PQ-first) | ~465-630 µs | **~130-160 µs** | ~130-160 µs |
 | **Allocated bytes per hello** (39-preset mean, cumulative heap allocs in the loop) | **20.8 KB** | **9.7 KB** (reused planner) / 10.8 KB (per-connection) | same (LTO does not change allocation behavior) |
 | Peak RSS (empty run = 18,720 hellos) | ~16 MB, flat | ~16 MB, flat | ~16 MB, flat |
 
@@ -77,19 +79,26 @@ Written in full, including the rows that favor the other side:
   is CPU-timing-jitter as an entropy source (the config file carries the full note).
   `utls_engine::warm_up()` is kept as an API but is now optional — there is no expensive one-time
   init left to prepay. TLS 1.2-era presets never touched the provider RNG anyway.
-- **The remaining one-time cost (~110 µs → ~69 µs, now under Go's ~77 µs)**: after the jitter
-  fix the first hello still paid aws-lc's DRBG instantiation inside its first keygen
-  (measured ~35-46 µs; `EphemeralPrivateKey::generate(alg, _rng)` **ignores** the rng parameter,
-  so it cannot be injected around). [`crates/x25519-os`](crates/x25519-os) replaces X25519's
-  keygen entropy source with the **kernel CSPRNG** (`getrandom(2)`) while keeping aws-lc's C
-  arithmetic for the public key and the shared secret — the same trust base as the ring backend.
-  The unsafe glue lives outside rustls because the fork is `#![forbid(unsafe_code)]`. Wired in
-  one line on both stacks (`UClient::new()` and the REALITY server); a true-stack criterion
-  (dest selects X25519 → mirrored with the OS-keygen serverShare) runs in CI. The criteria
-  cross-check every public key and shared secret against x25519-dalek, and reject low-order
-  peers (all-zero shared secret) explicitly — the check the EVP path does inside aws-lc.
-  The fingerprint layer also merges its two per-hello entropy fills into one syscall. The
-  benchmark measures a cold process by default — which is now **~69 µs**.
+- **The remaining one-time cost: X25519 & MLKEM768 keygen moved off aws-lc's DRBG.** After the
+  jitter fix the first hello still paid aws-lc's DRBG instantiation inside its first keygen
+  (~55 µs measured on the PQ path; `EphemeralPrivateKey::generate(alg, _rng)` ignores the rng
+  parameter, and aws-lc-sys 0.45 — the latest release — exposes no entropy injection for MLKEM
+  at all). [`crates/x25519-os`](crates/x25519-os) replaces the keygen of **both** `X25519` and
+  the `X25519MLKEM768` hybrid: kernel-CSPRNG entropy (`getrandom(2)`), ML-KEM math from
+  **libcrux** (Cryspen's formally verified implementation — picked in a four-implementation
+  bake-off: libcrux 24.7/22.3/23.7 µs keygen/encap/decap vs RustCrypto ml-kem 43/39/48,
+  PQClean C 33.8/32.9, aws-lc EVP ~30 + DRBG), X25519 arithmetic from aws-lc's C primitives.
+  The unsafe glue lives outside rustls (the fork is `#![forbid(unsafe_code)]`); the swap is one
+  line on both stacks (`UClient::new()` and the REALITY server). Interop with the stock aws-lc
+  hybrid is pinned byte-for-byte in both directions, the stock-Xray true stack exercises the PQ
+  path end to end, low-order peers are rejected explicitly (the check the EVP path does inside
+  aws-lc), and the fingerprint layer merges its two per-hello entropy fills into one syscall.
+- **First-hello numbers, re-paired (2026-10-03)**: the earlier table's Go first-hello value
+  (~77 µs) matched Go's **marginal** cost (78.7 µs) — a mis-attribution this re-measurement
+  corrects. Same machine, same day, back-to-back: `Chrome(70)`-shaped cold first hellos run
+  **~200-280 µs (Go) vs ~70-85 µs (ours)**; PQ-first `Chrome(133)` runs **~465-630 µs (Go) vs
+  ~130-160 µs (ours)**. The ~69 µs figure is the `Chrome(70)` shape; for PQ-first hellos
+  ML-KEM-768 keygen alone is ~25 µs of real math, which sets that shape's floor.
 - **Memory**: peak RSS is a tie — **~16 MB on both sides**, and the empty run equals the
   18,720-hello run exactly (allocator/GC reuse everything; neither grows with the count).
   The difference is **allocation volume per hello**: Go **20.8 KB** vs ours **9.7 KB** (reused

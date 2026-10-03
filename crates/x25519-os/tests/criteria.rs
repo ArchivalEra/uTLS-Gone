@@ -10,10 +10,18 @@
 //!    已知常数），是本 crate 存在理由的一部分；
 //! 3. **trait 面**：`X25519.start()` 产出 32 字节公钥、自洽 complete、每次 keygen
 //!    都是新鲜密钥（两次公钥不同）；
-//! 4. **换源助手**：`with_os_random_x25519` 只换 X25519、组数与顺序不变、幂等。
+//! 4. **换源助手**：`with_os_random_keygen` 只换 X25519 与 X25519MLKEM768、
+//!    组数与顺序不变、幂等；
+//! 5. **混合组互操作（X25519MLKEM768）**：raw 混合组与 stock aws-lc 实现在**两个
+//!    方向**（raw 客户端 ↔ stock 服务端、stock 客户端 ↔ raw 服务端）共享密钥
+//!    逐字节相同 —— libcrux 的 FIPS 203 实现与 aws-lc 的语义等价由此钉死；
+//!    线序长度（1216/1120/64）与经典分量（hybrid_component → X25519/32B）一并核。
 
+use rustls::crypto::aws_lc_rs::kx_group;
 use x25519_dalek::{PublicKey, StaticSecret};
-use x25519_os::{X25519, X25519_LEN, agree, public_from_private, with_os_random_x25519};
+use x25519_os::{
+    X25519, X25519_LEN, X25519_MLKEM768, agree, public_from_private, with_os_random_keygen,
+};
 
 /// 固定标量（含 clamp 边角：全 0x01、全 0xff）+ 派生标量，覆盖足够多样本。
 fn scalars() -> Vec<[u8; 32]> {
@@ -88,11 +96,11 @@ fn the_trait_impl_starts_completes_and_generates_fresh_keys() {
 
 /// **判据 4（换源助手）**：只换 X25519、组数与顺序不变、幂等。
 #[test]
-fn with_os_random_x25519_swaps_only_x25519_and_is_idempotent() {
+fn with_os_random_keygen_swaps_only_x25519_and_is_idempotent() {
     let provider = rustls::crypto::aws_lc_rs::default_provider();
     let before: Vec<rustls::NamedGroup> = provider.kx_groups.iter().map(|g| g.name()).collect();
 
-    let swapped = with_os_random_x25519(provider);
+    let swapped = with_os_random_keygen(provider);
     let after: Vec<rustls::NamedGroup> = swapped.kx_groups.iter().map(|g| g.name()).collect();
 
     assert_eq!(before, after, "组清单与顺序不该变");
@@ -102,7 +110,72 @@ fn with_os_random_x25519_swaps_only_x25519_and_is_idempotent() {
     );
 
     // 幂等：再换一次还是同一形状。
-    let twice = with_os_random_x25519(swapped);
+    let twice = with_os_random_keygen(swapped);
     let twice_groups: Vec<rustls::NamedGroup> = twice.kx_groups.iter().map(|g| g.name()).collect();
     assert_eq!(after, twice_groups, "重复换源该幂等");
+}
+
+/// **判据 5（混合组互操作，两个方向）**：raw X25519MLKEM768 与 stock aws-lc 实现
+/// 的共享密钥必须逐字节相同 —— libcrux 的 FIPS 203 语义与 aws-lc 的等价性由此钉死。
+#[test]
+fn the_raw_hybrid_interops_with_the_stock_aws_lc_hybrid_both_ways() {
+    // 方向一：raw 客户端 ↔ stock 服务端。
+    let raw_client = X25519_MLKEM768.start().expect("raw keygen");
+    let client_share = raw_client.pub_key().to_vec();
+    assert_eq!(
+        client_share.len(),
+        1216,
+        "客户端 share = ek(1184) ‖ x25519(32)"
+    );
+    let stock_server = kx_group::X25519MLKEM768
+        .start_and_complete(&client_share)
+        .expect("stock 服务端该接受 raw 客户端的 ek");
+    assert_eq!(
+        stock_server.pub_key.len(),
+        1120,
+        "服务端 share = ct(1088) ‖ x25519(32)"
+    );
+    assert_eq!(
+        stock_server.secret.secret_bytes().len(),
+        64,
+        "共享密钥 = mlkem(32) ‖ x25519(32)"
+    );
+    let secret_client = raw_client
+        .complete(&stock_server.pub_key)
+        .expect("raw 客户端 decap");
+    assert_eq!(
+        secret_client.secret_bytes(),
+        stock_server.secret.secret_bytes(),
+        "方向一的共享密钥必须逐字节相同"
+    );
+
+    // 方向二：stock 客户端 ↔ raw 服务端。
+    let stock_client = kx_group::X25519MLKEM768.start().expect("stock keygen");
+    let stock_share = stock_client.pub_key().to_vec();
+    let raw_server = X25519_MLKEM768
+        .start_and_complete(&stock_share)
+        .expect("raw 服务端该接受 stock 客户端的 ek");
+    let secret_client2 = stock_client
+        .complete(&raw_server.pub_key)
+        .expect("stock 客户端 decap");
+    assert_eq!(
+        secret_client2.secret_bytes(),
+        raw_server.secret.secret_bytes(),
+        "方向二的共享密钥必须逐字节相同"
+    );
+}
+
+/// **判据 5′（混合组的经典分量）**：`hybrid_component` 报 X25519/32 字节，
+/// `complete_hybrid_component` 与同组标量的 X25519 共享一致（64 字节组合密钥里
+/// 的经典那一段）—— Firefox 148 的 key_share reuse 走的就是这条。
+#[test]
+fn the_hybrid_classical_component_is_x25519_shaped() {
+    let raw_client = X25519_MLKEM768.start().expect("raw keygen");
+    let (group, component) = raw_client.hybrid_component().expect("混合组该上报经典分量");
+    assert_eq!(group, rustls::NamedGroup::X25519);
+    assert_eq!(component.len(), 32);
+
+    // 经典分量参与 TLS 的方式：服务端选中 X25519 时 rustls 调
+    // complete_hybrid_component(server_xpub)。形状不对要响亮拒绝。
+    assert!(raw_client.complete_hybrid_component(&[0u8; 16]).is_err());
 }

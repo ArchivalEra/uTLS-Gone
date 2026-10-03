@@ -48,9 +48,9 @@
   <text x="348" y="324" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#56d364">6.4×</text>
 
   <rect x="24" y="344" width="832" height="72" rx="10" fill="#12261a" stroke="#2ea043" stroke-opacity="0.55"/>
-  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">first hello: 33 ms → ~69 µs, under Go's 77 µs (jitter off + kernel-CSPRNG keygen)</text>
+  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">first hello: 33 ms → ~70-85 µs (Go same shape: ~200-280) — jitter off + kernel keygen</text>
   <text x="440" y="400" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="13" fill="#c9d1d9">9.7 KB allocated per hello vs 20.8 KB for Go (2.1×) · peak RSS ~16 MB on both sides, flat</text>
 
   <text x="24" y="446" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">measured 2026-10-01/02 · AMD Ryzen 9 3900X · plan ↔ UClient+BuildHandshakeState, same layer · n and 10n runs, 3 reps, medians</text>
-  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">one-time init: jitter off at build (AWS_LC_SYS_NO_JITTER_ENTROPY=1) + kernel-CSPRNG X25519 keygen (x25519-os) · TLS 1.2 presets: ~50 µs</text>
+  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">one-time init: jitter off at build (AWS_LC_SYS_NO_JITTER_ENTROPY=1) + kernel-entropy X25519/MLKEM768 keygen (x25519-os: libcrux) · TLS 1.2 presets: ~50 µs</text>
 </svg>

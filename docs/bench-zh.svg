@@ -48,9 +48,9 @@
   <text x="348" y="324" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#56d364">6.4×</text>
 
   <rect x="24" y="344" width="832" height="72" rx="10" fill="#12261a" stroke="#2ea043" stroke-opacity="0.55"/>
-  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">首条 hello：33 ms → ~69 µs，已低于 Go 的 77 µs（jitter 关 + 内核熵源 keygen）</text>
+  <text x="440" y="376" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#56d364">首条 hello：33 ms → ~70-85 µs（Go 同形 ~200-280）—— jitter 关 + 内核熵 keygen</text>
   <text x="440" y="400" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="13" fill="#c9d1d9">每条 hello 分配 9.7 KB vs Go 20.8 KB（2.1×）· 峰值 RSS 双方 ~16 MB 持平</text>
 
   <text x="24" y="446" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">实测 2026-10-01/02 · AMD Ryzen 9 3900X · plan ↔ UClient+BuildHandshakeState 同层 · n 与 10n 各三次取中位 · 分配字节 = 循环内累计堆分配</text>
-  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">一次性初始化：jitter 编译期关（AWS_LC_SYS_NO_JITTER_ENTROPY=1）+ X25519 keygen 走内核熵源（x25519-os）· TLS 1.2 档不碰 RNG，单条 ~50 µs</text>
+  <text x="24" y="464" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">一次性初始化：jitter 编译期关 + X25519/MLKEM768 keygen 走内核熵源（x25519-os：libcrux）· TLS 1.2 档不碰 RNG，单条 ~50 µs</text>
 </svg>

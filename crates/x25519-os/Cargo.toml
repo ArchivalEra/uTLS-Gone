@@ -10,6 +10,11 @@ repository.workspace = true
 # X25519 的 C 原语（X25519 / X25519_public_from_private）。版本与 aws-lc-rs 自身的
 # 依赖（0.45.0）对齐，避免同一份 C 库编两次。
 aws-lc-sys = "0.45"
+# ML-KEM-768（混合组的 PQ 分量）：Cryspen 的形式化验证实现，显式随机数 API
+# （keygen 吃 64 字节 d‖z、encap 吃 32 字节 m），simd256 特性 = AVX2/NEON 加速 +
+# 运行时检测回落。四家对比实测最快（keygen 24.7 / encap 22.3 / decap 23.7 µs，
+# 见本 crate 模块头与 tests/criteria.rs 的互操作判据）。
+libcrux-ml-kem = { version = "0.0.10", features = ["simd256"] }
 # keygen 的熵源：getrandom(2)，内核 CSPRNG —— 与 ring 后端的 SystemRandom 同一信任基。
 getrandom = "0.3"
 # SupportedKxGroup / ActiveKeyExchange / SharedSecret。经 workspace 的

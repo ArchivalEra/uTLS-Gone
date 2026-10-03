@@ -48,8 +48,10 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
 |---|---|---|---|
 | **每条 hello 的边际 CPU**（39 档均值） | **102 µs** | **13.3 µs**（**7.7×**） | 13.2 µs —— 与默认在噪声内 |
 | 单档 `Chrome(70)` 的边际 | 75 µs | 11.8 µs | 9.3 µs |
+| 单档 `Chrome(133)` 的边际（PQ-first） | **311.5 µs** | **~50 µs**（**6.2×**） | — |
 | 批量均值（39 档 × 48 条） | 104.6 µs | 13.3 µs | ~13.2 µs |
-| 首条 hello（冷进程） | ~77 µs | **~69 µs** | ~69 µs |
+| 首条 hello，冷进程（`Chrome(70)`） | ~200-280 µs | **~70-85 µs** | ~70-85 µs |
+| 首条 hello，冷进程（`Chrome(133)`，PQ-first） | ~465-630 µs | **~130-160 µs** | ~130-160 µs |
 | **每条 hello 的分配字节**（39 档均值，循环内累计堆分配） | **20.8 KB** | **9.7 KB**（复用规划器）/ 10.8 KB（每连接新建） | 同左（LTO 不改分配行为） |
 | 峰值 RSS（空跑 = 18720 条） | ~16 MB 持平 | ~16 MB 持平 | ~16 MB 持平 |
 
@@ -66,17 +68,23 @@ n=48 与 10n=480 各三次取中位，解出**边际成本**；单档探针分�
   BoringSSL 同一基；放弃的只是「CPU 计时抖动」这一路熵（config 文件里写了完整说明）。
   `utls_engine::warm_up()` 作为 API 保留，但已是可选 —— 没有昂贵的一次性初始化可预付了。
   TLS 1.2 时代的档本就不碰 provider RNG。
-- **剩余的一次性成本（~110 µs → ~69 µs，已低于 Go 的 ~77 µs）**：jitter 关掉后，首条
-  hello 的首个 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~35-46 µs（
-  `EphemeralPrivateKey::generate(alg, _rng)` **忽略** rng 参数，从外面注入不了熵源）。
-  [`crates/x25519-os`](crates/x25519-os) 把 X25519 的 keygen 熵源换成**内核 CSPRNG**
-  （`getrandom(2)`），公钥与共享密钥的算术仍是 aws-lc 的 C 实现 —— 与 ring 后端同一
-  信任基。unsafe 胶水在 rustls 之外（fork 整个 crate `#![forbid(unsafe_code)]`）。
-  两条栈各一行接线（`UClient::new()` 与 REALITY 服务端）；有一条真栈判据
-  （dest 选 X25519 ⇒ serverShare 由内核熵源 keygen 生成）进 CI。判据与 x25519-dalek
-  逐字节对拍全部公钥与共享密钥，并显式拒绝低阶对端（全零共享）—— 那是 EVP 路径在
-  aws-lc 内部做的检查，绕开它就必须自己带。指纹层的两次取熵也合成了一次 syscall。
-  基准默认测冷进程 —— 现在是 **~69 µs**。
+- **剩余的一次性成本：X25519 与 MLKEM768 的 keygen 挪出 aws-lc 的 DRBG。** jitter 关掉后，
+  首条 hello 的首个 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~55 µs（PQ 路径实测；
+  `EphemeralPrivateKey::generate(alg, _rng)` 忽略 rng 参数，且 aws-lc-sys 0.45 —— 当前
+  最新版 —— 对 MLKEM 完全没有暴露熵注入接口）。[`crates/x25519-os`](crates/x25519-os)
+  把 **X25519 与 X25519MLKEM768 混合组**的 keygen 都换掉：熵源 = 内核 CSPRNG
+  （`getrandom(2)`）；ML-KEM 数学来自 **libcrux**（Cryspen 的形式化验证实现 —— 四家
+  同机实测定型：libcrux 24.7/22.3/23.7 µs keygen/encap/decap，对比 RustCrypto ml-kem
+  43/39/48、PQClean C 33.8/32.9、aws-lc EVP ~30 另付 DRBG）；X25519 算术仍是 aws-lc
+  的 C 原语。unsafe 胶水在 rustls 之外（fork 整个 crate `#![forbid(unsafe_code)]`）；
+  两条栈各一行接线（`UClient::new()` 与 REALITY 服务端）。与 stock aws-lc 混合组的
+  互操作双向逐字节钉死，stock Xray 真栈端到端走 PQ 路径，低阶对端显式拒绝（EVP 路径
+  在 aws-lc 内部做的那份检查），指纹层的两次取熵合成一次 syscall。
+- **首条 hello 数字，成对重测（2026-10-03）**：旧表里 Go 的首条 hello ~77 µs 与它的
+  **边际**（78.7 µs）吻合 —— 是一次口径误记，本次重测修正。同机同日背靠背：
+  `Chrome(70)` 形状的冷首条 **Go ~200-280 µs vs 本仓 ~70-85 µs**；PQ-first
+  `Chrome(133)` **Go ~465-630 µs vs 本仓 ~130-160 µs**。~69 µs 是 `Chrome(70)` 形状
+  的数字；PQ-first 形状里 ML-KEM-768 keygen 一项就有 ~25 µs 真数学，地板由它决定。
 - **内存**：峰值 RSS 两边打平 —— **~16 MB**，而且空跑与 18720 条完全一样（分配器/GC
   全程复用，谁都不随条数涨）。有差别的是**每条 hello 的分配量**：Go **20.8 KB** vs 本仓
   **9.7 KB**（复用规划器）/ 10.8 KB（`PLANCOST_FRESH=1`，每连接新建 —— 对齐 uTLS

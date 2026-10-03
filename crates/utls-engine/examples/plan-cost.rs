@@ -50,19 +50,21 @@
 //!
 //! | | 首条 hello（冷进程） | **每条 hello 的边际 CPU** |
 //! |---|---|---|
-//! | uTLS（Go 1.27，默认构建） | ~77 µs | **102 µs** |
-//! | 本仓（Rust，默认 release） | **~69 µs** | **13.3 µs**（7.7×） |
-//! | 本仓（+ fat LTO，CGU=1） | ~69 µs | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
+//! | uTLS（Go 1.27，默认构建） | `chrome_70` ~200-280 µs / `chrome_133` ~465-630 µs | **102 µs**（`chrome_133` 311.5 µs） |
+//! | 本仓（Rust，默认 release） | `Chrome(70)` **~70-85 µs** / `Chrome(133)` **~130-160 µs** | **13.3 µs**（7.7×；`Chrome(133)` ~50 µs，6.2×） |
+//! | 本仓（+ fat LTO，CGU=1） | 同默认（首条被懒初始化主导） | 13.2 µs —— 噪声内不变（热点在 crypto 原语，不在内联） |
 //!
-//! 一次性成本分两段清掉（`PLANCOST_BREAKDOWN=1` 是归因工具）：
+//! 一次性成本分三段清掉（`PLANCOST_BREAKDOWN=1` 是归因工具）：
 //!
 //! 1. **~33 ms**：aws-lc 进程内首次 `RAND_bytes` 的 CPU-jitter 熵收集 —— 项目根
-//!    `.cargo/config.toml` 的 `AWS_LC_SYS_NO_JITTER_ENTROPY=1` 换掉熵源（32.4 ms →
-//!    ~0.11 ms，消 99.6%）；
-//! 2. **~110 → ~69 µs**：剩余的 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~35-46 µs
+//!    `.cargo/config.toml` 的 `AWS_LC_SYS_NO_JITTER_ENTROPY=1` 换掉熵源；
+//! 2. **~110 → ~70-85 µs**：剩余的 keygen 仍要替 aws-lc 的 DRBG 实例化付 ~35-46 µs
 //!    （`EphemeralPrivateKey::generate(alg, _rng)` 忽略 rng 参数）——
 //!    `crates/x25519-os` 把 X25519 的 keygen 熵源换成内核 CSPRNG（算术仍是 aws-lc）；
-//!    指纹层的两次取熵合成一次 syscall。
+//! 3. **PQ-first（`Chrome(133)`）~195-254 → ~130-160 µs**：混合组的 MLKEM keygen 在
+//!    aws-lc 里没有熵注入点（0.45 的绑定只有 EVP）—— x25519-os 用 **libcrux**
+//!    （形式化验证、显式随机数）实现整个混合组，四家实测最快；指纹层的两次取熵
+//!    合成一次 syscall。
 //!
 //! `PLANCOST_WARM=1` 仍能跑 `utls_engine::warm_up`，但已无钱可预付。
 //! TLS 1.2 时代的档（Chrome 58/62 等）全程不碰 provider RNG，单条 ~50 µs。
@@ -217,7 +219,7 @@ fn breakdown(provider: &Arc<rustls::crypto::CryptoProvider>) {
 fn main() {
     let want: Vec<String> = std::env::args().skip(1).collect();
     // 与 UClient::new() 同一条 provider 构成：X25519 keygen 用内核 CSPRNG。
-    let provider = Arc::new(x25519_os::with_os_random_x25519(default_provider()));
+    let provider = Arc::new(x25519_os::with_os_random_keygen(default_provider()));
     // 引擎能完成的组：与 `ClientConfig::fork_key_exchange_groups()` 同一口径。
     let groups: Vec<u16> = provider
         .kx_groups

@@ -923,9 +923,10 @@ fn put_or_replace_ech_ext(spec: &mut ClientHelloSpec, body: Vec<u8>) {
 ///
 /// 本仓已从**源头**消掉了那笔一次性成本：项目根的 `.cargo/config.toml` 设了
 /// `AWS_LC_SYS_NO_JITTER_ENTROPY=1`，把 aws-lc 的熵源从「CPU jitter 为根的
-/// Tree-DRBG」换成「OS CSPRNG + RDRAND」，且 X25519 的 keygen 换成内核 CSPRNG
-/// （[`x25519_os`]，绕开 DRBG 的懒初始化）——实测首条 hello 从 ~32 ms 降到
-/// **~69 µs**（低于 Go 的 ~77 µs；见 README 的测法一节与两份 config/crate 文档）。
+/// Tree-DRBG」换成「OS CSPRNG + RDRAND」，且 X25519 与 MLKEM768 的 keygen 都换成
+/// 内核 CSPRNG（[`x25519_os`]，绕开 DRBG 的懒初始化）——实测冷首条 hello：
+/// `Chrome(70)` 形状 ~70-85 µs、`Chrome(133)` 形状（PQ-first）~130-160 µs
+/// （Go 同形状 ~200-280 / ~465-630 µs；见 README 的测法一节与 x25519-os 文档）。
 ///
 /// 这个函数保留是因为：它仍是「用一次最便宜的密码学操作把 provider 的进程内状态
 /// 推到热」的一般手段，且判据（`tests/warm_up.rs`）仍以它为准。代价是**熵源信任基**
@@ -1053,10 +1054,10 @@ pub struct UClient {
 
 impl UClient {
     /// 默认用 rustls 的 `aws_lc_rs` 提供者；X25519 的 keygen 换成内核 CSPRNG
-    /// （[`x25519_os::with_os_random_x25519`] —— 省掉 aws-lc DRBG 一次性实例化的
+    /// （[`x25519_os::with_os_random_keygen`] —— 省掉 aws-lc DRBG 一次性实例化的
     /// ~35-46 µs，首条 hello 的数字见 README；算术仍是 aws-lc 的 C 实现）。
     pub fn new() -> Self {
-        Self::with_provider(Arc::new(x25519_os::with_os_random_x25519(
+        Self::with_provider(Arc::new(x25519_os::with_os_random_keygen(
             rustls::crypto::aws_lc_rs::default_provider(),
         )))
     }
