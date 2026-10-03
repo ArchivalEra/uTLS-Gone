@@ -1,5 +1,14 @@
 # uTLS-Gone
 
+[![ci](https://github.com/ArchivalEra/uTLS-Gone/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ArchivalEra/uTLS-Gone/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone/releases)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![rust](https://img.shields.io/badge/rust-edition%202024-orange.svg)](Cargo.toml)
+[![no Go](https://img.shields.io/badge/Go-zero%20deps-success.svg)](#crates)
+[![upstream](https://img.shields.io/badge/upstream%20fixtures-byte%20for%20byte-brightgreen.svg)](crates/utls/tests/fixtures/utls-testdata/README.md)
+[![top language](https://img.shields.io/github/languages/top/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone)
+[![last commit](https://img.shields.io/github/last-commit/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone/commits/main)
+
 A Rust port of [refraction-networking/utls](https://github.com/refraction-networking/utls)
 plus XTLS/REALITY. Given a browser fingerprint ("Chrome 133"), it produces a ClientHello
 byte-identical to that browser's — checkable by re-running one command — and speaks REALITY
@@ -23,6 +32,8 @@ AMD Ryzen 9 3900X, same-day paired measurement against uTLS master (Go 1.27), sa
 Method: n and 10n runs, three reps, medians; single-preset probes separate one-time costs.
 Repro: `crates/utls/tests/fixtures/gen-reference/bench/main.go` ↔
 `cargo run --release -p utls-engine --example plan-cost`.
+
+![Marginal CPU per hello: uTLS-Gone 13.3 µs vs uTLS (Go 1.27) 102 µs, 7.7×](docs/bench-en.svg)
 
 | | Go | this repo |
 |---|---|---|

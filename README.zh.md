@@ -1,4 +1,13 @@
-# uTLS-Gone
+# uTLS-Gone（中文）
+
+[![ci](https://github.com/ArchivalEra/uTLS-Gone/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ArchivalEra/uTLS-Gone/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone/releases)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![rust](https://img.shields.io/badge/rust-edition%202024-orange.svg)](Cargo.toml)
+[![no Go](https://img.shields.io/badge/Go-%E9%9B%B6%E4%BE%9D%E8%B5%96-success.svg)](#crates)
+[![upstream](https://img.shields.io/badge/%E5%8E%9F%E7%89%88%E5%A4%B9%E5%85%B7-%E9%80%90%E5%AD%97%E8%8A%82-brightgreen.svg)](crates/utls/tests/fixtures/utls-testdata/README.md)
+[![top language](https://img.shields.io/github/languages/top/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone)
+[![last commit](https://img.shields.io/github/last-commit/ArchivalEra/uTLS-Gone)](https://github.com/ArchivalEra/uTLS-Gone/commits/main)
 
 [refraction-networking/utls](https://github.com/refraction-networking/utls) 的 Rust 移植，
 外加 XTLS/REALITY。给定一个浏览器指纹（"Chrome 133"），产出与那个浏览器**逐字节一致**的
@@ -22,6 +31,8 @@ AMD Ryzen 9 3900X，同日成对测量，对 uTLS master（Go 1.27），同 39 �
 口径：n 与 10n 各三次取中位；单档探针分离一次性成本。
 复跑：`crates/utls/tests/fixtures/gen-reference/bench/main.go` ↔
 `cargo run --release -p utls-engine --example plan-cost`。
+
+![每条 hello 的边际 CPU：uTLS-Gone 13.3 µs 对 uTLS（Go 1.27）102 µs，7.7 倍](docs/bench-zh.svg)
 
 | | Go | 本仓 |
 |---|---|---|
