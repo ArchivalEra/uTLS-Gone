@@ -14,9 +14,9 @@
 
 ## 一、钉住的版本
 
-**`rustls 0.23.45`** —— 这一条是**核过**的，不是按任务说明抄的：crates.io 的 sparse index
+**`rustls 0.23.46`** —— 这一条是**核过**的，不是按任务说明抄的：crates.io 的 sparse index
 （`https://index.crates.io/ru/st/rustls`，本机可达，HTTP 200）里去掉 yanked 后
-最新的 0.23.x 就是 `0.23.45`；同时最新的总版本是 `0.24.0-dev.1`（预发布）。复跑：
+最新的 0.23.x 就是 `0.23.46`；同时最新的总版本是 `0.24.0-dev.2`（预发布）。复跑：
 
 ```bash
 curl -s https://index.crates.io/ru/st/rustls -o /tmp/idx.json
@@ -28,21 +28,37 @@ s=sorted(vs,key=rel)
 print('newest 0.23.x :', [v for v in s if v.startswith('0.23.')][-1])
 print('newest overall:', s[-1])
 "
-# => newest 0.23.x : 0.23.45
-# => newest overall: 0.24.0-dev.1
+# => newest 0.23.x : 0.23.46
+# => newest overall: 0.24.0-dev.2
 ```
 
 不目标 0.24：上游 0.24 目前只有 `0.24.0-dev.*` 预发布，且已经再次拆分了 `client/` 的内部结构
 （上游两年内两次重构内部扩展表示）。跟一个正在动的版等于把 rebase
 成本从「对行」变回「重写」。
 
+### 0.23.45 → 0.23.46 升级记录（2026-10-23）
+
+上游改了 21 个 src 文件，与补丁的 12 个文件有交集（`client/hs.rs` / `client/ech.rs` /
+`client/tls13.rs` / `common_state.rs`），但 hunk 级**零冲突**——旧 patch.diff 直接打上
+（`git apply` 无 reject）。真正要动手的是**语义**冲突一处：上游给 `EchState` 新增字段
+`accepted_by_hello_retry_request`（「HRR 是否接受了我们的提议」，RFC 9849 §6.1.4，
+上游重构了 `hs.rs` 里 HRR 对 ECH 的判定流程），fork 的 `EchState::from_supplied`
+构造器缺初始化 ⇒ E0063。修法：补 `None`（与上游 builder 路径同语义——外供路径构造
+时尚未收到任何 HRR）。验证：workspace 216 条判据全绿（含 ECH 离线判据）+ Xray 真栈
+7 条全绿 + verify-patch 双判据过。
+
+顺带修了 verify 脚本一个口径漏洞（0.23.46 升级时暴露）：判据②原来不排除
+`.cargo_vcs_info.json` —— 那是 crates.io 打包时生成的 git 快照标记，不属于源码；
+45 时代「逐文件相同」能过只是因为 vendored 里碰巧残留着 45 那份。现在 `-x` 排除，
+口径回到「源码树对源码树」。
+
 **取值来源与复现命令**（实测可用，HTTP 200）：
 
 ```bash
-curl -sL https://static.crates.io/crates/rustls/rustls-0.23.45.crate -o /tmp/rustls.crate
+curl -sL https://static.crates.io/crates/rustls/rustls-0.23.46.crate -o /tmp/rustls.crate
 mkdir -p /tmp/rs && tar xzf /tmp/rustls.crate -C /tmp/rs     # .crate 是 gzip tar
-ls /tmp/rs/rustls-0.23.45/                                   # => Cargo.toml src/ ...
-grep -m1 '^version' /tmp/rs/rustls-0.23.45/Cargo.toml       # => version = "0.23.45"
+ls /tmp/rs/rustls-0.23.46/                                   # => Cargo.toml src/ ...
+grep -m1 '^version' /tmp/rs/rustls-0.23.46/Cargo.toml       # => version = "0.23.46"
 ```
 
 本机可用的源只有 `static.crates.io` 与 `codeload.github.com`；
@@ -51,7 +67,7 @@ grep -m1 '^version' /tmp/rs/rustls-0.23.45/Cargo.toml       # => version = "0.23
 
 ### 补丁应当成为一条台账事实 —— **已落地**
 
-钉住的版本是 `0.23.45`，升级 rustls 是一次**改口**：换了版本就是换了指纹字节的对账对象，
+钉住的版本是 `0.23.46`，升级 rustls 是一次**改口**：换了版本就是换了指纹字节的对账对象，
 必须当作一次显式的、有判据跟进去的变更，不是一次普通的依赖升级。
 
 ---
@@ -61,8 +77,8 @@ grep -m1 '^version' /tmp/rs/rustls-0.23.45/Cargo.toml       # => version = "0.23
 ```bash
 # 原始树：从 crates.io 取（static.crates.io 可达；本机实测）
 mkdir -p /tmp/rs-pristine && cd /tmp/rs-pristine
-curl -sSLO https://static.crates.io/crates/rustls/rustls-0.23.45.crate
-tar xzf rustls-0.23.45.crate && cd rustls-0.23.45
+curl -sSLO https://static.crates.io/crates/rustls/rustls-0.23.46.crate
+tar xzf rustls-0.23.46.crate && cd rustls-0.23.46
 git init -q . && git add -A && git -c user.email=x@y -c user.name=x commit -qm pristine
 # 把我们改过的整棵 src 覆盖过去 —— **不要**从旧 patch.diff 里读文件清单
 cp -a <repo>/crates/rustls/src ./
@@ -87,8 +103,8 @@ sh crates/rustls-fork/verify-patch.sh          # CI 的 patch-repro job 调的�
 手工版的等价命令（想看清每一步时用；**口径与脚本一致 = 整棵 crate**）：
 
 ```bash
-rs=$(mktemp -d) && cd "$rs" && tar xzf /tmp/rs-pristine/rustls-0.23.45.crate
-cd rustls-0.23.45 && git init -q . && git add -A \
+rs=$(mktemp -d) && cd "$rs" && tar xzf /tmp/rs-pristine/rustls-0.23.46.crate
+cd rustls-0.23.46 && git init -q . && git add -A \
   && git -c user.email=x@y -c user.name=x commit -qm p \
   && git apply <repo>/crates/rustls-fork/patch.diff \
   && diff -r -x .git -x target . <repo>/crates/rustls && echo IDENTICAL
@@ -377,7 +393,7 @@ RFC 8446 §4.4.2.2 默认行为不变。
 
 ```bash
 cd /tmp && rm -rf rs-scratch && mkdir rs-scratch && tar xzf rustls.crate -C rs-scratch
-cd /tmp/rs-scratch/rustls-0.23.45
+cd /tmp/rs-scratch/rustls-0.23.46
 git apply --check --verbose -p1 /path/to/patch.diff     # 退出码 0
 patch -p1 --dry-run < /path/to/patch.diff               # 退出码 0
 ```
@@ -411,7 +427,7 @@ patch -p1 --dry-run < /path/to/patch.diff               # 退出码 0
 `ClientExtensions` 的 `+ { ... }` 附加字段块、`SupportedProtocolVersions` 是 `Copy`、
 `Error::General(String)`、`SharedSecret: From<Vec<u8>>`、`ActiveKeyExchange` 的
 `pub_key/hybrid_component/complete_hybrid_component` 签名、`ExpectServerHello` 的字段名、
-`KxState::Start` 需要 `&'static dyn SupportedKxGroup` —— 都在 0.23.45 里按我用到的样子存在。
+`KxState::Start` 需要 `&'static dyn SupportedKxGroup` —— 都在 0.23.46 里按我用到的样子存在。
 所有 `ClientExtensions { .. }` 字面量构造（含测试）都带 `..Default::default()`，
 所以加字段不会破坏它们。
 
@@ -427,7 +443,7 @@ patch -p1 --dry-run < /path/to/patch.diff               # 退出码 0
   （见「跑通之后才暴露的缺陷」一节）。这是本文件最值钱的一条教训：
   编译通过 + `git apply` 干净 + 静态核对符号，**不等于**这一版能工作。
 - **行号**：README 里没有写死行号（只在第二节提到函数名），所以 rebase 后本文件不会腐烂。
-  `patch.diff` 里的行号是相对 0.23.45 的 hunk 头，由 `git diff` 生成，可复跑。
+  `patch.diff` 里的行号是相对 0.23.46 的 hunk 头，由 `git diff` 生成，可复跑。
 - 上游 issue/PR 号（#1421/#1932/#2498/#2414/#2485/#1730、PR #1564/#1475）来自任务给定的
   既有调研，**我没有联网复核**；本机的可用网络只到 `static.crates.io` 一类的下载端点。
   （这一条**仍然**是未复核项，如实留着。）
@@ -441,16 +457,16 @@ patch -p1 --dry-run < /path/to/patch.diff               # 退出码 0
 ```toml
 # A. 作为 patch（推荐）
 [patch.crates-io]
-rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.45" }
+rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.46" }
 
 # B. 作为直接路径依赖（每个 crate 各自声明）
 [dependencies]
-rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.45" }
+rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.46" }
 ```
 
 **推荐 A。** 理由是决定性的：patch 作用于**整张依赖图**里的 `rustls ^0.23`，
 包括我们没直接声明的传递依赖（`tokio-rustls`、`hyper-rustls` 之类 —— 只要它们接受
-0.23.45）。B 只影响我们**自己**声明它的那几个 crate，一旦有传递依赖引入 rustls，
+0.23.46）。B 只影响我们**自己**声明它的那几个 crate，一旦有传递依赖引入 rustls，
 图上就会出现**两份 rustls**，而我们的 ClientHello 定制只对其中一份生效 ——
 那种错误在指纹上看得见、在依赖表里看不见。
 
@@ -462,7 +478,7 @@ rustls = { path = "crates/rustls-fork/vendor/rustls-0.23.45" }
    可发布物，所以这条代价是「明说」而不是「规避」。
 2. **依赖图钉死**：patch 生效的前提是 fork 的版本号满足图中每个依赖方对 `rustls` 的
    版本要求。所以 vendored 副本的 `Cargo.toml` 必须保持**上游的 name/version 原样**
-   （`rustls` / `0.23.45`），不要改成 `rustls-fork` 之类的名字，否则 patch 不生效。
+   （`rustls` / `0.23.46`），不要改成 `rustls-fork` 之类的名字，否则 patch 不生效。
    同一张图里若出现另一个 rustls 大版本（例如某个老依赖要 0.22），一个版本补不了两份，
    要单独处理。
 3. **rebase 节奏**：见下。
@@ -553,7 +569,7 @@ ECH ack」），也看不出第五条（要一台真接受 ECH 的服务器）�
   `fork_patch_minus`（本文件不再抄数字）
 - vendored 的 rustls：见台账 `fork_rs_files` / `fork_rs_lines`；其中**带 `FORK(utls-rs)`
   标记的只有 `fork_rs_modified` 个文件**（其余是上游原文，升级时按那几个文件对行）
-- 补丁的**可复现性已验证**：把它应用到 `rustls-0.23.45.crate` 的原始 tarball 上，
+- 补丁的**可复现性已验证**：把它应用到 `rustls-0.23.46.crate` 的原始 tarball 上，
   产物与仓库里 vendored 的树**逐文件相同**（`diff -r` 无输出）
 
 复跑：
@@ -561,8 +577,8 @@ ECH ack」），也看不出第五条（要一台真接受 ECH 的服务器）�
 ```sh
 # 补丁能否应用、以及能否复现 vendored 树
 cd /tmp && mkdir -p chk && cd chk
-curl -sL https://static.crates.io/crates/rustls/rustls-0.23.45.crate | tar xz
-cd rustls-0.23.45 && git init -q . && git add -A && git -c user.email=a@b -c user.name=t commit -qm base
+curl -sL https://static.crates.io/crates/rustls/rustls-0.23.46.crate | tar xz
+cd rustls-0.23.46 && git init -q . && git add -A && git -c user.email=a@b -c user.name=t commit -qm base
 git apply -p1 <repo>/crates/rustls-fork/patch.diff
 diff -r -x .git -x target -x Cargo.lock . <repo>/crates/rustls   # 应当无输出
 

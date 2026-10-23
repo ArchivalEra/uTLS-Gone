@@ -46,7 +46,7 @@ index 77b2dc5..329b2f4 100644
  
  impl Deref for UnbufferedClientConnection {
 diff --git a/src/client/ech.rs b/src/client/ech.rs
-index 3d0b767..067a349 100644
+index c002891..bcda00f 100644
 --- a/src/client/ech.rs
 +++ b/src/client/ech.rs
 @@ -23,6 +23,7 @@ use crate::msgs::handshake::{
@@ -70,7 +70,7 @@ index 3d0b767..067a349 100644
      // The ID of the ECH configuration we've chosen - this is included in the outer ECH extension.
      config_id: u8,
      // The private server name we'll use for the inner protected hello.
-@@ -358,7 +363,7 @@ impl EchState {
+@@ -361,7 +366,7 @@ impl EchState {
  
          Ok(Self {
              secure_random,
@@ -79,7 +79,7 @@ index 3d0b767..067a349 100644
              config_id: key_config.config_id,
              inner_name,
              outer_name: config_contents.public_name.clone(),
-@@ -373,6 +378,122 @@ impl EchState {
+@@ -377,6 +382,126 @@ impl EchState {
          })
      }
  
@@ -196,13 +196,17 @@ index 3d0b767..067a349 100644
 +            early_data_key_schedule: None,
 +            enable_sni,
 +            sent_extensions,
++            // FORK(utls-rs): 上游 0.23.46 新增字段 ——「HRR 是否接受了我们的提议」
++            // （RFC 9849 §6.1.4：该判定即终局）。外供路径构造时还没收到任何 HRR，
++            // 与上游 builder 路径的初始值同语义：None = 尚未判定。
++            accepted_by_hello_retry_request: None,
 +        })
 +    }
 +
      /// Construct a ClientHelloPayload offering ECH.
      ///
      /// An outer hello, with a protected inner hello for the `inner_name` will be returned, and the
-@@ -387,6 +508,13 @@ impl EchState {
+@@ -391,6 +516,13 @@ impl EchState {
          retry_req: Option<&HelloRetryRequest>,
          resuming: &Option<Retrieved<&persist::Tls13ClientSessionValue>>,
      ) -> Result<ClientHelloPayload, Error> {
@@ -216,7 +220,7 @@ index 3d0b767..067a349 100644
          trace!(
              "Preparing ECH offer {}",
              if retry_req.is_some() { "for retry" } else { "" }
-@@ -437,6 +565,14 @@ impl EchState {
+@@ -441,6 +573,14 @@ impl EchState {
          // Next we compute the proper extension payload.
          let payload = self
              .sender
@@ -231,7 +235,7 @@ index 3d0b767..067a349 100644
              .seal(&outer_hello.get_encoding(), &encoded_inner_hello)?;
  
          // And then we replace the placeholder extension with the real one.
-@@ -600,6 +736,10 @@ impl EchState {
+@@ -625,6 +765,10 @@ impl EchState {
          };
  
          inner_hello.order_seed = outer_hello.order_seed;
@@ -700,7 +704,7 @@ index 0000000..9882f93
 +    }
 +}
 diff --git a/src/client/hs.rs b/src/client/hs.rs
-index 4d22c04..607524b 100644
+index 5e90b6a..6dc7bdb 100644
 --- a/src/client/hs.rs
 +++ b/src/client/hs.rs
 @@ -15,9 +15,13 @@ use crate::bs_debug;
@@ -1570,7 +1574,7 @@ index 4d22c04..607524b 100644
                  return Err({
                      cx.common.send_fatal_alert(
                          AlertDescription::IllegalParameter,
-@@ -1022,28 +1715,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
+@@ -1020,28 +1713,52 @@ impl ExpectServerHelloOrHelloRetryRequest {
              cx.data.early_data.rejected();
          }
  
@@ -1638,7 +1642,7 @@ index 4d22c04..607524b 100644
              self.next.ech_state,
          )
 diff --git a/src/client/tls13.rs b/src/client/tls13.rs
-index 5507a9a..1ad7cd4 100644
+index 8678c1d..0ea246a 100644
 --- a/src/client/tls13.rs
 +++ b/src/client/tls13.rs
 @@ -74,7 +74,7 @@ pub(super) fn handle_server_hello(
@@ -1679,10 +1683,10 @@ index 5507a9a..1ad7cd4 100644
              cx.common.send_fatal_alert(
                  AlertDescription::IllegalParameter,
 diff --git a/src/common_state.rs b/src/common_state.rs
-index 8b1d499..136273f 100644
+index 9a6e6b5..dc21fc5 100644
 --- a/src/common_state.rs
 +++ b/src/common_state.rs
-@@ -1012,11 +1012,20 @@ pub(crate) enum KxState {
+@@ -1083,11 +1083,20 @@ pub(crate) enum KxState {
      None,
      Start(&'static dyn SupportedKxGroup),
      Complete(&'static dyn SupportedKxGroup),
@@ -1852,7 +1856,7 @@ index 2cfd8b8..620b20b 100644
      /// client [RFC 9149] `ticket_request` extension.
      ///
 diff --git a/src/server/tls13.rs b/src/server/tls13.rs
-index 42a5520..30b48b9 100644
+index 55e32f1..b432b26 100644
 --- a/src/server/tls13.rs
 +++ b/src/server/tls13.rs
 @@ -153,6 +153,22 @@ mod client_hello {
@@ -1878,7 +1882,7 @@ index 42a5520..30b48b9 100644
              let shares_ext = client_hello
                  .key_shares
                  .as_ref()
-@@ -813,6 +829,19 @@ mod client_hello {
+@@ -824,6 +840,19 @@ mod client_hello {
          flight.add(c);
      }
  

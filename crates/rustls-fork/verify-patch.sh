@@ -4,7 +4,7 @@
 #
 # 两条判据（缺一不可，理由见 README「二之前」一节）：
 #   ① 补丁里的文件数 == `crates/rustls/src` 里带 `FORK(utls-rs)` 标记的文件数；
-#   ② 把补丁打到**原始** `rustls-0.23.45.crate` 上，得到的树与 `crates/rustls`
+#   ② 把补丁打到**原始** `rustls-0.23.46.crate` 上，得到的树与 `crates/rustls`
 #      **逐文件相同**。
 #
 # 为什么两条都要：本轮踩到过「①过、②不过」——`hs.rs` 的一处修复没进补丁
@@ -25,7 +25,7 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 PATCH="$REPO/crates/rustls-fork/patch.diff"
 VENDORED="$REPO/crates/rustls"
 W=${1:-/tmp/rs-patch-verify}
-VERSION=0.23.45
+VERSION=0.23.46
 
 [ -f "$PATCH" ] || {
     echo "找不到 $PATCH" >&2
@@ -105,7 +105,11 @@ echo "判据①′ vendored 树里没有「无标记却被改过」的文件 ✅
 
 # ── 判据②：打上去能否逐文件重现 vendored 那棵树 ──
 git apply "$PATCH"
-if diff -r -x .git -x target . "$VENDORED"; then
+# `-x .cargo_vcs_info.json`：那是 crates.io **打包**时生成的 git 快照标记（记录打包时
+# 上游仓库的 sha），不属于源码 —— 本仓 vendored 树不携带它（0.23.46 升级时发现：
+# 45 时代「逐文件相同」能过，只是因为 vendored 里碰巧残留着 45 那份；正确口径是
+# 源码树对源码树，打包元数据不进判据）。
+if diff -r -x .git -x target -x .cargo_vcs_info.json . "$VENDORED"; then
     echo "判据② 打出来的树与 crates/rustls 逐文件相同 ✅"
 else
     echo "⚠️ 判据②不过：上面的差异就是补丁与 vendored 树的出入" >&2
