@@ -1,0 +1,125 @@
+# 本地版「代码质量评估」——GitHub Code Quality 官方版在个人账号上
+# 不可用（Team/Enterprise + 独立付费），这里用**本仓已有的判据**做等价替代：
+# 不新增 lint 规则，只把 ci.yml 六个 job 的检查逐条跑一遍，产出
+# 可比的 PR/周报摘要（GITHUB_STEP_SUMMARY）+ 可下载的日志 artifact。
+# 失败如实记 rc，不伪装、不吞错。
+#
+# 与 ci.yml 的分工：ci.yml 是门禁（红 = 不许进 main）；
+# 本 workflow 是评估报表（同命令、同判据，只做呈现与留档）。
+
+name: Code quality assessment
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  assess:
+    name: Assess ${{ github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Take uTLS reference tree (for the two upstream suite checks)
+        run: |
+          set -eu
+          mkdir -p /tmp/utls-ref/utls-master
+          curl -sSL -o /tmp/master.tar.gz \
+            https://codeload.github.com/refraction-networking/utls/tar.gz/refs/heads/master
+          tar xzf /tmp/master.tar.gz -C /tmp/utls-ref/utls-master --strip-components=1
+
+      - name: Take stock Xray-core (for the REALITY stack check)
+        run: |
+          set -eu
+          mkdir -p /tmp/xray-bin
+          curl -sSL -o /tmp/xray.zip \
+            https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          unzip -o -q /tmp/xray.zip -d /tmp/xray-bin
+          chmod +x /tmp/xray-bin/xray
+          /tmp/xray-bin/xray version
+
+      - name: Run checks
+        id: checks
+        shell: bash
+        run: |
+          set +e
+          declare -a names=(cargo-fmt clippy tests patch-repro ech-inner ech-server upstream upstream-no-skip reality-stack)
+          declare -a cmds=(
+            'cargo fmt --all --check'
+            'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+            'cargo test --workspace --all-features'
+            'sh crates/rustls-fork/verify-patch.sh "$RUNNER_TEMP/rs-verify"'
+            'cargo test -p utls-engine --test ech_inner_utls -- --nocapture'
+            'cargo test -p utls-engine --test ech_utls_server -- --ignored --nocapture'
+            'sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master'
+            'cargo test -p reality --test real_stack -- --include-ignored --nocapture'
+          )
+          : > results.tsv
+          for i in "${!names[@]}"; do
+            n="${names[$i]}"; c="${cmds[$i]}"
+            printf '%s\t%s\t' "$n" "$c" >> results.tsv
+            bash -c "$c" > "/tmp/$n.log" 2>&1
+            rc=$?
+            printf '%s\n' "$rc" >> results.tsv
+            printf '  %s: rc=%s\n' "$n" "$rc"
+          done
+          # 与 ci.yml 的 upstream job 同源：把 go -json 的结果行也留进日志。
+          true
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Code quality assessment — uTLS-Gone"
+            echo ""
+            echo "| Check | Command | Result |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f results.tsv ]; then
+            while IFS=$'\t' read -r n c rc; do
+              badge=$([ "$rc" = "0" ] && echo PASS || echo "FAIL (rc=$rc)")
+              printf '| %s | `%s` | %s |\n' "$n" "$c" "$badge" >> "$GITHUB_STEP_SUMMARY"
+            done < results.tsv
+          else
+            echo "| (no results) | — | — |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo ""
+            echo "Assessment uses each repository's existing gates (no new lint rules)."
+            echo "GitRoll context: findings are triaged as own / external bytes / false positive; see trash-can@gitroll/2026-11-12/_round3-internal-accounting.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-logs
+          path: /tmp/*.log
+          if-no-files-found: ignore
