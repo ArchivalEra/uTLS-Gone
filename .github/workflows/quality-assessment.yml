@@ -64,6 +64,14 @@ jobs:
           chmod +x /tmp/xray-bin/xray
           /tmp/xray-bin/xray version
 
+      # ci.yml 的 upstream job 在 go test 后有一段内联 python 断言
+      #（顶层 PASS 非零 / 跳过集恰如预期 / -skip 的两条确实没跑）。
+      # 这里把同一段断言存成脚本，让下面的 `upstream` 检查项与门禁同源可复跑。
+      # （脚本以 base64 内嵌：YAML 块标量里写 heredoc 结束符有缩进陷阱。）
+      - name: Prepare upstream assertion script
+        run: |
+          echo 'aW1wb3J0IGpzb24sIHN5cwp1cHN0cmVhbV9zZWxmX3NraXAgPSAnVGVzdFVUTFNIYW5kc2hha2VDbGllbnRQYXJyb3RHb2xhbmcnICAgIyDkuIrmuLjoh6rlt7EgdC5Ta2lwCmV4Y2x1ZGVkID0geydUZXN0VmVyaWZ5SG9zdG5hbWUnLCAnVGVzdFJlYWxSZXN1bXB0aW9uJ30gICAgICAjIOacrOajgOafpeaYvuW8jyAtc2tpcAp0b3BfcGFzcywgc2tpcHMgPSBzZXQoKSwgc2V0KCkKZm9yIGxpbmUgaW4gb3BlbignL3RtcC91cHN0cmVhbS5qc29uJyk6CiAgICBsaW5lID0gbGluZS5zdHJpcCgpCiAgICBpZiBub3QgbGluZS5zdGFydHN3aXRoKCd7Jyk6CiAgICAgICAgY29udGludWUKICAgIHRyeToKICAgICAgICBldiA9IGpzb24ubG9hZHMobGluZSkKICAgIGV4Y2VwdCBqc29uLkpTT05EZWNvZGVFcnJvcjoKICAgICAgICBjb250aW51ZQogICAgdCwgYSA9IGV2LmdldCgnVGVzdCcpLCBldi5nZXQoJ0FjdGlvbicpCiAgICBpZiBub3QgdCBvciAnLycgaW4gdDoKICAgICAgICBjb250aW51ZQogICAgaWYgYSA9PSAncGFzcyc6CiAgICAgICAgdG9wX3Bhc3MuYWRkKHQpCiAgICBlbGlmIGEgPT0gJ3NraXAnOgogICAgICAgIHNraXBzLmFkZCh0KQpwcmludChmIuWOn+eJiOWll+S7tu+8iC1za2lwIOS4pOadoSBlZ3Jlc3PvvInvvJrpobblsYIge2xlbih0b3BfcGFzcyl9IFBBU1PvvIzot7Pov4cge3NvcnRlZChza2lwcyl9IikKaWYgbm90IHRvcF9wYXNzOgogICAgc3lzLmV4aXQoIumhtuWxgiBQQVNTIOaVsOS4uiAwIOKAlOKAlCDov5nkuIDot5Hku4DkuYjpg73msqHpqozliLDvvIjkuI3mmK/jgIzpgJrov4fjgI3vvIkiKQppZiBza2lwcyAhPSB7dXBzdHJlYW1fc2VsZl9za2lwfToKICAgIHN5cy5leGl0KGYi6Lez6L+H6ZuG5LiO6aKE5pyf5LiN56ym77yae3NvcnRlZChza2lwcyl9ICE9IFsne3Vwc3RyZWFtX3NlbGZfc2tpcH0nXSIpCnJhbiA9IGV4Y2x1ZGVkICYgdG9wX3Bhc3MKaWYgcmFuOgogICAgc3lzLmV4aXQoZiLov5nkuKTmnaHmnKzor6XooqsgLXNraXAg5pGY5o6J77yM5Y205Ye6546w5ZyoIFBBU1Mg6YeM77yae3NvcnRlZChyYW4pfSIpCg==' | base64 -d > "$RUNNER_TEMP/upstream_assert.py"
+
       - name: Run checks
         id: checks
         shell: bash
@@ -77,7 +85,8 @@ jobs:
             'sh crates/rustls-fork/verify-patch.sh "$RUNNER_TEMP/rs-verify"'
             'cargo test -p utls-engine --test ech_inner_utls -- --nocapture'
             'cargo test -p utls-engine --test ech_utls_server -- --ignored --nocapture'
-            'sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master'
+            'cd /tmp/utls-ref/utls-master && go test -count=1 -timeout 480s -json -skip "TestVerifyHostname|TestRealResumption" ./... > /tmp/upstream.json && python3 "$RUNNER_TEMP/upstream_assert.py"'
+            'GOPROXY=https://proxy.golang.org,direct sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master'
             'cargo test -p reality --test real_stack -- --include-ignored --nocapture'
           )
           : > results.tsv
@@ -89,8 +98,6 @@ jobs:
             printf '%s\n' "$rc" >> results.tsv
             printf '  %s: rc=%s\n' "$n" "$rc"
           done
-          # 与 ci.yml 的 upstream job 同源：把 go -json 的结果行也留进日志。
-          true
 
       - name: Publish summary
         if: always()
