@@ -77,15 +77,23 @@ jobs:
         shell: bash
         run: |
           set +e
-          declare -a names=(cargo-fmt clippy tests patch-repro ech-inner ech-server upstream upstream-no-skip reality-stack)
+          # 顺序不是随意的：这些检查在**同一个 runner 的同一棵参照树**上顺序执行，
+          # 而 ci.yml 的 ech-offline 与 upstream 是**各自独立 runner**——前者把
+          # ech_server_live_test.go 复制进参照树后，污染只留在它自己的 checkout 里；
+          # 这里若把 upstream 排在 ech-server 之后，探针的自跳过会撞上
+          # 「跳过集恰如预期」断言（首轮实测 rc=1 正是这么来的）。
+          # 所以：upstream 最先跑；ech-server 之后立刻把探针删掉；
+          # upstream-no-skip 的脚本本就按文件名自清探针，放在最后。
+          declare -a names=(upstream cargo-fmt clippy tests patch-repro ech-inner ech-server cleanup-ref-tree upstream-no-skip reality-stack)
           declare -a cmds=(
+            'cd /tmp/utls-ref/utls-master && go test -count=1 -timeout 480s -json -skip "TestVerifyHostname|TestRealResumption" ./... > /tmp/upstream.json && python3 "$RUNNER_TEMP/upstream_assert.py"'
             'cargo fmt --all --check'
             'cargo clippy --workspace --all-targets --all-features -- -D warnings'
             'cargo test --workspace --all-features'
             'sh crates/rustls-fork/verify-patch.sh "$RUNNER_TEMP/rs-verify"'
             'cargo test -p utls-engine --test ech_inner_utls -- --nocapture'
             'cargo test -p utls-engine --test ech_utls_server -- --ignored --nocapture'
-            'cd /tmp/utls-ref/utls-master && go test -count=1 -timeout 480s -json -skip "TestVerifyHostname|TestRealResumption" ./... > /tmp/upstream.json && python3 "$RUNNER_TEMP/upstream_assert.py"'
+            'rm -f /tmp/utls-ref/utls-master/ech_server_live_test.go'
             'GOPROXY=https://proxy.golang.org,direct sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh /tmp/utls-ref/utls-master'
             'cargo test -p reality --test real_stack -- --include-ignored --nocapture'
           )
