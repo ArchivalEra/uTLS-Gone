@@ -77,6 +77,27 @@ jobs:
         shell: bash
         run: |
           set +e
+          # shellcheck 0.11.0（静态二进制，取官方 release）：对本仓两个 POSIX sh 脚本
+          # 做外部验证。两个脚本在 0.11.0 `-s sh` 下实测 0 finding，这里**零豁免**
+          # —— 不是新 lint 规则，是对既有壳的第三方检查，未来壳的变更若引入
+          # finding，结果会如实红。
+          curl -sSL --retry 3 --retry-delay 2 -o /tmp/shellcheck.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          tar xf /tmp/shellcheck.tar.xz -C /tmp
+          SHELLCHECK=/tmp/shellcheck-v0.11.0/shellcheck
+          "$SHELLCHECK" --version | head -2
+          "$SHELLCHECK" -s sh crates/rustls-fork/verify-patch.sh crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh \
+            | tee /tmp/shellcheck-findings.txt
+          # shellcheck 无 finding 时输出为空且 rc=0；有 finding 时 rc=1（print 到 stderr，
+          # 用 tee 落盘留档）。
+          printf 'shellcheck\tshellcheck -s sh <两个 POSIX sh 脚本>\t' >> results.tsv
+          if [ -s /tmp/shellcheck-findings.txt ]; then
+            printf '1\n' >> results.tsv
+            echo '  shellcheck: rc=1 (findings above)'
+          else
+            printf '0\n' >> results.tsv
+            echo '  shellcheck: rc=0 (0 findings)'
+          fi
           # 顺序不是随意的：这些检查在**同一个 runner 的同一棵参照树**上顺序执行，
           # 而 ci.yml 的 ech-offline 与 upstream 是**各自独立 runner**——前者把
           # ech_server_live_test.go 复制进参照树后，污染只留在它自己的 checkout 里；
