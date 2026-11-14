@@ -34,6 +34,17 @@ The only write channel is SSH with the FIDO2 SK keys held by the `akr` agent
   The HTTP proxy for github (`http.https://github.com/.proxy =
   http://127.0.0.1:2080`) is already set globally and per-repo.
 
+## Read path (verified against the read-only PAT)
+
+- Reconcile / query: `gh api` (read refs, files, runs) and the other `gh`
+  read commands — the read-only PAT covers the whole account's visible
+  surface.
+- Fetching objects: plain `git fetch` over HTTPS works with the read-only
+  PAT; this repository's fetch URL is
+  `https://github.com/ArchivalEra/uTLS-Gone.git` (push URL is the SSH alias).
+- Do not use `gh repo sync` here: it calls the merge-upstream API, which
+  needs write access and returns 403 under the read-only PAT.
+
 This repository is not one of the currently enabled repositories: until the
 owner issues an enable notice for `ArchivalEra/uTLS-Gone`, keep changes as
 local commits / working-tree edits and report the change summary (diff
