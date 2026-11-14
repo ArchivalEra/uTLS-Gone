@@ -35,16 +35,18 @@ The only write channel is SSH with the FIDO2 SK keys held by the `akr` agent
 This repository is not one of the currently enabled repositories: until the
 owner issues an enable notice for `ArchivalEra/uTLS-Gone`, keep changes as
 local commits / working-tree edits and report the change summary (diff
-summary, findings, evidence) to `wo-u-maintainer` over the wo-u network so
-the owner can apply them from their side. Do not create new commits on top of
-an already-reported local commit, and do not rewrite existing local commits.
+summary, findings) to `wo-u-maintainer` over the wo-u network so the owner
+can apply them from their side. The self code-review verdict is not part of
+that report — it lives only in this session's final output and in the commit
+message. Do not create new commits on top of an already-reported local
+commit, and do not rewrite existing local commits.
 
 ## Verification culture
 
-Every behavior change needs a re-runnable criterion, and CI is the criterion set:
-`.github/workflows/ci.yml` runs six gates (`rust`, `patch-repro`, `ech-offline`,
-`upstream`, `reality-stack`, `upstream-no-skip`). Before changing behavior, know
-which gate turns red.
+Every behavior change needs a re-runnable criterion, and CI is the criterion set.
+The authoritative gate list lives in `.github/workflows/ci.yml` (six jobs:
+`rust`, `patch-repro`, `ech-offline`, `upstream`, `reality-stack`,
+`upstream-no-skip`). Before changing behavior, know which gate turns red.
 
 `.github/workflows/quality-assessment.yml` re-runs the existing gates for reporting
 (Pull Request / weekly cron / manual). It adds no lint rules. It also runs
@@ -54,7 +56,8 @@ which gate turns red.
 suppressions.
 
 Ordering constraint when several checks run in one job: `upstream` must run before
-`ech-server`, because the ECH server test copies a probe file into the shared
+`ech-server` (the quality-assessment check that runs the `ech-offline` CI job's
+server-side test), because that test copies a probe file into the shared
 reference tree at `/tmp/utls-ref/utls-master`; remove the probe right after
 `ech-server` finishes. The `upstream-no-skip` script removes probes itself.
 
@@ -68,8 +71,9 @@ patch-repro gate fails. After changing fork semantics, regenerate
 
 ## Version alignment
 
-The workspace crates `utls`, `utls-engine`, `reality`, and `x25519-os` share one
-version; change all four together.
+The workspace crates `utls`, `utls-engine`, `reality`, and `x25519-os` inherit one
+version from `version = "..."` in the root `Cargo.toml`; bump it there once and all
+four follow. Do not set per-crate `version` values.
 
 ## README is the storefront
 
