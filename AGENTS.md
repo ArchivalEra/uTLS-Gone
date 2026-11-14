@@ -36,12 +36,17 @@ The only write channel is SSH with the FIDO2 SK keys held by the `akr` agent
 
 ## Read path (verified against the read-only PAT)
 
+- The remote is split: fetch URL =
+  `https://github.com/ArchivalEra/uTLS-Gone.git` (read-only PAT via the gh
+  keyring, silent, no approval), push URL =
+  `ssh://git@github-ArchivalEra/ArchivalEra/uTLS-Gone.git` (SK key + MFA).
+  Never point the fetch URL at an `ssh://` address — every `ssh://` fetch
+  triggers a mobile push approval, which is forbidden for fetches.
 - Reconcile / query: `gh api` (read refs, files, runs) and the other `gh`
   read commands — the read-only PAT covers the whole account's visible
-  surface.
-- Fetching objects: plain `git fetch` over HTTPS works with the read-only
-  PAT; this repository's fetch URL is
-  `https://github.com/ArchivalEra/uTLS-Gone.git` (push URL is the SSH alias).
+  surface. Prefer `gh api` for day-to-day reconciliation.
+- Fetching objects: plain `git fetch` / `git pull` over HTTPS — zero
+  approvals; only push rings the phone.
 - Do not use `gh repo sync` here: it calls the merge-upstream API, which
   needs write access and returns 403 under the read-only PAT.
 
