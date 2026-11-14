@@ -1,34 +1,62 @@
-# AGENTS.md — uTLS-Gone 仓库作业规程
+# AGENTS.md — uTLS-Gone
 
-本文件是 agent 在本仓干活的常驻规则。项目介绍见 [README.md](README.md) / [README.zh.md](README.zh.md)。
+Standing rules for any agent working in this repository. Project overview lives in
+[README.md](README.md) / [README.zh.md](README.zh.md).
 
-## 推送路径：永久关闭（终态，非临时故障）
+## Git write path is permanently closed
 
-**本仓的 GitHub 写路径已永久下线。** 节点侧 gh 凭据是 `PlumHelper`（只读：
-pull=true / push=false / admin=false），这是**终态**，不是过渡——ArchivalEra 的
-token 不会再次下发，也不要等待凭据恢复。
+The GitHub credentials available on this machine (`PlumHelper`) are read-only:
+`pull=true`, `push=false`, `admin=false`. This is a permanent end state, not a
+transient restriction. The `ArchivalEra` token will not be issued again.
 
-- **不要** `git push`、不要 fork、不要提 PR、不要试写路径——这些路已确认关闭，重试只会收到 protected branch 拒绝。
-- **不要**用 `gh api` 改分支保护或仓库配置；保护状态对只读账号不可见是预期行为。
-- **交付路径（唯一合法路径）**：在本地仓库完成修改并验证 → 通过 wo-u 电话网向
-  `wo-u-maintainer` 报告变更内容（diff 摘要 / finding 清单 / 证据）→ 由站长侧
-  （ArchivalEra 账号）代为落库（合入 main）。
-- 本地 git config 不用改（user.name / user.email 保持原值）；变的只是「落库」这一步永远不发生在节点侧。
+- Do not run `git push`, do not fork, do not open pull requests, do not probe for
+  any other write path. Push attempts are rejected by branch protection.
+- Do not modify branch protection or repository settings via `gh api`. Protection
+  details being invisible to a read-only account is expected behavior.
+- The only delivery path: make and verify changes locally, then report the change
+  (diff summary, findings, evidence) to `wo-u-maintainer` over the wo-u phone
+  network. The repository owner applies changes to `main` from their side.
+- Do not change local git config (`user.name` / `user.email` stay as-is).
 
-## 仓库规矩
+While the write path is closed, keep edits to a local working state: do not create
+new commits on top of an already-reported local commit, and do not rewrite existing
+local commits.
 
-- **判据文化**：每个行为都要有可复跑的判据；文档数字只引用不手抄。
-  `ci.yml` 的六个 job 就是六类判据（rust / patch-repro / ech-offline / upstream /
-  reality-stack / upstream-no-skip），改行为先想判据怎么红。
-- **quality-assessment.yml**：本地代码质量评估（PR/每周/手动触发），复用 ci.yml 既有
-  判据，不新增 lint 规则。shellcheck 以零豁免方式验证两个 POSIX sh 脚本
-  （`crates/rustls-fork/verify-patch.sh`、`crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh`）。
-  多检查在同一 runner 顺序执行时注意共享参照树的隔离：`upstream` 必须先于
-  `ech-server`（后者会往 `/tmp/utls-ref/utls-master` 复制探针），探针复制后立即清理。
-- **README 是门面**：8 枚 badge 与两份 bench SVG 是点名资产，改 README 时不能丢；
-  README.md 与 README.zh.md 是同一条断言的两份拷贝，改一份必须同批改另一份。
-- **vendored 树纪律**：`crates/rustls` 是带 FORK(utls-rs) 标记的 vendored rustls；
-  不要在里面跑 `cargo fmt`（会污染未改动的上游文件，判据①′会红）。改 fork 语义后
-  必须重新生成 `patch.diff` 并跑 `sh crates/rustls-fork/verify-patch.sh`。
-- **版本对齐**：workspace 四 crate（utls / utls-engine / reality / x25519-os）版本同步改。
-- **无未结 issue**：新工作以 issue 或 wo-u 指令为准，不自立题目。
+## Verification culture
+
+Every behavior change needs a re-runnable criterion, and CI is the criterion set:
+`.github/workflows/ci.yml` runs six gates (`rust`, `patch-repro`, `ech-offline`,
+`upstream`, `reality-stack`, `upstream-no-skip`). Before changing behavior, know
+which gate turns red.
+
+`.github/workflows/quality-assessment.yml` re-runs the existing gates for reporting
+(Pull Request / weekly cron / manual). It adds no lint rules. It also runs
+`shellcheck -s sh` over the two POSIX sh scripts
+(`crates/rustls-fork/verify-patch.sh`,
+`crates/utls/tests/fixtures/gen-reference/run-upstream-suite.sh`) with zero
+suppressions.
+
+Ordering constraint when several checks run in one job: `upstream` must run before
+`ech-server`, because the ECH server test copies a probe file into the shared
+reference tree at `/tmp/utls-ref/utls-master`; remove the probe right after
+`ech-server` finishes. The `upstream-no-skip` script removes probes itself.
+
+## Vendored tree discipline
+
+`crates/rustls` is vendored rustls with `FORK(utls-rs)` markers. Never run
+`cargo fmt` inside it — reformatting pollutes untouched upstream files and the
+patch-repro gate fails. After changing fork semantics, regenerate
+`crates/rustls-fork/patch.diff` and run
+`sh crates/rustls-fork/verify-patch.sh`.
+
+## Version alignment
+
+The workspace crates `utls`, `utls-engine`, `reality`, and `x25519-os` share one
+version; change all four together.
+
+## README is the storefront
+
+`README.md` and `README.zh.md` carry the project badges and the two benchmark SVGs
+(`docs/bench-en.svg`, `docs/bench-zh.svg`); never drop them. The two files state the
+same claims; edit them in the same batch. Operational agent rules belong in this
+file, not in the READMEs.
