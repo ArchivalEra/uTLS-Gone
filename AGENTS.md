@@ -12,11 +12,13 @@ The only write channel is SSH with the FIDO2 SK keys held by the `akr` agent
 - SSH reaches GitHub through the local proxy: `~/.ssh/config` points
   `github.com` / `ssh.github.com` at `ssh.github.com:443` with
   `IdentityAgent ~/.akr/akr-ssh-agent.sock` and
-  `ProxyCommand socat - PROXY:127.0.0.1:%h:%p,proxyport=2080`. The
-  `github-plumhelper` host alias pins the PlumHelper identity; plain
-  `github.com` resolves the account from whichever SK key signs.
-- Do not add `IdentitiesOnly=yes` to the github host blocks — it filters out
-  agent keys and breaks auth.
+  `ProxyCommand socat - PROXY:127.0.0.1:%h:%p,proxyport=2080`.
+- Pushes to this repository use the explicit SSH alias `github-ArchivalEra`
+  (`IdentityFile ~/.ssh/archivalera-main.pub`), which pins the ArchivalEra SK
+  key regardless of which keys the agent holds. Remotes that push here should
+  use `ssh://git@github-ArchivalEra/ArchivalEra/uTLS-Gone.git`.
+- Do not add `IdentitiesOnly=yes` to the generic github host blocks — it
+  filters out agent keys and breaks auth (the alias blocks set it themselves).
 - Push discipline (network-wide, enforced by the owner): before pushing, write
   what changed, why, and whether any sensitive information is present into the
   **final output of your own session** — never into the wo-u network. Run a code
