@@ -3,24 +3,41 @@
 Standing rules for any agent working in this repository. Project overview lives in
 [README.md](README.md) / [README.zh.md](README.zh.md).
 
-## Git write path is permanently closed
+## Git write path: push over SSH SK key with owner approval
 
-The GitHub credentials available on this machine (`PlumHelper`) are read-only:
-`pull=true`, `push=false`, `admin=false`. This is a permanent end state, not a
-transient restriction. The `ArchivalEra` token will not be issued again.
+HTTPS push is dead: both gh tokens are read-only and HTTPS push returns 403.
+The only write channel is SSH with the FIDO2 SK keys held by the `akr` agent
+(every push triggers a mobile push approval that the owner must allow).
 
-- Do not run `git push`, do not fork, do not open pull requests, do not probe for
-  any other write path. Push attempts are rejected by branch protection.
-- Do not modify branch protection or repository settings via `gh api`. Protection
-  details being invisible to a read-only account is expected behavior.
-- The only delivery path: make and verify changes locally, then report the change
-  (diff summary, findings, evidence) to `wo-u-maintainer` over the wo-u phone
-  network. The repository owner applies changes to `main` from their side.
+- SSH reaches GitHub through the local proxy: `~/.ssh/config` points
+  `github.com` / `ssh.github.com` at `ssh.github.com:443` with
+  `IdentityAgent ~/.akr/akr-ssh-agent.sock` and
+  `ProxyCommand socat - PROXY:127.0.0.1:%h:%p,proxyport=2080`. The
+  `github-plumhelper` host alias pins the PlumHelper identity; plain
+  `github.com` resolves the account from whichever SK key signs.
+- Do not add `IdentitiesOnly=yes` to the github host blocks — it filters out
+  agent keys and breaks auth.
+- Push discipline (network-wide, enforced by the owner): before pushing, write
+  what changed, why, and whether any sensitive information is present into the
+  **final output of your own session** — never into the wo-u network. Run a code
+  review of your own diff first and put the review verdict plus the change
+  description in that final output; the commit message must carry both. The
+  owner reads the last paragraph of each session's final output during patrol
+  and replies with approval; only then push. A push missing that shape is
+  ignored. The wo-u network does not carry push approvals — it is for task
+  dispatch and ruling broadcasts only.
+- `git push` itself is the gate: the SK signature plus the mobile approval.
+  Do not test-push to probe the path; treat a trial push as a violation.
 - Do not change local git config (`user.name` / `user.email` stay as-is).
+  The HTTP proxy for github (`http.https://github.com/.proxy =
+  http://127.0.0.1:2080`) is already set globally and per-repo.
 
-While the write path is closed, keep edits to a local working state: do not create
-new commits on top of an already-reported local commit, and do not rewrite existing
-local commits.
+This repository is not one of the currently enabled repositories: until the
+owner issues an enable notice for `ArchivalEra/uTLS-Gone`, keep changes as
+local commits / working-tree edits and report the change summary (diff
+summary, findings, evidence) to `wo-u-maintainer` over the wo-u network so
+the owner can apply them from their side. Do not create new commits on top of
+an already-reported local commit, and do not rewrite existing local commits.
 
 ## Verification culture
 
